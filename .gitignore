@@ -30,3 +30,5 @@ build/
 
 # Other files (if applicable)
 *.env.local
+economy.db
+
