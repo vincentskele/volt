@@ -22,6 +22,19 @@ db.serialize(() => {
     PRIMARY KEY(userID, itemID),
     FOREIGN KEY(itemID) REFERENCES items(itemID)
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS joblist (
+    jobID INTEGER PRIMARY KEY AUTOINCREMENT,
+    description TEXT NOT NULL,
+    isCompleted BOOLEAN DEFAULT 0,
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS user_jobs (
+    userID TEXT NOT NULL,
+    jobID INTEGER NOT NULL,
+    assignedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(userID, jobID),
+    FOREIGN KEY(jobID) REFERENCES joblist(jobID)
+  )`);
 });
 
 module.exports = {
@@ -46,186 +59,67 @@ module.exports = {
     });
   },
 
-  transferBalance: (fromUserID, toUserID, amount) => {
+  addJob: (description) => {
     return new Promise((resolve, reject) => {
-      db.get(`SELECT balance FROM economy WHERE userID = ?`, [fromUserID], (err, row) => {
-        if (err || !row || row.balance < amount) {
-          return reject('Insufficient balance');
+      db.run(`INSERT INTO joblist (description) VALUES (?)`, [description], (err) => {
+        if (err) {
+          console.error('Error adding job:', err);
+          return reject('Error adding job to the list.');
         }
-        db.run(`UPDATE economy SET balance = balance - ? WHERE userID = ?`, [amount, fromUserID]);
-        db.run(`INSERT OR IGNORE INTO economy (userID, balance) VALUES (?, 0)`, [toUserID]);
-        db.run(`UPDATE economy SET balance = balance + ? WHERE userID = ?`, [amount, toUserID], (err) => {
-          if (err) return reject('Error transferring balance');
-          resolve();
-        });
+        resolve('✅ Job added successfully!');
       });
     });
   },
 
-  getLeaderboard: () => {
+  getJobs: () => {
     return new Promise((resolve, reject) => {
-      db.all(`SELECT userID, balance FROM economy ORDER BY balance DESC LIMIT 10`, [], (err, rows) => {
-        if (err) return reject('Error retrieving leaderboard');
-        let leaderboard = '🏆 **Pizza Leaderboard**\n\n';
-        rows.forEach((row, i) => {
-          leaderboard += `${i + 1}. <@${row.userID}>: ${row.balance} 🍕\n`;
-        });
-        resolve(leaderboard);
-      });
-    });
-  },
-
-  addAdmin: (userID) => {
-    return new Promise((resolve, reject) => {
-      db.run(`INSERT OR IGNORE INTO admins (userID) VALUES (?)`, [userID], (err) => {
-        if (err) return reject('Error adding admin');
-        resolve();
-      });
-    });
-  },
-
-  removeAdmin: (userID) => {
-    return new Promise((resolve, reject) => {
-      db.run(`DELETE FROM admins WHERE userID = ?`, [userID], (err) => {
-        if (err) return reject('Error removing admin');
-        resolve();
-      });
-    });
-  },
-
-  getAdmins: () => {
-    return new Promise((resolve, reject) => {
-      db.all(`SELECT userID FROM admins`, [], (err, rows) => {
-        if (err) return reject('Error retrieving admins');
-        if (rows.length === 0) return resolve('👥 No bot admins configured.');
-        resolve(rows.map(row => `<@${row.userID}>`).join('\n'));
-      });
-    });
-  },
-
-  getShopItems: () => {
-    return new Promise((resolve, reject) => {
-      db.all(`SELECT name, description, price FROM items WHERE isAvailable = 1`, [], (err, rows) => {
-        if (err) return reject('Error retrieving shop items');
-        if (rows.length === 0) return resolve('🏪 The shop is currently empty!');
-        const shopList = rows.map(item => `**${item.name}** - ${item.price} 🍕\n└ ${item.description}`).join('\n\n');
-        resolve(`🏪 **Pizza Shop:**\n\n${shopList}`);
-      });
-    });
-  },
-
-  addItem: (price, name, description) => {
-    return new Promise((resolve, reject) => {
-      db.run(
-        `INSERT INTO items (name, description, price, isAvailable) VALUES (?, ?, ?, 1)`,
-        [name, description, price],
-        (err) => {
-          if (err) return reject('Error adding item to shop');
-          resolve();
+      db.all(`SELECT * FROM joblist WHERE isCompleted = 0 ORDER BY createdAt ASC`, [], (err, rows) => {
+        if (err) {
+          console.error('Error retrieving jobs:', err);
+          return reject('Error retrieving job list.');
         }
-      );
-    });
-  },
-
-  removeItem: (name) => {
-    return new Promise((resolve, reject) => {
-      db.run(`DELETE FROM items WHERE name = ?`, [name], (err) => {
-        if (err) return reject('Error removing item from shop');
-        resolve();
+        if (rows.length === 0) {
+          return resolve('📋 The joblist is currently empty!');
+        }
+        const jobList = rows
+          .map((job) => `🔹 **#${job.jobID}** - ${job.description} (Created: ${job.createdAt})`)
+          .join('\n');
+        resolve(`📋 **Job List:**\n\n${jobList}`);
       });
     });
   },
 
-  buyItem: (userID, itemName) => {
+  completeJob: (jobID) => {
+    return new Promise((resolve, reject) => {
+      db.run(`UPDATE joblist SET isCompleted = 1 WHERE jobID = ?`, [jobID], (err) => {
+        if (err) {
+          console.error('Error completing job:', err);
+          return reject('Error marking the job as completed.');
+        }
+        resolve(`✅ Job #${jobID} marked as completed!`);
+      });
+    });
+  },
+
+  assignJobToUser: (userID) => {
     return new Promise((resolve, reject) => {
       db.get(
-        `SELECT * FROM items WHERE name = ? AND isAvailable = 1`,
-        [itemName],
-        (err, item) => {
-          if (err || !item) return reject('This item does not exist or is not available.');
-
-          db.get(`SELECT balance FROM economy WHERE userID = ?`, [userID], (err, user) => {
-            if (err || !user || user.balance < item.price) {
-              return reject(`You need ${item.price} 🍕 to buy this item. You only have ${user ? user.balance : 0} 🍕.`);
-            }
-
-            db.run(`UPDATE economy SET balance = balance - ? WHERE userID = ?`, [item.price, userID], (err) => {
-              if (err) {
-                return reject('Error processing the purchase.');
-              }
-
-              db.run(
-                `INSERT INTO inventory (userID, itemID, quantity) 
-                 VALUES (?, ?, 1) 
-                 ON CONFLICT(userID, itemID) 
-                 DO UPDATE SET quantity = quantity + 1`,
-                [userID, item.itemID],
-                (err) => {
-                  if (err) return reject('Error updating inventory.');
-                  resolve(`✅ You bought **${item.name}** for ${item.price} 🍕.`);
-                }
-              );
-            });
-          });
-        }
-      );
-    });
-  },
-
-  getInventory: (userID) => {
-    return new Promise((resolve, reject) => {
-      db.all(
-        `SELECT i.name, i.description, inv.quantity 
-         FROM inventory inv 
-         JOIN items i ON inv.itemID = i.itemID 
-         WHERE inv.userID = ?`,
-        [userID],
-        (err, rows) => {
-          if (err) return reject('Error retrieving inventory');
-          if (rows.length === 0) {
-            return resolve('🎒 Your inventory is empty!');
+        `SELECT * FROM joblist WHERE isCompleted = 0 ORDER BY RANDOM() LIMIT 1`,
+        [],
+        (err, job) => {
+          if (err || !job) {
+            return reject('No available jobs to assign.');
           }
 
-          const inventoryList = rows
-            .map((item) => `**${item.name}** (${item.quantity}x)\n└ ${item.description}`)
-            .join('\n\n');
-          resolve(`🎒 **Inventory:**\n\n${inventoryList}`);
-        }
-      );
-    });
-  },
-
-  transferItem: (fromUserID, toUserID, itemName) => {
-    return new Promise((resolve, reject) => {
-      db.get(
-        `SELECT inv.quantity, i.itemID FROM inventory inv
-         JOIN items i ON inv.itemID = i.itemID
-         WHERE inv.userID = ? AND i.name = ?`,
-        [fromUserID, itemName],
-        (err, item) => {
-          if (err || !item || item.quantity < 1) {
-            return reject(`You don't have **${itemName}** in your inventory.`);
-          }
-
-          db.run(`BEGIN TRANSACTION`);
           db.run(
-            `UPDATE inventory SET quantity = quantity - 1 
-             WHERE userID = ? AND itemID = ?`,
-            [fromUserID, item.itemID]
-          );
-          db.run(
-            `INSERT INTO inventory (userID, itemID, quantity) 
-             VALUES (?, ?, 1) 
-             ON CONFLICT(userID, itemID) 
-             DO UPDATE SET quantity = quantity + 1`,
-            [toUserID, item.itemID],
+            `INSERT INTO user_jobs (userID, jobID, assignedAt) VALUES (?, ?, CURRENT_TIMESTAMP)`,
+            [userID, job.jobID],
             (err) => {
               if (err) {
-                db.run(`ROLLBACK`);
-                return reject('Error transferring item.');
+                console.error('Error assigning job:', err);
+                return reject('Failed to assign the job.');
               }
-              db.run(`COMMIT`);
-              resolve(`✅ Transferred **${itemName}** to <@${toUserID}>.`);
+              resolve(`✅ Job assigned: **${job.description}**. Get to work!`);
             }
           );
         }
