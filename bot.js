@@ -1,18 +1,6 @@
-// Load environment variables from .env
 require('dotenv').config();
-
 const { Client, GatewayIntentBits } = require('discord.js');
-const SQLite = require('sqlite3').verbose();
-
-// Initialize the database
-const db = new SQLite.Database('./economy.db', (err) => {
-  if (err) console.error(err);
-  console.log('Connected to SQLite database.');
-});
-
-// Create the economy table and admin table if they don't exist
-db.run(`CREATE TABLE IF NOT EXISTS economy (userID TEXT PRIMARY KEY, balance INTEGER DEFAULT 0)`);
-db.run(`CREATE TABLE IF NOT EXISTS admins (userID TEXT PRIMARY KEY)`);
+const db = require('./db'); // Import database logic
 
 const client = new Client({
   intents: [
@@ -29,36 +17,13 @@ client.on('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
-  if (message.author.id === client.user.id) return;
-  if (!message.content.startsWith(PREFIX)) return;
+  if (message.author.bot || !message.content.startsWith(PREFIX)) return;
 
-  // Get the full command including hyphens
-  const fullCommand = message.content.slice(PREFIX.length).trim();
-  const args = fullCommand.split(/ +/);
-  const command = args.shift().toLowerCase();
-
+  const [command, ...args] = message.content.slice(PREFIX.length).trim().split(/ +/);
   const userID = message.author.id;
 
-  // Promise-based admin check
-  const isBotAdmin = async (userID) => {
-    return new Promise((resolve, reject) => {
-      db.get(`SELECT * FROM admins WHERE userID = ?`, [userID], (err, row) => {
-        if (err) reject(err);
-        resolve(!!row);
-      });
-    });
-  };
-
-  // Initialize user in economy table if they don't exist
-  await new Promise((resolve, reject) => {
-    db.run(`INSERT OR IGNORE INTO economy (userID) VALUES (?)`, [userID], (err) => {
-      if (err) reject(err);
-      resolve();
-    });
-  });
-
   try {
-    switch (command) {
+    switch (command.toLowerCase()) {
       case 'pizzahelp':
         const helpMessage = `
 **Pizza Bot Commands:**
@@ -70,74 +35,161 @@ client.on('messageCreate', async (message) => {
 🍕 **$add-admin @user**: Admin-only. Add a bot-specific admin.
 🍕 **$remove-admin @user**: Admin-only. Remove a bot-specific admin.
 🍕 **$list-admins**: List all bot-specific admins.
+
+Shop Commands:
+🛍️ **$shop**: View available items in the shop.
+🛍️ **$buy <item name>**: Purchase an item.
+🛍️ **$inventory** or **$inv [@user]**: View inventory.
+🛍️ **$transfer @user <item name>**: Give an item to someone.
+🛍️ **$add-item <price> <name> <description>**: Admin-only. Add a shop item.
+🛍️ **$remove-item <name>**: Admin-only. Remove a shop item.
         `;
-        return message.channel.send(helpMessage);
+        message.reply(helpMessage);
         break;
 
-      case 'list-admins':
-        db.all(`SELECT userID FROM admins`, [], async (err, rows) => {
-          if (err) {
-            console.error(err);
-            return message.reply('🚫 An error occurred while retrieving admins.');
-          }
-          if (rows.length === 0) {
-            return message.reply('👥 No bot admins configured.');
-          }
-          const adminList = rows.map(row => `<@${row.userID}>`).join('\n');
-          message.reply(`👥 **Bot Admins:**\n${adminList}`);
-        });
+      case 'balance':
+        const target = message.mentions.users.first() || message.author;
+        const balance = await db.getBalance(target.id);
+        message.reply(`${target.username} has ${balance} 🍕`);
+        break;
+
+      case 'bake':
+        if (!message.member.permissions.has('ADMINISTRATOR')) {
+          return message.reply('🚫 You lack the permissions to bake pizzas!');
+        }
+        await db.addBalance(userID, 6969);
+        message.reply('🍕 You baked 6969 pizzas!');
+        break;
+
+      case 'give-money':
+        if (args.length < 2) {
+          return message.reply('🚫 Usage: $give-money @user <amount>');
+        }
+
+        const recipient = message.mentions.users.first();
+        const amount = parseInt(args[1]);
+
+        if (!recipient) {
+          return message.reply('🚫 Please mention a valid user to give pizzas to.');
+        }
+
+        if (isNaN(amount) || amount <= 0) {
+          return message.reply('🚫 Please specify a valid amount greater than 0.');
+        }
+
+        try {
+          await db.transferBalance(userID, recipient.id, amount);
+          message.reply(`✅ Successfully transferred ${amount} 🍕 to ${recipient.username}.`);
+        } catch (error) {
+          console.error('Error transferring money:', error);
+          message.reply(`🚫 ${error}`);
+        }
+        break;
+
+      case 'leaderboard':
+        const leaderboard = await db.getLeaderboard();
+        message.reply(leaderboard);
         break;
 
       case 'add-admin':
-        const isAdmin = await isBotAdmin(userID);
-        const isServerAdmin = message.member.permissions.has('ADMINISTRATOR');
-        
-        if (!isAdmin && !isServerAdmin) {
-          return message.reply('🚫 Only server administrators or bot admins can use this command.');
+        if (!message.member.permissions.has('ADMINISTRATOR')) {
+          return message.reply('🚫 Only administrators can add bot admins!');
         }
-
-        const targetUser = message.mentions.users.first();
-        if (!targetUser) {
+        const newAdmin = message.mentions.users.first();
+        if (!newAdmin) {
           return message.reply('🚫 Please mention a user to add as admin.');
         }
-
-        db.run(`INSERT OR IGNORE INTO admins (userID) VALUES (?)`, [targetUser.id], (err) => {
-          if (err) {
-            console.error(err);
-            return message.reply('🚫 An error occurred while adding admin.');
-          }
-          message.reply(`✅ Added <@${targetUser.id}> as a bot admin.`);
-        });
+        await db.addAdmin(newAdmin.id);
+        message.reply(`✅ Added ${newAdmin.username} as a bot admin.`);
         break;
 
       case 'remove-admin':
-        const isRemovingAdmin = await isBotAdmin(userID);
-        const hasServerAdminPerms = message.member.permissions.has('ADMINISTRATOR');
-        
-        if (!isRemovingAdmin && !hasServerAdminPerms) {
-          return message.reply('🚫 Only server administrators or bot admins can use this command.');
+        if (!message.member.permissions.has('ADMINISTRATOR')) {
+          return message.reply('🚫 Only administrators can remove bot admins!');
         }
-
-        const targetRemove = message.mentions.users.first();
-        if (!targetRemove) {
+        const removeAdmin = message.mentions.users.first();
+        if (!removeAdmin) {
           return message.reply('🚫 Please mention a user to remove as admin.');
         }
-
-        db.run(`DELETE FROM admins WHERE userID = ?`, [targetRemove.id], (err) => {
-          if (err) {
-            console.error(err);
-            return message.reply('🚫 An error occurred while removing admin.');
-          }
-          message.reply(`✅ Removed <@${targetRemove.id}> from bot admins.`);
-        });
+        await db.removeAdmin(removeAdmin.id);
+        message.reply(`✅ Removed ${removeAdmin.username} from bot admins.`);
         break;
 
-      // ... [Previous command handlers for balance, bake, give-money, etc. remain the same]
+      case 'list-admins':
+        const admins = await db.getAdmins();
+        message.reply(admins);
+        break;
+
+      case 'shop':
+        const shopItems = await db.getShopItems();
+        message.reply(shopItems);
+        break;
+
+      case 'add-item':
+        if (!message.member.permissions.has('ADMINISTRATOR')) {
+          return message.reply('🚫 Only administrators can add items to the shop!');
+        }
+        const [price, ...itemDetails] = args;
+        const itemName = itemDetails.slice(0, itemDetails.length - 1).join(' ');
+        const itemDescription = itemDetails[itemDetails.length - 1];
+        if (!price || isNaN(price) || !itemName || !itemDescription) {
+          return message.reply('🚫 Usage: $add-item <price> <name> <description>');
+        }
+        await db.addItem(parseInt(price), itemName, itemDescription);
+        message.reply(`✅ Added **${itemName}** to the shop for ${price} 🍕. Description: ${itemDescription}`);
+        break;
+
+      case 'remove-item':
+        if (!message.member.permissions.has('ADMINISTRATOR')) {
+          return message.reply('🚫 Only administrators can remove items from the shop!');
+        }
+        const removeItemName = args.join(' ');
+        if (!removeItemName) {
+          return message.reply('🚫 Usage: $remove-item <name>');
+        }
+        await db.removeItem(removeItemName);
+        message.reply(`✅ Removed **${removeItemName}** from the shop.`);
+        break;
+
+      case 'buy':
+        if (args.length < 1) {
+          return message.reply('🚫 Please specify an item to buy!');
+        }
+        const itemNameToBuy = args.join(' ');
+        try {
+          const purchaseResult = await db.buyItem(userID, itemNameToBuy);
+          message.reply(purchaseResult);
+        } catch (error) {
+          console.error('Error during purchase:', error);
+          message.reply(`🚫 ${error}`);
+        }
+        break;
+
+      case 'inventory':
+      case 'inv':
+        const inventoryUser = message.mentions.users.first() || message.author;
+        const inventory = await db.getInventory(inventoryUser.id);
+        message.reply(inventory);
+        break;
+
+      case 'transfer':
+        if (args.length < 2) {
+          return message.reply('🚫 Usage: $transfer @user <item name>');
+        }
+        const transferRecipient = message.mentions.users.first();
+        const itemToTransfer = args.slice(1).join(' ');
+        const transferResult = await db.transferItem(userID, transferRecipient.id, itemToTransfer);
+        message.reply(transferResult);
+        break;
+
+      default:
+        message.reply('🚫 Unknown command!');
     }
   } catch (error) {
-    console.error(error);
-    message.reply('🚫 An error occurred while processing the command.');
+    console.error('Error handling command:', error);
+    message.reply('🚫 An error occurred while processing your command.');
   }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(process.env.TOKEN);
+
