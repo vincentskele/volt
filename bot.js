@@ -48,6 +48,7 @@ Joblist Commands:
 🛠️ **$add-job <description>**: Admin-only. Add a task to the joblist.
 🛠️ **$joblist**: View all pending tasks in the joblist.
 🛠️ **$complete-job <jobID>**: Admin-only. Mark a task as completed.
+🛠️ **$work**: Get a random task assigned to you from the joblist.
         `;
         message.reply(helpMessage);
         break;
@@ -137,6 +138,16 @@ Joblist Commands:
         } catch (error) {
           console.error(error);
           message.reply('🚫 Failed to mark the job as completed.');
+        }
+        break;
+
+      case 'work':
+        try {
+          const workResult = await db.assignJobToUser(userID);
+          message.reply(workResult);
+        } catch (error) {
+          console.error('Error during work assignment:', error);
+          message.reply(`🚫 ${error}`);
         }
         break;
 

@@ -28,6 +28,13 @@ db.serialize(() => {
     isCompleted BOOLEAN DEFAULT 0,
     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS user_jobs (
+    userID TEXT NOT NULL,
+    jobID INTEGER NOT NULL,
+    assignedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(userID, jobID),
+    FOREIGN KEY(jobID) REFERENCES joblist(jobID)
+  )`);
 });
 
 module.exports = {
@@ -91,6 +98,32 @@ module.exports = {
         }
         resolve(`✅ Job #${jobID} marked as completed!`);
       });
+    });
+  },
+
+  assignJobToUser: (userID) => {
+    return new Promise((resolve, reject) => {
+      db.get(
+        `SELECT * FROM joblist WHERE isCompleted = 0 ORDER BY RANDOM() LIMIT 1`,
+        [],
+        (err, job) => {
+          if (err || !job) {
+            return reject('No available jobs to assign.');
+          }
+
+          db.run(
+            `INSERT INTO user_jobs (userID, jobID, assignedAt) VALUES (?, ?, CURRENT_TIMESTAMP)`,
+            [userID, job.jobID],
+            (err) => {
+              if (err) {
+                console.error('Error assigning job:', err);
+                return reject('Failed to assign the job.');
+              }
+              resolve(`✅ Job assigned: **${job.description}**. Get to work!`);
+            }
+          );
+        }
+      );
     });
   },
 };
