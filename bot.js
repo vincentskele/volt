@@ -43,6 +43,11 @@ Shop Commands:
 🛍️ **$transfer @user <item name>**: Give an item to someone.
 🛍️ **$add-item <price> <name> <description>**: Admin-only. Add a shop item.
 🛍️ **$remove-item <name>**: Admin-only. Remove a shop item.
+
+Joblist Commands:
+🛠️ **$add-job <description>**: Admin-only. Add a task to the joblist.
+🛠️ **$joblist**: View all pending tasks in the joblist.
+🛠️ **$complete-job <jobID>**: Admin-only. Mark a task as completed.
         `;
         message.reply(helpMessage);
         break;
@@ -91,95 +96,48 @@ Shop Commands:
         message.reply(leaderboard);
         break;
 
-      case 'add-admin':
+      case 'add-job':
         if (!message.member.permissions.has('ADMINISTRATOR')) {
-          return message.reply('🚫 Only administrators can add bot admins!');
+          return message.reply('🚫 Only administrators can add jobs!');
         }
-        const newAdmin = message.mentions.users.first();
-        if (!newAdmin) {
-          return message.reply('🚫 Please mention a user to add as admin.');
+        const jobDescription = args.join(' ');
+        if (!jobDescription) {
+          return message.reply('🚫 Please provide a description for the job.');
         }
-        await db.addAdmin(newAdmin.id);
-        message.reply(`✅ Added ${newAdmin.username} as a bot admin.`);
-        break;
-
-      case 'remove-admin':
-        if (!message.member.permissions.has('ADMINISTRATOR')) {
-          return message.reply('🚫 Only administrators can remove bot admins!');
-        }
-        const removeAdmin = message.mentions.users.first();
-        if (!removeAdmin) {
-          return message.reply('🚫 Please mention a user to remove as admin.');
-        }
-        await db.removeAdmin(removeAdmin.id);
-        message.reply(`✅ Removed ${removeAdmin.username} from bot admins.`);
-        break;
-
-      case 'list-admins':
-        const admins = await db.getAdmins();
-        message.reply(admins);
-        break;
-
-      case 'shop':
-        const shopItems = await db.getShopItems();
-        message.reply(shopItems);
-        break;
-
-      case 'add-item':
-        if (!message.member.permissions.has('ADMINISTRATOR')) {
-          return message.reply('🚫 Only administrators can add items to the shop!');
-        }
-        const [price, ...itemDetails] = args;
-        const itemName = itemDetails.slice(0, itemDetails.length - 1).join(' ');
-        const itemDescription = itemDetails[itemDetails.length - 1];
-        if (!price || isNaN(price) || !itemName || !itemDescription) {
-          return message.reply('🚫 Usage: $add-item <price> <name> <description>');
-        }
-        await db.addItem(parseInt(price), itemName, itemDescription);
-        message.reply(`✅ Added **${itemName}** to the shop for ${price} 🍕. Description: ${itemDescription}`);
-        break;
-
-      case 'remove-item':
-        if (!message.member.permissions.has('ADMINISTRATOR')) {
-          return message.reply('🚫 Only administrators can remove items from the shop!');
-        }
-        const removeItemName = args.join(' ');
-        if (!removeItemName) {
-          return message.reply('🚫 Usage: $remove-item <name>');
-        }
-        await db.removeItem(removeItemName);
-        message.reply(`✅ Removed **${removeItemName}** from the shop.`);
-        break;
-
-      case 'buy':
-        if (args.length < 1) {
-          return message.reply('🚫 Please specify an item to buy!');
-        }
-        const itemNameToBuy = args.join(' ');
         try {
-          const purchaseResult = await db.buyItem(userID, itemNameToBuy);
-          message.reply(purchaseResult);
+          const result = await db.addJob(jobDescription);
+          message.reply(result);
         } catch (error) {
-          console.error('Error during purchase:', error);
-          message.reply(`🚫 ${error}`);
+          console.error(error);
+          message.reply('🚫 Failed to add the job.');
         }
         break;
 
-      case 'inventory':
-      case 'inv':
-        const inventoryUser = message.mentions.users.first() || message.author;
-        const inventory = await db.getInventory(inventoryUser.id);
-        message.reply(inventory);
+      case 'joblist':
+        try {
+          const jobs = await db.getJobs();
+          message.reply(jobs);
+        } catch (error) {
+          console.error(error);
+          message.reply('🚫 Failed to retrieve the job list.');
+        }
         break;
 
-      case 'transfer':
-        if (args.length < 2) {
-          return message.reply('🚫 Usage: $transfer @user <item name>');
+      case 'complete-job':
+        if (!message.member.permissions.has('ADMINISTRATOR')) {
+          return message.reply('🚫 Only administrators can mark jobs as completed!');
         }
-        const transferRecipient = message.mentions.users.first();
-        const itemToTransfer = args.slice(1).join(' ');
-        const transferResult = await db.transferItem(userID, transferRecipient.id, itemToTransfer);
-        message.reply(transferResult);
+        const jobID = parseInt(args[0]);
+        if (!jobID || isNaN(jobID)) {
+          return message.reply('🚫 Please specify a valid job ID.');
+        }
+        try {
+          const result = await db.completeJob(jobID);
+          message.reply(result);
+        } catch (error) {
+          console.error(error);
+          message.reply('🚫 Failed to mark the job as completed.');
+        }
         break;
 
       default:
