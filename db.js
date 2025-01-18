@@ -194,11 +194,15 @@ function getPetByID(petID) {
 async function getBalances(userID) {
   await initUserEconomy(userID);
   return new Promise((resolve, reject) => {
-    db.get(`SELECT wallet, bank FROM economy WHERE userID = ?`, [userID], (err, row) => {
-      if (err) return reject('Failed to get balances.');
-      if (!row) return resolve({ wallet: 0, bank: 0 });
-      resolve({ wallet: row.wallet, bank: row.bank });
-    });
+    db.get(
+      `SELECT wallet, bank FROM economy WHERE userID = ?`,
+      [userID],
+      (err, row) => {
+        if (err) return reject('Failed to get balances.');
+        if (!row) return resolve({ wallet: 0, bank: 0 });
+        resolve({ wallet: row.wallet, bank: row.bank });
+      }
+    );
   });
 }
 
@@ -206,27 +210,37 @@ function updateWallet(userID, amount) {
   return new Promise(async (resolve, reject) => {
     try {
       await initUserEconomy(userID);
+      db.run(
+        `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
+        [amount, userID],
+        (err) => {
+          if (err) return reject('Error updating wallet.');
+          resolve();
+        }
+      );
     } catch (err) {
-      return reject(err);
+      reject(err);
     }
-    db.run(`UPDATE economy SET wallet = wallet + ? WHERE userID = ?`, [amount, userID], (err2) => {
-      if (err2) return reject('Error updating wallet.');
-      resolve();
-    });
   });
 }
+
+
 
 function updateBank(userID, amount) {
   return new Promise(async (resolve, reject) => {
     try {
       await initUserEconomy(userID);
+      db.run(
+        `UPDATE economy SET bank = bank + ? WHERE userID = ?`,
+        [amount, userID],
+        (err) => {
+          if (err) return reject('Error updating bank.');
+          resolve();
+        }
+      );
     } catch (err) {
-      return reject(err);
+      reject(err);
     }
-    db.run(`UPDATE economy SET bank = bank + ? WHERE userID = ?`, [amount, userID], (err2) => {
-      if (err2) return reject('Error updating bank.');
-      resolve();
-    });
   });
 }
 
@@ -247,6 +261,51 @@ async function withdraw(userID, amount) {
   await updateBank(userID, -amount);
   await updateWallet(userID, amount);
 }
+
+async function transferFromWallet(fromID, toID, amount) {
+  if (!fromID || !toID) throw 'Invalid user IDs';
+  if (fromID === toID) throw 'Cannot transfer to yourself';
+  if (amount <= 0) throw 'Amount must be positive';
+  if (!Number.isInteger(amount)) throw 'Amount must be a whole number';
+
+  const { wallet } = await getBalances(fromID);
+  if (wallet < amount) {
+    throw `Insufficient funds: you only have ${wallet} in your wallet`;
+  }
+
+  return new Promise((resolve, reject) => {
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+      
+      db.run(
+        'UPDATE economy SET wallet = wallet - ? WHERE userID = ?',
+        [amount, fromID],
+        (err) => {
+          if (err) {
+            db.run('ROLLBACK');
+            return reject('Transfer failed on sender update');
+          }
+          
+          db.run(
+            'UPDATE economy SET wallet = wallet + ? WHERE userID = ?',
+            [amount, toID],
+            (err2) => {
+              if (err2) {
+                db.run('ROLLBACK');
+                return reject('Transfer failed on receiver update');
+              }
+              
+              db.run('COMMIT');
+              resolve();
+            }
+          );
+        }
+      );
+    });
+  });
+}
+
+
 
 // =========================================================================
 // Blackjack Functions
@@ -301,7 +360,16 @@ async function blackjackHit(gameID) {
   if (!game || game.status !== 'active') throw `No active game found`;
 
   const deck = createDeck();
-  const newCard = drawCard(deck);
+  const usedCards = [...game.playerHand, ...game.dealerHand];
+  const availableCards = deck.filter(card => 
+    !usedCards.some(used => 
+      used.suit === card.suit && used.value === card.value
+    )
+  );
+
+  if (availableCards.length === 0) throw 'No cards left in deck';
+  
+  const newCard = availableCards[Math.floor(Math.random() * availableCards.length)];
   game.playerHand.push(newCard);
 
   const playerTotal = calculateHand(game.playerHand);
@@ -326,8 +394,18 @@ async function blackjackStand(gameID) {
   if (!game || game.status !== 'active') throw `No active game found`;
 
   const deck = createDeck();
+  const usedCards = [...game.playerHand, ...game.dealerHand];
+  const availableCards = deck.filter(card => 
+    !usedCards.some(used => 
+      used.suit === card.suit && used.value === card.value
+    )
+  );
+
   while (calculateHand(game.dealerHand) < 17) {
-    game.dealerHand.push(drawCard(deck));
+    if (availableCards.length === 0) throw 'No cards left in deck';
+    const cardIndex = Math.floor(Math.random() * availableCards.length);
+    game.dealerHand.push(availableCards[cardIndex]);
+    availableCards.splice(cardIndex, 1);
   }
 
   const playerTotal = calculateHand(game.playerHand);
@@ -352,12 +430,39 @@ async function blackjackStand(gameID) {
       [JSON.stringify(game.dealerHand), status, gameID],
       (err) => {
         if (err) return reject(err);
-        resolve({ dealerHand: game.dealerHand, status });
+        resolve({ 
+          dealerHand: game.dealerHand, 
+          status,
+          playerTotal,
+          dealerTotal
+        });
       }
     );
   });
 }
 
+function getActiveGames(userID) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      'SELECT * FROM blackjack_games WHERE userID = ? AND status = "active"',
+      [userID],
+      (err, games) => {
+        if (err) return reject(err);
+        games = games || [];
+        games.forEach(game => {
+          try {
+            game.playerHand = JSON.parse(game.playerHand);
+            game.dealerHand = JSON.parse(game.dealerHand);
+          } catch (e) {
+            game.playerHand = [];
+            game.dealerHand = [];
+          }
+        });
+        resolve(games);
+      }
+    );
+  });
+}
 
 
 // =========================================================================
@@ -950,100 +1055,3 @@ module.exports = {
   removeAdmin,
   getAdmins
 };
-// Helper functions (outside module.exports)
-function createDeck() {
-  const suits = ['♠', '♥', '♦', '♣'];
-  const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
-  const deck = [];
-  
-  for (const suit of suits) {
-    for (const value of values) {
-      deck.push({ suit, value });
-    }
-  }
-  
-  return shuffleDeck(deck);
-}
-
-function shuffleDeck(deck) {
-  for (let i = deck.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [deck[i], deck[j]] = [deck[j], deck[i]];
-  }
-  return deck;
-}
-
-function drawCard() {
-  const deck = createDeck(); // Create a fresh deck for each draw
-  return deck[Math.floor(Math.random() * deck.length)];
-}
-
-function calculateHandTotal(hand) {
-  let total = 0;
-  let aces = 0;
-  
-  for (const card of hand) {
-    if (card.value === 'A') {
-      aces++;
-    } else if (['K', 'Q', 'J'].includes(card.value)) {
-      total += 10;
-    } else {
-      total += parseInt(card.value);
-    }
-  }
-  
-  for (let i = 0; i < aces; i++) {
-    if (total + 11 <= 21) {
-      total += 11;
-    } else {
-      total += 1;
-    }
-  }
-  
-  return total;
-}
-
-function formatCard(card) {
-  if (!card || !card.value || !card.suit) {
-    return '??';
-  }
-  return `${card.value}${card.suit}`;
-}
-
-function formatHand(hand) {
-  if (!Array.isArray(hand)) {
-    return 'No cards';
-  }
-  return hand.map(card => formatCard(card)).join(' ');
-}
-
-function calculateHandTotal(hand) {
-  if (!Array.isArray(hand)) {
-    return 0;
-  }
-  
-  let total = 0;
-  let aces = 0;
-  
-  for (const card of hand) {
-    if (!card || !card.value) continue;
-    
-    if (card.value === 'A') {
-      aces++;
-    } else if (['K', 'Q', 'J'].includes(card.value)) {
-      total += 10;
-    } else {
-      total += parseInt(card.value) || 0;
-    }
-  }
-  
-  for (let i = 0; i < aces; i++) {
-    if (total + 11 <= 21) {
-      total += 11;
-    } else {
-      total += 1;
-    }
-  }
-  
-  return total;
-}
