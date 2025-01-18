@@ -31,12 +31,13 @@ client.on('messageCreate', async (message) => {
     switch (command.toLowerCase()) {
       case 'pizzahelp': {
         const helpMessage = `
-**Pizza Bot Commands (Hard-coded single-item transfer):**
+**Pizza Bot Commands (Now with redeemable items):**
 🍕 **$pizzahelp**: Show this list of commands.
 🍕 **$balance [@user]**: Check your balance or mention another user to see theirs.
 🍕 **$bake**: Admin-only. Bake 6969 🍕 for yourself.
 🍕 **$give-money @user <amount>**: Send 🍕 to another user.
-🍕 **$give-item @user <item name>**: Send **1** of an item to another user.
+🍕 **$give-item @user <item name>**: Send 1 of an item to another user.
+🍕 **$redeem <item name>**: Use/redeem an item from your inventory.
 🍕 **$leaderboard**: View the top 10 pizza holders.
 🍕 **$add-admin @user**: Admin-only. Add a bot-specific admin.
 🍕 **$remove-admin @user**: Admin-only. Remove a bot-specific admin.
@@ -100,10 +101,7 @@ Joblist Commands:
         }
       }
 
-      /**
-       * GIVE-ITEM (Hard-coded to 1 item)
-       * Usage: $give-item @user <itemName>
-       */
+      // GIVE-ITEM (hard-coded to send 1 item)
       case 'give-item': {
         const targetUser = message.mentions.users.first();
         if (!targetUser) {
@@ -111,23 +109,39 @@ Joblist Commands:
         }
 
         // Remove the mention from args
-        args.shift(); // e.g. removing "@user"
-
-        // Now the rest of args is the item name
+        args.shift(); 
         const itemName = args.join(' ');
         if (!itemName) {
           return message.reply('Please specify the item name. Usage: `$give-item @user <item name>`');
         }
 
-        // Hard-code quantity = 1
-        const quantity = 1;
-
         try {
-          await db.transferItem(message.author.id, targetUser.id, itemName, quantity);
+          // Always send 1
+          await db.transferItem(message.author.id, targetUser.id, itemName, 1);
           return message.reply(`✅ You sent 1 of "${itemName}" to ${targetUser.username}.`);
         } catch (error) {
           console.error('Error transferring item:', error);
           return message.reply(`🚫 Failed to send item: ${error}`);
+        }
+      }
+
+      /**
+       * REDEEM an item (new command)
+       * Usage: $redeem <item name>
+       * Removes 1 item from the user's inventory and announces it.
+       */
+      case 'redeem': {
+        const itemName = args.join(' ');
+        if (!itemName) {
+          return message.reply('Usage: `$redeem <item name>`');
+        }
+        try {
+          await db.redeemItem(userID, itemName);
+          // If success, item was removed from inventory
+          return message.reply(`🎉 You have redeemed **${itemName}**!`);
+        } catch (error) {
+          console.error('Error redeeming item:', error);
+          return message.reply(`🚫 Could not redeem item: ${error}`);
         }
       }
 
@@ -212,7 +226,7 @@ Joblist Commands:
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
           return message.reply('🚫 You must be an admin to add items to the shop.');
         }
-        // Format: $add-item <price> <name> - <description>
+        // $add-item <price> <name> - <description>
         const [priceString, ...itemSplit] = args;
         if (!priceString || !itemSplit.length) {
           return message.reply('🚫 Usage: $add-item <price> <name> - <description>');

@@ -10,7 +10,7 @@ const db = new SQLite.Database('./economy.db', (err) => {
 
 // Create tables if they don't exist
 db.serialize(() => {
-  // 1) economy table for user balances
+  // 1) economy table
   db.run(`
     CREATE TABLE IF NOT EXISTS economy (
       userID TEXT PRIMARY KEY,
@@ -18,7 +18,7 @@ db.serialize(() => {
     )
   `);
 
-  // 2) items table for shop items
+  // 2) items table
   db.run(`
     CREATE TABLE IF NOT EXISTS items (
       itemID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,7 +29,7 @@ db.serialize(() => {
     )
   `);
 
-  // 3) inventory table for user-owned items
+  // 3) inventory table
   db.run(`
     CREATE TABLE IF NOT EXISTS inventory (
       userID TEXT,
@@ -47,7 +47,7 @@ db.serialize(() => {
     )
   `);
 
-  // 5) joblist table (with 'assignedTo')
+  // 5) joblist table
   db.run(`
     CREATE TABLE IF NOT EXISTS joblist (
       jobID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,7 +59,9 @@ db.serialize(() => {
 
 module.exports = {
   /**
-   * Get a user's current balance. Returns 0 if user not found.
+   * -------------------------
+   * Basic Economy Functions
+   * -------------------------
    */
   getBalance: (userID) => {
     return new Promise((resolve, reject) => {
@@ -73,9 +75,6 @@ module.exports = {
     });
   },
 
-  /**
-   * Add or subtract from a user's balance. (amount can be positive or negative.)
-   */
   updateBalance: (userID, amount) => {
     return new Promise((resolve, reject) => {
       db.run(
@@ -102,13 +101,9 @@ module.exports = {
     });
   },
 
-  /**
-   * Transfer balance from one user to another.
-   */
   transferBalanceFromTo: (fromUserID, toUserID, amount) => {
     return new Promise((resolve, reject) => {
       db.serialize(() => {
-        // Check if the sender has enough balance
         db.get(`SELECT balance FROM economy WHERE userID = ?`, [fromUserID], (err, row) => {
           if (err) {
             console.error('Actual SQLite error in transferBalance (SELECT sender):', err);
@@ -118,28 +113,29 @@ module.exports = {
             return reject('Sender has insufficient balance.');
           }
 
-          // Deduct from sender
           db.run(`UPDATE economy SET balance = balance - ? WHERE userID = ?`, [amount, fromUserID], (err2) => {
             if (err2) {
               console.error('Actual SQLite error in transferBalance (UPDATE sender):', err2);
               return reject('Error deducting balance from sender.');
             }
-            
-            // Ensure recipient account exists
+
             db.run(`INSERT OR IGNORE INTO economy (userID, balance) VALUES (?, 0)`, [toUserID], (err3) => {
               if (err3) {
                 console.error('Actual SQLite error in transferBalance (INSERT recipient):', err3);
                 return reject('Error initializing recipient account.');
               }
-              
-              // Add to recipient
-              db.run(`UPDATE economy SET balance = balance + ? WHERE userID = ?`, [amount, toUserID], (err4) => {
-                if (err4) {
-                  console.error('Actual SQLite error in transferBalance (UPDATE recipient):', err4);
-                  return reject('Error adding balance to recipient.');
+
+              db.run(
+                `UPDATE economy SET balance = balance + ? WHERE userID = ?`,
+                [amount, toUserID],
+                (err4) => {
+                  if (err4) {
+                    console.error('Actual SQLite error in transferBalance (UPDATE recipient):', err4);
+                    return reject('Error adding balance to recipient.');
+                  }
+                  resolve();
                 }
-                resolve();
-              });
+              );
             });
           });
         });
@@ -147,9 +143,6 @@ module.exports = {
     });
   },
 
-  /**
-   * Return top 10 users sorted by balance (descending).
-   */
   getLeaderboard: () => {
     return new Promise((resolve, reject) => {
       db.all(
@@ -167,7 +160,9 @@ module.exports = {
   },
 
   /**
-   * Retrieve all available items from the shop.
+   * -------------------------
+   * Shop & Inventory
+   * -------------------------
    */
   getShopItems: () => {
     return new Promise((resolve, reject) => {
@@ -181,9 +176,6 @@ module.exports = {
     });
   },
 
-  /**
-   * Look up a single shop item by name.
-   */
   getShopItemByName: (itemName) => {
     return new Promise((resolve, reject) => {
       db.get(
@@ -200,9 +192,6 @@ module.exports = {
     });
   },
 
-  /**
-   * Add a new item to the shop.
-   */
   addShopItem: (price, name, description) => {
     return new Promise((resolve, reject) => {
       db.run(
@@ -219,9 +208,6 @@ module.exports = {
     });
   },
 
-  /**
-   * Remove an existing item from the shop by name.
-   */
   removeShopItem: (name) => {
     return new Promise((resolve, reject) => {
       db.run(`DELETE FROM items WHERE name = ?`, [name], (err) => {
@@ -234,9 +220,6 @@ module.exports = {
     });
   },
 
-  /**
-   * Add an item to a user's inventory (or increment quantity).
-   */
   addItemToInventory: (userID, itemID, quantity = 1) => {
     return new Promise((resolve, reject) => {
       db.run(
@@ -256,9 +239,6 @@ module.exports = {
     });
   },
 
-  /**
-   * Get a user's inventory. Returns an array of objects: { name, quantity, itemID }
-   */
   getInventory: (userID) => {
     return new Promise((resolve, reject) => {
       db.all(
@@ -279,8 +259,7 @@ module.exports = {
   },
 
   /**
-   * Transfer an item from one user to another. 
-   * The quantity is handled by the caller, but we can pass 1 for a single-item transfer.
+   * Transfer an item from one user to another (used by $give-item).
    */
   transferItem: (fromUserID, toUserID, itemName, quantity) => {
     return new Promise((resolve, reject) => {
@@ -288,7 +267,7 @@ module.exports = {
         return reject('Quantity must be a positive number.');
       }
 
-      // 1) Look up the item by name to get its itemID
+      // 1) Look up the item by name
       db.get(
         `SELECT itemID FROM items WHERE name = ? AND isAvailable = 1`,
         [itemName],
@@ -319,7 +298,7 @@ module.exports = {
               // 3) Decrement fromUser's inventory
               const newQuantity = invRow.quantity - quantity;
               if (newQuantity > 0) {
-                // Just update with new quantity
+                // Just update
                 db.run(
                   `UPDATE inventory SET quantity = ? WHERE userID = ? AND itemID = ?`,
                   [newQuantity, fromUserID, itemID],
@@ -328,11 +307,11 @@ module.exports = {
                       console.error('Error updating sender inventory in transferItem:', err3);
                       return reject('Error updating sender inventory.');
                     }
-                    addToRecipient(); // proceed
+                    addToRecipient();
                   }
                 );
               } else {
-                // newQuantity = 0 or less, remove row entirely
+                // Remove row entirely
                 db.run(
                   `DELETE FROM inventory WHERE userID = ? AND itemID = ?`,
                   [fromUserID, itemID],
@@ -346,7 +325,6 @@ module.exports = {
                 );
               }
 
-              // 4) Add to recipient
               function addToRecipient() {
                 db.run(
                   `INSERT INTO inventory (userID, itemID, quantity)
@@ -371,7 +349,79 @@ module.exports = {
   },
 
   /**
-   * Add a new job to the joblist.
+   * Redeem an item (removes 1 from user's inventory). 
+   * Just announces that user has redeemed it (bot logic).
+   */
+  redeemItem: (userID, itemName) => {
+    return new Promise((resolve, reject) => {
+      // 1) Find itemID by name
+      db.get(
+        `SELECT itemID FROM items WHERE name = ?`,
+        [itemName],
+        (err, itemRow) => {
+          if (err) {
+            console.error('Error looking up item in redeemItem:', err);
+            return reject('Error looking up item.');
+          }
+          if (!itemRow) {
+            return reject(`Item "${itemName}" does not exist.`);
+          }
+
+          const itemID = itemRow.itemID;
+
+          // 2) Check how many the user has
+          db.get(
+            `SELECT quantity FROM inventory WHERE userID = ? AND itemID = ?`,
+            [userID, itemID],
+            (err2, invRow) => {
+              if (err2) {
+                console.error('Error retrieving inventory in redeemItem:', err2);
+                return reject('Error retrieving inventory.');
+              }
+              if (!invRow || invRow.quantity < 1) {
+                return reject(`You do not have any of "${itemName}" to redeem.`);
+              }
+
+              const newQuantity = invRow.quantity - 1;
+              if (newQuantity > 0) {
+                // 3a) Just decrement by 1
+                db.run(
+                  `UPDATE inventory SET quantity = ? WHERE userID = ? AND itemID = ?`,
+                  [newQuantity, userID, itemID],
+                  (err3) => {
+                    if (err3) {
+                      console.error('Error updating inventory in redeemItem:', err3);
+                      return reject('Failed to redeem the item.');
+                    }
+                    // Return success
+                    return resolve(true);
+                  }
+                );
+              } else {
+                // 3b) If that was your last one, remove row
+                db.run(
+                  `DELETE FROM inventory WHERE userID = ? AND itemID = ?`,
+                  [userID, itemID],
+                  (err3) => {
+                    if (err3) {
+                      console.error('Error removing item row in redeemItem:', err3);
+                      return reject('Failed to redeem the item.');
+                    }
+                    return resolve(true);
+                  }
+                );
+              }
+            }
+          );
+        }
+      );
+    });
+  },
+
+  /**
+   * -------------------------
+   * Joblist & Admin
+   * -------------------------
    */
   addJob: (description) => {
     return new Promise((resolve, reject) => {
@@ -389,9 +439,6 @@ module.exports = {
     });
   },
 
-  /**
-   * Return all unassigned jobs (assignedTo IS NULL).
-   */
   getJobList: () => {
     return new Promise((resolve, reject) => {
       db.all(
@@ -408,9 +455,6 @@ module.exports = {
     });
   },
 
-  /**
-   * Assign a random unassigned job to a user — but first check if they already have one.
-   */
   assignRandomJob: (userID) => {
     return new Promise((resolve, reject) => {
       db.get(`SELECT * FROM joblist WHERE assignedTo = ? LIMIT 1`, [userID], (err, existingJob) => {
@@ -419,7 +463,7 @@ module.exports = {
           return reject('Error checking current job.');
         }
         if (existingJob) {
-          return resolve(existingJob); // they already have a job
+          return resolve(existingJob);
         }
 
         db.get(
@@ -449,9 +493,6 @@ module.exports = {
     });
   },
 
-  /**
-   * Complete a job by ID (admin command). Worker gets a random reward if assigned.
-   */
   completeJob: (jobID) => {
     return new Promise((resolve, reject) => {
       db.get(`SELECT * FROM joblist WHERE jobID = ?`, [jobID], (err, jobRow) => {
@@ -464,7 +505,7 @@ module.exports = {
         }
 
         const assignedUser = jobRow.assignedTo;
-        const payAmount = Math.floor(Math.random() * 201) + 100; // random 100–300
+        const payAmount = Math.floor(Math.random() * 201) + 100; // 100–300
 
         db.run(`DELETE FROM joblist WHERE jobID = ?`, [jobID], function (err2) {
           if (err2) {
@@ -472,11 +513,10 @@ module.exports = {
             return reject('Failed to complete job.');
           }
           if (this.changes === 0) {
-            return resolve(null); // no row deleted
+            return resolve(null);
           }
 
           if (assignedUser) {
-            // Reward them
             db.run(
               `INSERT OR IGNORE INTO economy (userID, balance) VALUES (?, 0)`,
               [assignedUser],
@@ -499,7 +539,6 @@ module.exports = {
               }
             );
           } else {
-            // No assigned user
             return resolve({ success: true, payAmount: 0, assignedUser: null });
           }
         });
@@ -507,9 +546,6 @@ module.exports = {
     });
   },
 
-  /**
-   * Add an admin to the 'admins' table.
-   */
   addAdmin: (userID) => {
     return new Promise((resolve, reject) => {
       db.run(`INSERT INTO admins (userID) VALUES (?)`, [userID], (err) => {
@@ -522,9 +558,6 @@ module.exports = {
     });
   },
 
-  /**
-   * Remove an admin from the 'admins' table.
-   */
   removeAdmin: (userID) => {
     return new Promise((resolve, reject) => {
       db.run(`DELETE FROM admins WHERE userID = ?`, [userID], (err) => {
@@ -537,9 +570,6 @@ module.exports = {
     });
   },
 
-  /**
-   * Retrieve all bot admins from the DB.
-   */
   getAdmins: () => {
     return new Promise((resolve, reject) => {
       db.all(`SELECT userID FROM admins`, [], (err, rows) => {
