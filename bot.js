@@ -59,7 +59,7 @@ client.on('messageCreate', async (message) => {
   🛠️ **$add-job <desc>** (Admin): Create a new job.
   🛠️ **$joblist**: View all jobs & current assignees.
   🛠️ **$work**: Assign yourself to a random job (multi-person).
-  🛠️ **$complete-job** <@user> <jobID> <reward> (Admin): Pays user for job completion
+  🛠️ **$complete-job <@user> <jobID> <reward>** (Admin): Pays user for job completion
         `;
         return message.reply(helpMessage);
       }
