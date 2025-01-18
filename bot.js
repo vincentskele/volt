@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, PermissionsBitField } = require('discord.js');
-const db = require('./db'); // The updated DB logic from above
+const db = require('./db'); // The updated DB logic below
 
 const client = new Client({
   intents: [
@@ -25,111 +25,98 @@ client.on('messageCreate', async (message) => {
   const [command, ...args] = message.content.slice(PREFIX.length).trim().split(/ +/);
   const userID = message.author.id;
 
-  console.log('Command:', command);
-
   try {
     switch (command.toLowerCase()) {
       case 'pizzahelp': {
         const helpMessage = `
-**Pizza Bot Commands (Now with redeemable items):**
+**Pizza Bot Commands (multi-assign jobs):**
 🍕 **$pizzahelp**: Show this list of commands.
-🍕 **$balance [@user]**: Check your balance or mention another user to see theirs.
-🍕 **$bake**: Admin-only. Bake 6969 🍕 for yourself.
+🍕 **$balance [@user]**: Check your balance.
+🍕 **$bake** (admin): Bake 6969 🍕 for yourself.
 🍕 **$give-money @user <amount>**: Send 🍕 to another user.
-🍕 **$give-item @user <item name>**: Send 1 of an item to another user.
-🍕 **$redeem <item name>**: Use/redeem an item from your inventory.
-🍕 **$leaderboard**: View the top 10 pizza holders.
-🍕 **$add-admin @user**: Admin-only. Add a bot-specific admin.
-🍕 **$remove-admin @user**: Admin-only. Remove a bot-specific admin.
-🍕 **$list-admins**: List all bot-specific admins.
+🍕 **$give-item @user <item name>**: Send an item to another user.
+🍕 **$redeem <item name>**: Redeem an item from your inventory.
+🍕 **$leaderboard**: Top 10 pizza holders.
+🍕 **$add-admin @user** / **$remove-admin @user** / **$list-admins**.
 
-Shop Commands:
-🛍️ **$shop**: View available items in the shop.
-🛍️ **$buy <item name>**: Purchase an item.
-🛍️ **$inventory** or **$inv [@user]**: View inventory.
-🛍️ **$add-item <price> <name> - <description>**: Admin-only. Add a shop item.
-🛍️ **$remove-item <name>**: Admin-only. Remove a shop item.
+Shop:
+🛍️ **$shop** / **$buy <item>** / **$inventory** (or **$inv**) [@user]
+🛍️ **$add-item <price> <name> - <description>** (admin)
+🛍️ **$remove-item <name>** (admin)
 
-Joblist Commands:
-🛠️ **$add-job <description>**: Admin-only. Add a task to the joblist.
-🛠️ **$joblist**: View all *unassigned* tasks in the joblist.
-🛠️ **$complete-job <jobID>**: Admin-only. Mark a task as completed (worker gets paid).
-🛠️ **$work**: Assign yourself a random job (if you don't already have one).
+Jobs (multi-assignee):
+🛠️ **$add-job <description>** (admin): Create a new job.
+🛠️ **$joblist**: View all jobs and *all* assigned users.
+🛠️ **$work**: Assign yourself to a random job *even if it already has other assignees*.
+🛠️ **$complete-job <jobID>** (admin): Mark a job complete; pays *all* assigned users.
         `;
         return message.reply(helpMessage);
       }
 
-      // BALANCE
+      // -----------------------------
+      // ECONOMY EXAMPLES
+      // -----------------------------
       case 'balance': {
         const target = message.mentions.users.first() || message.author;
         const balance = await db.getBalance(target.id);
         return message.reply(`${target.username} has ${balance} 🍕`);
       }
 
-      // ADMIN-ONLY BAKE
       case 'bake': {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-          return message.reply('🚫 You must be an admin to bake 🍕!');
+          return message.reply('🚫 Only an admin can bake 🍕.');
         }
         const amountToBake = 6969;
         await db.updateBalance(userID, amountToBake);
         return message.reply(`🍕 You baked **${amountToBake}** pizzas for yourself!`);
       }
 
-      // GIVE-MONEY
       case 'give-money': {
         const targetUser = message.mentions.users.first();
         if (!targetUser) {
-          return message.reply('🚫 Please mention a user to give money to. Usage: `$give-money @user 100`');
+          return message.reply('🚫 Usage: `$give-money @user <amount>`');
         }
         const amount = parseInt(args[1], 10);
         if (isNaN(amount) || amount <= 0) {
-          return message.reply('🚫 Please specify a valid amount. Usage: `$give-money @user 100`');
+          return message.reply('🚫 Please specify a valid amount.');
         }
-
+        // Check balance
         const giverBalance = await db.getBalance(userID);
         if (giverBalance < amount) {
-          return message.reply(`🚫 You only have ${giverBalance} 🍕 and cannot give ${amount} 🍕.`);
+          return message.reply(`🚫 You only have ${giverBalance} 🍕.`);
         }
-
         try {
           await db.transferBalanceFromTo(userID, targetUser.id, amount);
           return message.reply(`✅ You gave ${amount} 🍕 to <@${targetUser.id}>!`);
-        } catch (error) {
-          console.error('Error transferring balance:', error);
-          return message.reply('🚫 Failed to transfer funds.');
+        } catch (err) {
+          console.error(err);
+          return message.reply('🚫 Transfer failed.');
         }
       }
 
-      // GIVE-ITEM (hard-coded to send 1 item)
+      // -----------------------------
+      // ITEMS & INVENTORY
+      // -----------------------------
       case 'give-item': {
         const targetUser = message.mentions.users.first();
         if (!targetUser) {
           return message.reply('Usage: `$give-item @user <item name>`');
         }
-
-        // Remove the mention from args
-        args.shift(); 
+        // Remove mention
+        args.shift();
         const itemName = args.join(' ');
         if (!itemName) {
-          return message.reply('Please specify the item name. Usage: `$give-item @user <item name>`');
+          return message.reply('Please specify the item name.');
         }
-
         try {
-          // Always send 1
           await db.transferItem(message.author.id, targetUser.id, itemName, 1);
-          return message.reply(`✅ You sent 1 of "${itemName}" to ${targetUser.username}.`);
-        } catch (error) {
-          console.error('Error transferring item:', error);
-          return message.reply(`🚫 Failed to send item: ${error}`);
+          return message.reply(`✅ You sent 1 of "${itemName}" to <@${targetUser.id}>.`);
+        } catch (err) {
+          console.error(err);
+          return message.reply(`🚫 Failed to send item: ${err}`);
         }
       }
 
-      /**
-       * REDEEM an item (new command)
-       * Usage: $redeem <item name>
-       * Removes 1 item from the user's inventory and announces it.
-       */
       case 'redeem': {
         const itemName = args.join(' ');
         if (!itemName) {
@@ -137,45 +124,44 @@ Joblist Commands:
         }
         try {
           await db.redeemItem(userID, itemName);
-          // If success, item was removed from inventory
-          return message.reply(`🎉 You have redeemed **${itemName}**!`);
-        } catch (error) {
-          console.error('Error redeeming item:', error);
-          return message.reply(`🚫 Could not redeem item: ${error}`);
+          return message.reply(`🎉 You redeemed **${itemName}**!`);
+        } catch (err) {
+          console.error(err);
+          return message.reply(`🚫 Redemption failed: ${err}`);
         }
       }
 
-      // LEADERBOARD
       case 'leaderboard': {
         try {
           const leaderboard = await db.getLeaderboard();
-          if (!leaderboard || !leaderboard.length) {
-            return message.reply('🚫 No data available for the leaderboard.');
+          if (!leaderboard.length) {
+            return message.reply('🚫 No data available for leaderboard.');
           }
-          const top10 = leaderboard.slice(0, 10);
-          const formatted = top10
-            .map((user, index) => `\`${index + 1}\`. <@${user.userID}> - **${user.balance} 🍕**`)
+          const formatted = leaderboard
+            .map((user, i) => `\`${i + 1}\`. <@${user.userID}> - **${user.balance} 🍕**`)
             .join('\n');
           return message.reply(`**🍕 Leaderboard (Top 10) 🍕**\n${formatted}`);
-        } catch (error) {
-          console.error('Error retrieving leaderboard:', error);
-          return message.reply('🚫 Failed to retrieve the leaderboard.');
+        } catch (err) {
+          console.error(err);
+          return message.reply('🚫 Failed retrieving leaderboard.');
         }
       }
 
-      // SHOP COMMANDS
+      // -----------------------------
+      // SHOP
+      // -----------------------------
       case 'shop': {
         try {
-          const shopItems = await db.getShopItems();
-          if (!shopItems || !shopItems.length) {
+          const items = await db.getShopItems();
+          if (!items.length) {
             return message.reply('🚫 The shop is empty.');
           }
-          const shopList = shopItems
-            .map(item => `• **${item.name}** — Cost: ${item.price} 🍕\n   *${item.description}*`)
+          const list = items
+            .map(item => `• **${item.name}** (Cost: ${item.price})\n   *${item.description}*`)
             .join('\n');
-          return message.reply(`🛍️ **Shop Items:**\n${shopList}`);
-        } catch (error) {
-          console.error('Error retrieving shop items:', error);
+          return message.reply(`🛍️ **Shop Items:**\n${list}`);
+        } catch (err) {
+          console.error(err);
           return message.reply('🚫 Failed to retrieve shop items.');
         }
       }
@@ -183,108 +169,104 @@ Joblist Commands:
       case 'buy': {
         const itemName = args.join(' ');
         if (!itemName) {
-          return message.reply('🚫 Please specify the item name. Usage: `$buy <item name>`');
+          return message.reply('🚫 Usage: `$buy <item name>`');
         }
         try {
-          const shopItem = await db.getShopItemByName(itemName);
-          if (!shopItem) {
-            return message.reply(`🚫 Item "${itemName}" doesn't exist in the shop.`);
+          const item = await db.getShopItemByName(itemName);
+          if (!item) {
+            return message.reply(`🚫 "${itemName}" not found in shop.`);
           }
-          const userBalance = await db.getBalance(userID);
-          if (userBalance < shopItem.price) {
-            return message.reply(`🚫 You don't have enough 🍕. **Price:** ${shopItem.price}, **Your Balance:** ${userBalance}`);
+          const userBal = await db.getBalance(userID);
+          if (userBal < item.price) {
+            return message.reply(`🚫 You only have ${userBal}, but **${item.name}** costs ${item.price}.`);
           }
-          await db.updateBalance(userID, -shopItem.price);
-          await db.addItemToInventory(userID, shopItem.itemID, 1);
-          return message.reply(`✅ You purchased **${shopItem.name}** for ${shopItem.price} 🍕!`);
-        } catch (error) {
-          console.error('Error processing purchase:', error);
-          return message.reply('🚫 Failed to complete the purchase.');
+          // purchase
+          await db.updateBalance(userID, -item.price);
+          await db.addItemToInventory(userID, item.itemID, 1);
+          return message.reply(`✅ Purchased **${item.name}** for ${item.price} 🍕!`);
+        } catch (err) {
+          console.error(err);
+          return message.reply('🚫 Purchase failed.');
         }
       }
 
       case 'inventory':
       case 'inv': {
-        const userToCheck = message.mentions.users.first() || message.author;
+        const who = message.mentions.users.first() || message.author;
         try {
-          const inventoryItems = await db.getInventory(userToCheck.id);
-          if (!inventoryItems || !inventoryItems.length) {
-            return message.reply(`🚫 ${userToCheck.username} has an empty inventory.`);
+          const inv = await db.getInventory(who.id);
+          if (!inv.length) {
+            return message.reply(`🚫 ${who.username} has an empty inventory.`);
           }
-          const itemList = inventoryItems
-            .map(item => `• **${item.name}** x${item.quantity}`)
-            .join('\n');
-          return message.reply(`🎒 **${userToCheck.username}'s Inventory:**\n${itemList}`);
-        } catch (error) {
-          console.error('Error retrieving inventory:', error);
-          return message.reply('🚫 Failed to retrieve inventory.');
+          const txt = inv.map(i => `• **${i.name}** x${i.quantity}`).join('\n');
+          return message.reply(`🎒 **${who.username}'s Inventory:**\n${txt}`);
+        } catch (err) {
+          console.error(err);
+          return message.reply('🚫 Failed retrieving inventory.');
         }
       }
 
-      // ADD-ITEM (ADMIN-ONLY)
       case 'add-item': {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-          return message.reply('🚫 You must be an admin to add items to the shop.');
+          return message.reply('🚫 Only an admin can add shop items.');
         }
-        // $add-item <price> <name> - <description>
-        const [priceString, ...itemSplit] = args;
-        if (!priceString || !itemSplit.length) {
-          return message.reply('🚫 Usage: $add-item <price> <name> - <description>');
+        const [priceStr, ...rest] = args;
+        if (!priceStr || !rest.length) {
+          return message.reply('🚫 Usage: `$add-item <price> <name> - <description>`');
         }
-        const price = parseInt(priceString, 10);
+        const price = parseInt(priceStr, 10);
         if (isNaN(price)) {
-          return message.reply('🚫 The price must be a valid number.');
+          return message.reply('🚫 Price must be a number.');
         }
-
-        const itemArgs = itemSplit.join(' ').split(' - ');
-        if (itemArgs.length < 2) {
-          return message.reply('🚫 Please use the format: $add-item <price> <name> - <description>');
+        const split = rest.join(' ').split(' - ');
+        if (split.length < 2) {
+          return message.reply('🚫 Please use `$add-item <price> <name> - <description>`');
         }
-        const itemName = itemArgs[0];
-        const itemDescription = itemArgs[1];
-
+        const itemName = split[0];
+        const itemDesc = split[1];
         try {
-          await db.addShopItem(price, itemName, itemDescription);
-          return message.reply(`✅ Successfully added **${itemName}** to the shop for ${price} 🍕.`);
-        } catch (error) {
-          console.error('Error adding item:', error);
-          return message.reply('🚫 Failed to add item to the shop.');
+          await db.addShopItem(price, itemName, itemDesc);
+          return message.reply(`✅ Added **${itemName}** for ${price} 🍕.`);
+        } catch (err) {
+          console.error(err);
+          return message.reply('🚫 Failed adding shop item.');
         }
       }
 
-      // REMOVE-ITEM (ADMIN-ONLY)
       case 'remove-item': {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-          return message.reply('🚫 You must be an admin to remove items from the shop.');
+          return message.reply('🚫 Only an admin can remove shop items.');
         }
         const itemToRemove = args.join(' ');
         if (!itemToRemove) {
-          return message.reply('🚫 Please specify the item name to remove. Usage: `$remove-item <item name>`');
+          return message.reply('🚫 Usage: `$remove-item <item name>`');
         }
         try {
           await db.removeShopItem(itemToRemove);
-          return message.reply(`✅ Successfully removed **${itemToRemove}** from the shop.`);
-        } catch (error) {
-          console.error('Error removing item:', error);
-          return message.reply('🚫 Failed to remove item from the shop.');
+          return message.reply(`✅ Removed **${itemToRemove}** from the shop.`);
+        } catch (err) {
+          console.error(err);
+          return message.reply('🚫 Failed removing shop item.');
         }
       }
 
-      // JOB COMMANDS
+      // -----------------------------
+      // JOBS (MULTI-ASSIGNEE)
+      // -----------------------------
       case 'add-job': {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-          return message.reply('🚫 Only administrators can add jobs!');
+          return message.reply('🚫 Only administrators can add jobs.');
         }
-        const jobDescription = args.join(' ');
-        if (!jobDescription) {
-          return message.reply('🚫 Usage: $add-job <description>');
+        const desc = args.join(' ');
+        if (!desc) {
+          return message.reply('🚫 Usage: `$add-job <description>`');
         }
         try {
-          await db.addJob(jobDescription);
-          return message.reply(`✅ Successfully added a job: "${jobDescription}"`);
-        } catch (error) {
-          console.error('Error adding job:', error);
-          return message.reply('🚫 Failed to add the job.');
+          await db.addJob(desc);
+          return message.reply(`✅ Added job: "${desc}"`);
+        } catch (err) {
+          console.error(err);
+          return message.reply('🚫 Failed to add job.');
         }
       }
 
@@ -292,89 +274,98 @@ Joblist Commands:
         try {
           const jobs = await db.getJobList();
           if (!jobs.length) {
-            return message.reply('🚫 No pending (unassigned) jobs at the moment.');
+            return message.reply('🚫 No jobs available.');
           }
-          const jobList = jobs
-            .map(job => `• [ID: ${job.jobID}] ${job.description}`)
-            .join('\n');
-          return message.reply(`🛠️ **Unassigned Jobs:**\n${jobList}`);
-        } catch (error) {
-          console.error('Error retrieving job list:', error);
-          return message.reply('🚫 Failed to retrieve the job list.');
+          // Each job can have multiple assignees
+          const lines = jobs.map(job => {
+            // Build list of assigned users (as mentions)
+            if (!job.assignees || !job.assignees.length) {
+              return `• [ID: ${job.jobID}] ${job.description} — Assigned to: None`;
+            }
+            const mentions = job.assignees.map(u => `<@${u}>`).join(', ');
+            return `• [ID: ${job.jobID}] ${job.description} — Assigned to: ${mentions}`;
+          });
+          return message.reply(`🛠️ **Jobs List:**\n${lines.join('\n')}`);
+        } catch (err) {
+          console.error(err);
+          return message.reply('🚫 Failed retrieving job list.');
         }
       }
 
       case 'work': {
         try {
+          // Assign the user to a random job (even if it already has other assignees)
           const job = await db.assignRandomJob(userID);
           if (!job) {
-            return message.reply('🚫 No new jobs available at the moment, or you already have one.');
+            return message.reply('🚫 No jobs found to assign you to.');
           }
-          return message.reply(`🛠️ **Current Task:** ${job.description} (Job ID: ${job.jobID})`);
-        } catch (error) {
-          console.error('Error assigning job:', error);
+          return message.reply(`🛠️ **You are now assigned** to: "${job.description}" (Job ID: ${job.jobID})`);
+        } catch (err) {
+          console.error(err);
           return message.reply('🚫 Failed to assign a job.');
         }
       }
 
       case 'complete-job': {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-          return message.reply('🚫 Only administrators can mark a job as completed.');
+          return message.reply('🚫 Only administrators can complete a job.');
         }
         const jobID = parseInt(args[0], 10);
         if (isNaN(jobID)) {
-          return message.reply('🚫 Usage: $complete-job <jobID> (must be a valid number)');
+          return message.reply('🚫 Usage: `$complete-job <jobID>`');
         }
         try {
           const result = await db.completeJob(jobID);
           if (!result) {
-            return message.reply(`🚫 Could not complete job ID ${jobID}. Check if it exists or was already completed.`);
+            return message.reply(`🚫 Job ID ${jobID} does not exist.`);
           }
-          if (result.assignedUser) {
-            return message.reply(
-              `✅ Job ${jobID} completed! <@${result.assignedUser}> earned **${result.payAmount}** 🍕.`
-            );
-          } else {
-            return message.reply(`✅ Job ${jobID} completed (no assigned user).`);
+          if (!result.assignees || !result.assignees.length) {
+            return message.reply(`✅ Job ${jobID} completed. Nobody was assigned.`);
           }
-        } catch (error) {
-          console.error('Error completing job:', error);
-          return message.reply('🚫 Failed to complete the job.');
+          const paidMentions = result.assignees.map(u => `<@${u}>`).join(', ');
+          return message.reply(
+            `✅ Job ${jobID} completed! Paid each assigned user **${result.payAmount}** 🍕: ${paidMentions}`
+          );
+        } catch (err) {
+          console.error(err);
+          return message.reply('🚫 Failed completing job.');
         }
       }
 
+      // -----------------------------
       // BOT-SPECIFIC ADMIN COMMANDS
+      // -----------------------------
       case 'add-admin': {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-          return message.reply('🚫 You must be an admin to add another admin.');
+          return message.reply('🚫 Only an admin can add another admin.');
         }
-        const adminToAdd = message.mentions.users.first();
-        if (!adminToAdd) {
-          return message.reply('🚫 Please mention a valid user to add as an admin.');
+        const adminUser = message.mentions.users.first();
+        if (!adminUser) {
+          return message.reply('🚫 Usage: `$add-admin @user`');
         }
         try {
-          await db.addAdmin(adminToAdd.id);
-          return message.reply(`✅ Successfully added <@${adminToAdd.id}> as an admin.`);
-        } catch (error) {
-          console.error('Error adding admin:', error);
-          return message.reply('🚫 Failed to add the admin.');
+          await db.addAdmin(adminUser.id);
+          return message.reply(`✅ Added <@${adminUser.id}> as a bot admin.`);
+        } catch (err) {
+          console.error(err);
+          return message.reply('🚫 Failed to add admin.');
         }
       }
 
       case 'remove-admin': {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-          return message.reply('🚫 You must be an admin to remove another admin.');
+          return message.reply('🚫 Only an admin can remove another admin.');
         }
-        const adminToRemove = message.mentions.users.first();
-        if (!adminToRemove) {
-          return message.reply('🚫 Please mention a valid user to remove as an admin.');
+        const adminUser = message.mentions.users.first();
+        if (!adminUser) {
+          return message.reply('🚫 Usage: `$remove-admin @user`');
         }
         try {
-          await db.removeAdmin(adminToRemove.id);
-          return message.reply(`✅ Successfully removed <@${adminToRemove.id}> as an admin.`);
-        } catch (error) {
-          console.error('Error removing admin:', error);
-          return message.reply('🚫 Failed to remove the admin.');
+          await db.removeAdmin(adminUser.id);
+          return message.reply(`✅ Removed <@${adminUser.id}> from bot admins.`);
+        } catch (err) {
+          console.error(err);
+          return message.reply('🚫 Failed to remove admin.');
         }
       }
 
@@ -384,11 +375,11 @@ Joblist Commands:
           if (!admins.length) {
             return message.reply('🚫 No admins have been added yet.');
           }
-          const adminList = admins.map((adminID) => `<@${adminID}>`).join('\n');
-          return message.reply(`👮 **Current Admins:**\n${adminList}`);
-        } catch (error) {
-          console.error('Error listing admins:', error);
-          return message.reply('🚫 Failed to retrieve the admin list.');
+          const list = admins.map(a => `<@${a}>`).join('\n');
+          return message.reply(`👮 **Current Admins:**\n${list}`);
+        } catch (err) {
+          console.error(err);
+          return message.reply('🚫 Failed retrieving admin list.');
         }
       }
 
