@@ -17,8 +17,6 @@ client.on('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
-  console.log('Received message:', message.content);
-
   // Ignore bot messages and any non-command messages
   if (message.author.bot || !message.content.startsWith(PREFIX)) return;
 
@@ -27,96 +25,181 @@ client.on('messageCreate', async (message) => {
 
   try {
     switch (command.toLowerCase()) {
+      /**
+       * HELP
+       */
       case 'pizzahelp': {
         const helpMessage = `
-**Pizza Bot Commands (multi-assign jobs):**
-🍕 **$pizzahelp**: Show this list of commands.
-🍕 **$balance [@user]**: Check your balance.
-🍕 **$bake** (admin): Bake 6969 🍕 for yourself.
-🍕 **$give-money @user <amount>**: Send 🍕 to another user.
-🍕 **$give-item @user <item name>**: Send an item to another user.
-🍕 **$redeem <item name>**: Redeem an item from your inventory.
-🍕 **$leaderboard**: Top 10 pizza holders.
-🍕 **$add-admin @user** / **$remove-admin @user** / **$list-admins**.
+**Pizza Bot Commands (with Bank & Rob):**
+**Basic Economy:**
+  🍕 **$balance** [@user]: Shows wallet & bank for you or another user.
+  🍕 **$deposit <amount>**: Move money from wallet to bank.
+  🍕 **$withdraw <amount>**: Move money from bank to wallet.
+  🍕 **$rob @user**: Attempt to rob another user's wallet.
 
-Shop:
-🛍️ **$shop** / **$buy <item>** / **$inventory** (or **$inv**) [@user]
-🛍️ **$add-item <price> <name> - <description>** (admin)
-🛍️ **$remove-item <name>** (admin)
+**Admin Bake & Transfers:**
+  🍕 **$bake** (Admin): Get 6969 in your wallet.
+  🍕 **$give-money @user <amount>**: Give wallet money to another user.
+  🍕 **$give-item @user <item name>**: Send 1 item to another user.
+  🍕 **$redeem <item name>**: Use/redeem an item in your inventory.
 
-Jobs (multi-assignee):
-🛠️ **$add-job <description>** (admin): Create a new job.
-🛠️ **$joblist**: View all jobs and *all* assigned users.
-🛠️ **$work**: Assign yourself to a random job *even if it already has other assignees*.
-🛠️ **$complete-job <jobID>** (admin): Mark a job complete; pays *all* assigned users.
+**Shop & Inventory:**
+  🛍️ **$shop**: View items for sale.
+  🛍️ **$buy <item name>**: Purchase an item (spends from wallet).
+  🛍️ **$inventory** (or **$inv**) [@user]: Show someone's items.
+  🛍️ **$add-item <price> <name> - <description>** (Admin)
+  🛍️ **$remove-item <item name>** (Admin)
+
+**Leaderboard & Admin System:**
+  🍕 **$leaderboard**: Shows top 10 total (wallet+bank).
+  🍕 **$add-admin @user**, **$remove-admin @user**, **$list-admins**
+
+**Jobs (multi-assignee example):**
+  🛠️ **$add-job <desc>** (Admin): Create a new job.
+  🛠️ **$joblist**: View all jobs & assignees.
+  🛠️ **$work**: Assign yourself to a random job.
+  🛠️ **$complete-job <jobID>** (Admin): Pay & unassign everyone.
         `;
         return message.reply(helpMessage);
       }
 
-      // -----------------------------
-      // ECONOMY EXAMPLES
-      // -----------------------------
+      /**
+       * BALANCE
+       * - Now shows wallet & bank
+       */
       case 'balance': {
-        const target = message.mentions.users.first() || message.author;
-        const balance = await db.getBalance(target.id);
-        return message.reply(`${target.username} has ${balance} 🍕`);
+        const targetUser = message.mentions.users.first() || message.author;
+        const { wallet, bank } = await db.getBalances(targetUser.id);
+        return message.reply(
+          `**${targetUser.username}'s Balance**\n` +
+          `Wallet: ${wallet} 🍕\n` +
+          `Bank: ${bank} 🍕\n` +
+          `Total: ${wallet + bank} 🍕`
+        );
       }
 
+      /**
+       * DEPOSIT (move from wallet -> bank)
+       */
+      case 'deposit': {
+        const amount = parseInt(args[0], 10);
+        if (isNaN(amount) || amount <= 0) {
+          return message.reply('Usage: `$deposit <amount>` (positive number).');
+        }
+        try {
+          await db.deposit(userID, amount);
+          return message.reply(`✅ Deposited ${amount} 🍕 into your bank.`);
+        } catch (err) {
+          return message.reply(`🚫 Deposit failed: ${err}`);
+        }
+      }
+
+      /**
+       * WITHDRAW (move from bank -> wallet)
+       */
+      case 'withdraw': {
+        const amount = parseInt(args[0], 10);
+        if (isNaN(amount) || amount <= 0) {
+          return message.reply('Usage: `$withdraw <amount>` (positive number).');
+        }
+        try {
+          await db.withdraw(userID, amount);
+          return message.reply(`✅ Withdrew ${amount} 🍕 from your bank to your wallet.`);
+        } catch (err) {
+          return message.reply(`🚫 Withdraw failed: ${err}`);
+        }
+      }
+
+      /**
+       * ROB
+       * - Attempts to rob another user's wallet
+       * - 50% chance to succeed
+       * - If success, steals a random portion (e.g. 10-40%) of target's wallet
+       * - If fail, the robber pays a penalty to target (optional!)
+       */
+      case 'rob': {
+        const targetUser = message.mentions.users.first();
+        if (!targetUser) {
+          return message.reply('Usage: `$rob @user`');
+        }
+        if (targetUser.id === userID) {
+          return message.reply('🚫 You cannot rob yourself!');
+        }
+        try {
+          const result = await db.robUser(userID, targetUser.id);
+          if (!result.success) {
+            return message.reply(`🚫 Rob attempt failed: ${result.message}`);
+          }
+          if (result.outcome === 'success') {
+            return message.reply(
+              `💰 You successfully robbed <@${targetUser.id}> and stole **${result.amountStolen}** 🍕!`
+            );
+          } else {
+            return message.reply(
+              `👮 Your robbery failed! You paid **${result.penalty}** 🍕 to <@${targetUser.id}> as a penalty.`
+            );
+          }
+        } catch (err) {
+          return message.reply(`🚫 Rob failed: ${err}`);
+        }
+      }
+
+      /**
+       * BAKE (Admin)
+       */
       case 'bake': {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
           return message.reply('🚫 Only an admin can bake 🍕.');
         }
-        const amountToBake = 6969;
-        await db.updateBalance(userID, amountToBake);
-        return message.reply(`🍕 You baked **${amountToBake}** pizzas for yourself!`);
+        await db.updateWallet(userID, 6969); // +6969 to wallet
+        return message.reply('🍕 You baked 6969 pizzas into your wallet!');
       }
 
+      /**
+       * GIVE MONEY
+       * - Now we always move from the giver's wallet to the recipient's wallet
+       */
       case 'give-money': {
         const targetUser = message.mentions.users.first();
         if (!targetUser) {
-          return message.reply('🚫 Usage: `$give-money @user <amount>`');
+          return message.reply('Usage: `$give-money @user <amount>`');
         }
         const amount = parseInt(args[1], 10);
         if (isNaN(amount) || amount <= 0) {
-          return message.reply('🚫 Please specify a valid amount.');
-        }
-        // Check balance
-        const giverBalance = await db.getBalance(userID);
-        if (giverBalance < amount) {
-          return message.reply(`🚫 You only have ${giverBalance} 🍕.`);
+          return message.reply('🚫 Please specify a valid amount. Usage: `$give-money @user 100`');
         }
         try {
-          await db.transferBalanceFromTo(userID, targetUser.id, amount);
-          return message.reply(`✅ You gave ${amount} 🍕 to <@${targetUser.id}>!`);
+          await db.transferFromWallet(userID, targetUser.id, amount);
+          return message.reply(`✅ You gave ${amount} 🍕 (wallet) to <@${targetUser.id}>!`);
         } catch (err) {
-          console.error(err);
-          return message.reply('🚫 Transfer failed.');
+          return message.reply(`🚫 Transfer failed: ${err}`);
         }
       }
 
-      // -----------------------------
-      // ITEMS & INVENTORY
-      // -----------------------------
+      /**
+       * GIVE-ITEM
+       */
       case 'give-item': {
         const targetUser = message.mentions.users.first();
         if (!targetUser) {
           return message.reply('Usage: `$give-item @user <item name>`');
         }
-        // Remove mention
-        args.shift();
+        args.shift(); // remove mention
         const itemName = args.join(' ');
         if (!itemName) {
           return message.reply('Please specify the item name.');
         }
         try {
-          await db.transferItem(message.author.id, targetUser.id, itemName, 1);
+          await db.transferItem(userID, targetUser.id, itemName, 1);
           return message.reply(`✅ You sent 1 of "${itemName}" to <@${targetUser.id}>.`);
         } catch (err) {
-          console.error(err);
-          return message.reply(`🚫 Failed to send item: ${err}`);
+          return message.reply(`🚫 Item transfer failed: ${err}`);
         }
       }
 
+      /**
+       * REDEEM
+       */
       case 'redeem': {
         const itemName = args.join(' ');
         if (!itemName) {
@@ -126,43 +209,45 @@ Jobs (multi-assignee):
           await db.redeemItem(userID, itemName);
           return message.reply(`🎉 You redeemed **${itemName}**!`);
         } catch (err) {
-          console.error(err);
           return message.reply(`🚫 Redemption failed: ${err}`);
         }
       }
 
+      /**
+       * LEADERBOARD
+       * - Now sorts by (wallet+bank) desc
+       */
       case 'leaderboard': {
         try {
           const leaderboard = await db.getLeaderboard();
           if (!leaderboard.length) {
-            return message.reply('🚫 No data available for leaderboard.');
+            return message.reply('🚫 No data available for the leaderboard.');
           }
-          const formatted = leaderboard
-            .map((user, i) => `\`${i + 1}\`. <@${user.userID}> - **${user.balance} 🍕**`)
-            .join('\n');
-          return message.reply(`**🍕 Leaderboard (Top 10) 🍕**\n${formatted}`);
+          const lines = leaderboard.map((row, i) => {
+            const total = row.wallet + row.bank;
+            return `\`${i + 1}\`. <@${row.userID}> - Wallet: ${row.wallet}, Bank: ${row.bank} (Total: ${total})`;
+          });
+          return message.reply(`**🍕 Leaderboard (Top 10 by total) 🍕**\n${lines.join('\n')}`);
         } catch (err) {
-          console.error(err);
-          return message.reply('🚫 Failed retrieving leaderboard.');
+          return message.reply(`🚫 Failed to retrieve leaderboard: ${err}`);
         }
       }
 
-      // -----------------------------
-      // SHOP
-      // -----------------------------
+      /**
+       * SHOP & INVENTORY
+       */
       case 'shop': {
         try {
           const items = await db.getShopItems();
           if (!items.length) {
             return message.reply('🚫 The shop is empty.');
           }
-          const list = items
-            .map(item => `• **${item.name}** (Cost: ${item.price})\n   *${item.description}*`)
-            .join('\n');
-          return message.reply(`🛍️ **Shop Items:**\n${list}`);
+          const lines = items.map(it => 
+            `• **${it.name}** — Cost: ${it.price}\n   *${it.description}*`
+          );
+          return message.reply(`🛍️ **Shop Items:**\n${lines.join('\n')}`);
         } catch (err) {
-          console.error(err);
-          return message.reply('🚫 Failed to retrieve shop items.');
+          return message.reply(`🚫 Failed retrieving shop: ${err}`);
         }
       }
 
@@ -172,21 +257,25 @@ Jobs (multi-assignee):
           return message.reply('🚫 Usage: `$buy <item name>`');
         }
         try {
-          const item = await db.getShopItemByName(itemName);
-          if (!item) {
+          // Get item
+          const shopItem = await db.getShopItemByName(itemName);
+          if (!shopItem) {
             return message.reply(`🚫 "${itemName}" not found in shop.`);
           }
-          const userBal = await db.getBalance(userID);
-          if (userBal < item.price) {
-            return message.reply(`🚫 You only have ${userBal}, but **${item.name}** costs ${item.price}.`);
+          // Check wallet
+          const { wallet } = await db.getBalances(userID);
+          if (wallet < shopItem.price) {
+            return message.reply(
+              `🚫 You only have ${wallet} in your wallet, but "${shopItem.name}" costs ${shopItem.price}.`
+            );
           }
-          // purchase
-          await db.updateBalance(userID, -item.price);
-          await db.addItemToInventory(userID, item.itemID, 1);
-          return message.reply(`✅ Purchased **${item.name}** for ${item.price} 🍕!`);
+          // Subtract from wallet
+          await db.updateWallet(userID, -shopItem.price);
+          // Add item
+          await db.addItemToInventory(userID, shopItem.itemID, 1);
+          return message.reply(`✅ You purchased **${shopItem.name}** for ${shopItem.price} 🍕!`);
         } catch (err) {
-          console.error(err);
-          return message.reply('🚫 Purchase failed.');
+          return message.reply(`🚫 Purchase failed: ${err}`);
         }
       }
 
@@ -201,14 +290,13 @@ Jobs (multi-assignee):
           const txt = inv.map(i => `• **${i.name}** x${i.quantity}`).join('\n');
           return message.reply(`🎒 **${who.username}'s Inventory:**\n${txt}`);
         } catch (err) {
-          console.error(err);
-          return message.reply('🚫 Failed retrieving inventory.');
+          return message.reply(`🚫 Inventory retrieval failed: ${err}`);
         }
       }
 
       case 'add-item': {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-          return message.reply('🚫 Only an admin can add shop items.');
+          return message.reply('🚫 Only admins can add shop items.');
         }
         const [priceStr, ...rest] = args;
         if (!priceStr || !rest.length) {
@@ -216,26 +304,25 @@ Jobs (multi-assignee):
         }
         const price = parseInt(priceStr, 10);
         if (isNaN(price)) {
-          return message.reply('🚫 Price must be a number.');
+          return message.reply('🚫 Price must be a valid number.');
         }
         const split = rest.join(' ').split(' - ');
         if (split.length < 2) {
-          return message.reply('🚫 Please use `$add-item <price> <name> - <description>`');
+          return message.reply('🚫 Use `$add-item <price> <name> - <description>`');
         }
         const itemName = split[0];
         const itemDesc = split[1];
         try {
           await db.addShopItem(price, itemName, itemDesc);
-          return message.reply(`✅ Added **${itemName}** for ${price} 🍕.`);
+          return message.reply(`✅ Added **${itemName}** to the shop for ${price} 🍕.`);
         } catch (err) {
-          console.error(err);
-          return message.reply('🚫 Failed adding shop item.');
+          return message.reply(`🚫 Failed to add item: ${err}`);
         }
       }
 
       case 'remove-item': {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-          return message.reply('🚫 Only an admin can remove shop items.');
+          return message.reply('🚫 Only admins can remove shop items.');
         }
         const itemToRemove = args.join(' ');
         if (!itemToRemove) {
@@ -245,17 +332,16 @@ Jobs (multi-assignee):
           await db.removeShopItem(itemToRemove);
           return message.reply(`✅ Removed **${itemToRemove}** from the shop.`);
         } catch (err) {
-          console.error(err);
-          return message.reply('🚫 Failed removing shop item.');
+          return message.reply(`🚫 Failed to remove item: ${err}`);
         }
       }
 
-      // -----------------------------
-      // JOBS (MULTI-ASSIGNEE)
-      // -----------------------------
+      /**
+       * JOB COMMANDS (Multi-Assignee Example)
+       */
       case 'add-job': {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-          return message.reply('🚫 Only administrators can add jobs.');
+          return message.reply('🚫 Only admins can add jobs.');
         }
         const desc = args.join(' ');
         if (!desc) {
@@ -265,8 +351,7 @@ Jobs (multi-assignee):
           await db.addJob(desc);
           return message.reply(`✅ Added job: "${desc}"`);
         } catch (err) {
-          console.error(err);
-          return message.reply('🚫 Failed to add job.');
+          return message.reply(`🚫 Failed to add job: ${err}`);
         }
       }
 
@@ -276,39 +361,34 @@ Jobs (multi-assignee):
           if (!jobs.length) {
             return message.reply('🚫 No jobs available.');
           }
-          // Each job can have multiple assignees
           const lines = jobs.map(job => {
-            // Build list of assigned users (as mentions)
-            if (!job.assignees || !job.assignees.length) {
-              return `• [ID: ${job.jobID}] ${job.description} — Assigned to: None`;
+            if (!job.assignees.length) {
+              return `• [ID: ${job.jobID}] ${job.description} — Assigned: None`;
             }
-            const mentions = job.assignees.map(u => `<@${u}>`).join(', ');
-            return `• [ID: ${job.jobID}] ${job.description} — Assigned to: ${mentions}`;
+            const assignedStr = job.assignees.map(uid => `<@${uid}>`).join(', ');
+            return `• [ID: ${job.jobID}] ${job.description} — Assigned: ${assignedStr}`;
           });
           return message.reply(`🛠️ **Jobs List:**\n${lines.join('\n')}`);
         } catch (err) {
-          console.error(err);
-          return message.reply('🚫 Failed retrieving job list.');
+          return message.reply(`🚫 Failed retrieving jobs: ${err}`);
         }
       }
 
       case 'work': {
         try {
-          // Assign the user to a random job (even if it already has other assignees)
           const job = await db.assignRandomJob(userID);
           if (!job) {
-            return message.reply('🚫 No jobs found to assign you to.');
+            return message.reply('🚫 No unassigned jobs available for you.');
           }
-          return message.reply(`🛠️ **You are now assigned** to: "${job.description}" (Job ID: ${job.jobID})`);
+          return message.reply(`🛠️ You are now assigned to: "${job.description}" (Job ID: ${job.jobID})`);
         } catch (err) {
-          console.error(err);
-          return message.reply('🚫 Failed to assign a job.');
+          return message.reply(`🚫 Failed assigning job: ${err}`);
         }
       }
 
       case 'complete-job': {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-          return message.reply('🚫 Only administrators can complete a job.');
+          return message.reply('🚫 Only admins can complete a job.');
         }
         const jobID = parseInt(args[0], 10);
         if (isNaN(jobID)) {
@@ -317,24 +397,23 @@ Jobs (multi-assignee):
         try {
           const result = await db.completeJob(jobID);
           if (!result) {
-            return message.reply(`🚫 Job ID ${jobID} does not exist.`);
+            return message.reply(`🚫 Job ${jobID} does not exist.`);
           }
-          if (!result.assignees || !result.assignees.length) {
+          if (!result.assignees.length) {
             return message.reply(`✅ Job ${jobID} completed. Nobody was assigned.`);
           }
-          const paidMentions = result.assignees.map(u => `<@${u}>`).join(', ');
+          const mentions = result.assignees.map(uid => `<@${uid}>`).join(', ');
           return message.reply(
-            `✅ Job ${jobID} completed! Paid each assigned user **${result.payAmount}** 🍕: ${paidMentions}`
+            `✅ Job ${jobID} completed! Each assigned user got **${result.payAmount}** 🍕: ${mentions}`
           );
         } catch (err) {
-          console.error(err);
-          return message.reply('🚫 Failed completing job.');
+          return message.reply(`🚫 Failed completing job: ${err}`);
         }
       }
 
-      // -----------------------------
-      // BOT-SPECIFIC ADMIN COMMANDS
-      // -----------------------------
+      /**
+       * BOT-SPECIFIC ADMIN COMMANDS
+       */
       case 'add-admin': {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
           return message.reply('🚫 Only an admin can add another admin.');
@@ -347,8 +426,7 @@ Jobs (multi-assignee):
           await db.addAdmin(adminUser.id);
           return message.reply(`✅ Added <@${adminUser.id}> as a bot admin.`);
         } catch (err) {
-          console.error(err);
-          return message.reply('🚫 Failed to add admin.');
+          return message.reply(`🚫 Failed to add admin: ${err}`);
         }
       }
 
@@ -364,8 +442,7 @@ Jobs (multi-assignee):
           await db.removeAdmin(adminUser.id);
           return message.reply(`✅ Removed <@${adminUser.id}> from bot admins.`);
         } catch (err) {
-          console.error(err);
-          return message.reply('🚫 Failed to remove admin.');
+          return message.reply(`🚫 Failed to remove admin: ${err}`);
         }
       }
 
@@ -378,8 +455,7 @@ Jobs (multi-assignee):
           const list = admins.map(a => `<@${a}>`).join('\n');
           return message.reply(`👮 **Current Admins:**\n${list}`);
         } catch (err) {
-          console.error(err);
-          return message.reply('🚫 Failed retrieving admin list.');
+          return message.reply(`🚫 Failed retrieving admin list: ${err}`);
         }
       }
 

@@ -10,15 +10,15 @@ const db = new SQLite.Database('./economy.db', (err) => {
 
 // Create tables if they don't exist
 db.serialize(() => {
-  // 1) economy table
+  // economy: now has wallet + bank
   db.run(`
     CREATE TABLE IF NOT EXISTS economy (
       userID TEXT PRIMARY KEY,
-      balance INTEGER DEFAULT 0
+      wallet INTEGER DEFAULT 0,
+      bank INTEGER DEFAULT 0
     )
   `);
 
-  // 2) items table
   db.run(`
     CREATE TABLE IF NOT EXISTS items (
       itemID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,7 +29,6 @@ db.serialize(() => {
     )
   `);
 
-  // 3) inventory table
   db.run(`
     CREATE TABLE IF NOT EXISTS inventory (
       userID TEXT,
@@ -40,14 +39,13 @@ db.serialize(() => {
     )
   `);
 
-  // 4) admins table
   db.run(`
     CREATE TABLE IF NOT EXISTS admins (
       userID TEXT PRIMARY KEY
     )
   `);
 
-  // 5) joblist table (remove assignedTo from here)
+  // joblist: multi-assignee approach
   db.run(`
     CREATE TABLE IF NOT EXISTS joblist (
       jobID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,7 +53,6 @@ db.serialize(() => {
     )
   `);
 
-  // 6) job_assignees table to allow multiple users per job
   db.run(`
     CREATE TABLE IF NOT EXISTS job_assignees (
       jobID INTEGER,
@@ -66,67 +63,178 @@ db.serialize(() => {
   `);
 });
 
+/** Helper to ensure row in economy table. */
+function initUserEconomy(userID) {
+  return new Promise((resolve, reject) => {
+    db.run(`INSERT OR IGNORE INTO economy (userID, wallet, bank) VALUES (?, 0, 0)`, [userID], (err) => {
+      if (err) return reject(err);
+      resolve();
+    });
+  });
+}
+
 module.exports = {
   /**
    * -------------------------
-   * Basic Economy Functions
+   * BANK & WALLET Functions
    * -------------------------
    */
-  getBalance(userID) {
-    return new Promise((resolve, reject) => {
-      db.get(`SELECT balance FROM economy WHERE userID = ?`, [userID], (err, row) => {
-        if (err) return reject('Error retrieving balance.');
-        resolve(row ? row.balance : 0);
+  // Return { wallet, bank }
+  getBalances(userID) {
+    return new Promise(async (resolve, reject) => {
+      try {
+        await initUserEconomy(userID);
+      } catch (e) {
+        return reject('Failed to init user economy.');
+      }
+      db.get(`SELECT wallet, bank FROM economy WHERE userID = ?`, [userID], (err, row) => {
+        if (err) return reject('Error retrieving balances.');
+        if (!row) return resolve({ wallet: 0, bank: 0 });
+        resolve({ wallet: row.wallet, bank: row.bank });
       });
     });
   },
 
-  updateBalance(userID, amount) {
-    return new Promise((resolve, reject) => {
-      db.run(`INSERT OR IGNORE INTO economy (userID, balance) VALUES (?, 0)`, [userID], (err) => {
-        if (err) return reject('Error initializing user balance.');
-        db.run(`UPDATE economy SET balance = balance + ? WHERE userID = ?`, [amount, userID], (err2) => {
-          if (err2) return reject('Error updating balance.');
-          resolve();
-        });
+  // Directly update the wallet by some amount (can be negative)
+  updateWallet(userID, amount) {
+    return new Promise(async (resolve, reject) => {
+      try {
+        await initUserEconomy(userID);
+      } catch (err) {
+        return reject(err);
+      }
+      db.run(`UPDATE economy SET wallet = wallet + ? WHERE userID = ?`, [amount, userID], (err2) => {
+        if (err2) return reject('Error updating wallet.');
+        resolve();
       });
     });
   },
 
-  transferBalanceFromTo(fromUserID, toUserID, amount) {
-    return new Promise((resolve, reject) => {
-      db.serialize(() => {
-        db.get(`SELECT balance FROM economy WHERE userID = ?`, [fromUserID], (err, row) => {
-          if (err) return reject('Error retrieving sender balance.');
-          if (!row || row.balance < amount) {
-            return reject('Sender has insufficient balance.');
-          }
+  // deposit: move from wallet -> bank
+  async deposit(userID, amount) {
+    const { wallet } = await this.getBalances(userID);
+    if (wallet < amount) {
+      throw `You only have ${wallet} in your wallet.`;
+    }
+    await this.updateWallet(userID, -amount);
+    await this.updateBank(userID, amount);
+  },
 
-          db.run(`UPDATE economy SET balance = balance - ? WHERE userID = ?`, [amount, fromUserID], (err2) => {
-            if (err2) return reject('Error deducting balance from sender.');
-            db.run(`INSERT OR IGNORE INTO economy (userID, balance) VALUES (?, 0)`, [toUserID], (err3) => {
-              if (err3) return reject('Error initializing recipient account.');
-              db.run(
-                `UPDATE economy SET balance = balance + ? WHERE userID = ?`,
-                [amount, toUserID],
-                (err4) => {
-                  if (err4) return reject('Error adding balance to recipient.');
-                  resolve();
-                }
-              );
-            });
-          });
-        });
+  // withdraw: move from bank -> wallet
+  async withdraw(userID, amount) {
+    const { bank } = await this.getBalances(userID);
+    if (bank < amount) {
+      throw `You only have ${bank} in your bank.`;
+    }
+    await this.updateBank(userID, -amount);
+    await this.updateWallet(userID, amount);
+  },
+
+  // Directly update bank by some amount (can be negative)
+  updateBank(userID, amount) {
+    return new Promise(async (resolve, reject) => {
+      try {
+        await initUserEconomy(userID);
+      } catch (err) {
+        return reject(err);
+      }
+      db.run(`UPDATE economy SET bank = bank + ? WHERE userID = ?`, [amount, userID], (err2) => {
+        if (err2) return reject('Error updating bank.');
+        resolve();
       });
     });
   },
 
+  /**
+   * ROB Function
+   *  - 50% chance success
+   *  - If success, robber steals random portion (10-40%) of target's wallet
+   *  - If fail, robber pays a 25% penalty of that portion to the target
+   */
+  async robUser(robberID, targetID) {
+    // 1) Make sure both exist
+    await initUserEconomy(robberID);
+    await initUserEconomy(targetID);
+
+    // 2) Check target's wallet
+    const { wallet: targetWallet } = await this.getBalances(targetID);
+    if (targetWallet <= 0) {
+      return { success: false, message: 'They have no money in their wallet.' };
+    }
+
+    // 3) Roll success/fail
+    const successChance = 0.5; // 50%
+    const isSuccess = Math.random() < successChance;
+
+    // 4) Determine how much they'd attempt to steal—say 10% to 40% of target wallet
+    const minPercent = 0.1;
+    const maxPercent = 0.4;
+    const stealPercent = Math.random() * (maxPercent - minPercent) + minPercent;
+    const amount = Math.floor(targetWallet * stealPercent);
+
+    if (isSuccess) {
+      // Succeed: robber gains 'amount' from target's wallet
+      await this.updateWallet(targetID, -amount);
+      await this.updateWallet(robberID, amount);
+      return {
+        success: true,
+        outcome: 'success',
+        amountStolen: amount,
+      };
+    } else {
+      // Fail: robber pays 25% of that 'amount' as penalty to target
+      const penalty = Math.floor(amount * 0.25);
+      // Check robber's wallet
+      const { wallet: robberWallet } = await this.getBalances(robberID);
+      if (penalty > 0 && robberWallet >= penalty) {
+        await this.updateWallet(robberID, -penalty);
+        await this.updateWallet(targetID, penalty);
+      }
+      return {
+        success: true,
+        outcome: 'fail',
+        penalty,
+      };
+    }
+  },
+
+  /**
+   * Transfer from one user's wallet to another user's wallet
+   */
+  async transferFromWallet(fromID, toID, amount) {
+    if (amount <= 0) throw 'Amount must be positive.';
+    // fromID must have enough in wallet
+    const { wallet } = await this.getBalances(fromID);
+    if (wallet < amount) {
+      throw `You only have ${wallet} in your wallet.`;
+    }
+    // subtract from fromID
+    await this.updateWallet(fromID, -amount);
+    // add to toID
+    await this.updateWallet(toID, amount);
+  },
+
+  /**
+   * -------------------------
+   * Leaderboard
+   * -------------------------
+   */
+  // Now we rank by (wallet + bank) DESC
   getLeaderboard() {
     return new Promise((resolve, reject) => {
-      db.all(`SELECT userID, balance FROM economy ORDER BY balance DESC LIMIT 10`, [], (err, rows) => {
-        if (err) return reject('Failed to retrieve leaderboard.');
-        resolve(rows || []);
-      });
+      db.all(
+        `
+        SELECT userID, wallet, bank
+        FROM economy
+        ORDER BY (wallet + bank) DESC
+        LIMIT 10
+        `,
+        [],
+        (err, rows) => {
+          if (err) return reject('Failed to retrieve leaderboard.');
+          resolve(rows || []);
+        }
+      );
     });
   },
 
@@ -144,9 +252,9 @@ module.exports = {
     });
   },
 
-  getShopItemByName(name) {
+  getShopItemByName(itemName) {
     return new Promise((resolve, reject) => {
-      db.get(`SELECT * FROM items WHERE name = ? AND isAvailable = 1`, [name], (err, row) => {
+      db.get(`SELECT * FROM items WHERE name = ? AND isAvailable = 1`, [itemName], (err, row) => {
         if (err) return reject('Error retrieving item by name.');
         resolve(row || null);
       });
@@ -178,10 +286,12 @@ module.exports = {
   addItemToInventory(userID, itemID, quantity = 1) {
     return new Promise((resolve, reject) => {
       db.run(
-        `INSERT INTO inventory (userID, itemID, quantity)
-         VALUES (?, ?, ?)
-         ON CONFLICT(userID, itemID)
-         DO UPDATE SET quantity = quantity + ?`,
+        `
+        INSERT INTO inventory (userID, itemID, quantity)
+        VALUES (?, ?, ?)
+        ON CONFLICT(userID, itemID)
+        DO UPDATE SET quantity = quantity + ?
+        `,
         [userID, itemID, quantity, quantity],
         (err) => {
           if (err) return reject('Error adding item to inventory.');
@@ -194,10 +304,12 @@ module.exports = {
   getInventory(userID) {
     return new Promise((resolve, reject) => {
       db.all(
-        `SELECT items.name, inventory.quantity
-         FROM inventory
-         INNER JOIN items ON inventory.itemID = items.itemID
-         WHERE inventory.userID = ?`,
+        `
+        SELECT items.name, inventory.quantity
+        FROM inventory
+        INNER JOIN items ON inventory.itemID = items.itemID
+        WHERE inventory.userID = ?
+        `,
         [userID],
         (err, rows) => {
           if (err) return reject('Error retrieving inventory.');
@@ -207,29 +319,29 @@ module.exports = {
     });
   },
 
-  transferItem(fromUserID, toUserID, itemName, quantity) {
+  transferItem(fromUserID, toUserID, itemName, qty) {
     return new Promise((resolve, reject) => {
-      if (quantity <= 0) {
-        return reject('Quantity must be positive.');
+      if (qty <= 0) {
+        return reject('Quantity must be a positive number.');
       }
       db.get(`SELECT itemID FROM items WHERE name = ? AND isAvailable = 1`, [itemName], (err, itemRow) => {
         if (err) return reject('Error looking up item.');
-        if (!itemRow) return reject(`Item "${itemName}" not available.`);
+        if (!itemRow) return reject(`Item "${itemName}" does not exist or is not available.`);
 
         const itemID = itemRow.itemID;
         db.get(`SELECT quantity FROM inventory WHERE userID = ? AND itemID = ?`, [fromUserID, itemID], (err2, row2) => {
-          if (err2) return reject('Error checking inventory.');
-          if (!row2 || row2.quantity < quantity) {
+          if (err2) return reject('Error checking sender inventory.');
+          if (!row2 || row2.quantity < qty) {
             return reject(`You don't have enough of "${itemName}".`);
           }
-          // subtract
-          const newQty = row2.quantity - quantity;
-          if (newQty > 0) {
+          // subtract from sender
+          const newSenderQty = row2.quantity - qty;
+          if (newSenderQty > 0) {
             db.run(
               `UPDATE inventory SET quantity = ? WHERE userID = ? AND itemID = ?`,
-              [newQty, fromUserID, itemID],
+              [newSenderQty, fromUserID, itemID],
               (err3) => {
-                if (err3) return reject('Error updating inventory.');
+                if (err3) return reject('Error updating sender inventory.');
                 addToRecipient();
               }
             );
@@ -238,7 +350,7 @@ module.exports = {
               `DELETE FROM inventory WHERE userID = ? AND itemID = ?`,
               [fromUserID, itemID],
               (err3) => {
-                if (err3) return reject('Error removing item from inventory.');
+                if (err3) return reject('Error removing item from sender inventory.');
                 addToRecipient();
               }
             );
@@ -246,11 +358,13 @@ module.exports = {
 
           function addToRecipient() {
             db.run(
-              `INSERT INTO inventory (userID, itemID, quantity)
-               VALUES (?, ?, ?)
-               ON CONFLICT(userID, itemID)
-               DO UPDATE SET quantity = quantity + ?`,
-              [toUserID, itemID, quantity, quantity],
+              `
+              INSERT INTO inventory (userID, itemID, quantity)
+              VALUES (?, ?, ?)
+              ON CONFLICT(userID, itemID)
+              DO UPDATE SET quantity = quantity + ?
+              `,
+              [toUserID, itemID, qty, qty],
               (err4) => {
                 if (err4) return reject('Error adding item to recipient.');
                 resolve();
@@ -272,7 +386,7 @@ module.exports = {
         db.get(`SELECT quantity FROM inventory WHERE userID = ? AND itemID = ?`, [userID, itemID], (err2, row2) => {
           if (err2) return reject('Error retrieving inventory.');
           if (!row2 || row2.quantity < 1) {
-            return reject(`You have no "${itemName}" to redeem.`);
+            return reject(`You don't have any of "${itemName}" to redeem.`);
           }
 
           const newQty = row2.quantity - 1;
@@ -302,12 +416,9 @@ module.exports = {
 
   /**
    * -------------------------
-   * Joblist & Admin
-   * (Multiple Assignees)
+   * Multi-Assignee Jobs
    * -------------------------
    */
-
-  // Insert a new job (unassigned)
   addJob(description) {
     return new Promise((resolve, reject) => {
       db.run(`INSERT INTO joblist (description) VALUES (?)`, [description], (err) => {
@@ -317,37 +428,30 @@ module.exports = {
     });
   },
 
-  /**
-   * getJobList:
-   *  - We want to return an array of jobs, each with an `assignees` array of userIDs
-   */
   getJobList() {
     return new Promise((resolve, reject) => {
-      // First, get all jobs
-      db.all(`SELECT jobID, description FROM joblist`, [], (err, jobs) => {
+      // First get all jobs
+      db.all(`SELECT jobID, description FROM joblist`, [], (err, jobRows) => {
         if (err) return reject('Failed to retrieve job list.');
-        if (!jobs || !jobs.length) return resolve([]);
+        if (!jobRows || !jobRows.length) return resolve([]);
 
-        // Then, for each job, get its assigned userIDs
-        const jobIDs = jobs.map(j => j.jobID);
+        const jobIDs = jobRows.map(j => j.jobID);
         db.all(
           `SELECT jobID, userID FROM job_assignees WHERE jobID IN (${jobIDs.map(() => '?').join(',')})`,
           jobIDs,
-          (err2, assigneesRows) => {
-            if (err2) return reject('Failed to retrieve assignees.');
-            // Convert to dictionary: jobID -> array of userIDs
-            const assigneesMap = {};
-            if (assigneesRows) {
-              assigneesRows.forEach(r => {
-                if (!assigneesMap[r.jobID]) assigneesMap[r.jobID] = [];
-                assigneesMap[r.jobID].push(r.userID);
-              });
-            }
-            // Attach to each job
-            const result = jobs.map(j => ({
+          (err2, assignees) => {
+            if (err2) return reject('Failed to retrieve job assignees.');
+            // Build a map jobID -> [userIDs...]
+            const map = {};
+            (assignees || []).forEach(a => {
+              if (!map[a.jobID]) map[a.jobID] = [];
+              map[a.jobID].push(a.userID);
+            });
+            // Attach to jobs
+            const result = jobRows.map(j => ({
               jobID: j.jobID,
               description: j.description,
-              assignees: assigneesMap[j.jobID] || []
+              assignees: map[j.jobID] || []
             }));
             resolve(result);
           }
@@ -356,16 +460,9 @@ module.exports = {
     });
   },
 
-  /**
-   * assignRandomJob:
-   *  - Assign the given user to a random job that they are NOT already on.
-   *  - If you want to allow multiple jobs for a user, remove the check for
-   *    "already assigned" altogether. This example just picks any random job
-   *    that the user isn't already assigned to.
-   */
   assignRandomJob(userID) {
     return new Promise((resolve, reject) => {
-      // Find a random job that userID is not yet assigned to
+      // Get a random job that user is NOT already assigned to
       db.get(
         `
         SELECT j.jobID, j.description
@@ -377,19 +474,15 @@ module.exports = {
         `,
         [userID],
         (err, row) => {
-          if (err) return reject('Error retrieving a random job.');
-          if (!row) {
-            // No job found that user isn't already assigned to
-            return resolve(null);
-          }
-          // Insert (jobID, userID) into job_assignees
+          if (err) return reject('Error retrieving random job.');
+          if (!row) return resolve(null);
+          // Assign user to that job
           db.run(
             `INSERT INTO job_assignees (jobID, userID) VALUES (?, ?)`,
             [row.jobID, userID],
             (err2) => {
-              if (err2) return reject('Error assigning user to job.');
-              // Return the job row
-              return resolve(row);
+              if (err2) return reject('Error assigning job.');
+              resolve(row);
             }
           );
         }
@@ -397,70 +490,54 @@ module.exports = {
     });
   },
 
-  /**
-   * completeJob:
-   *  - We pay each assigned user a random amount (100–300).
-   *  - Then we remove them from job_assignees for that job (unassign them).
-   *  - The job remains in 'joblist' for reference/future re-use.
-   */
   completeJob(jobID) {
     return new Promise((resolve, reject) => {
-      // Does job exist?
       db.get(`SELECT jobID, description FROM joblist WHERE jobID = ?`, [jobID], (err, jobRow) => {
         if (err) return reject('Error finding job.');
-        if (!jobRow) {
-          // No such job
-          return resolve(null);
-        }
+        if (!jobRow) return resolve(null);
 
-        // Next, get all assignees for this job
+        // get all assignees
         db.all(`SELECT userID FROM job_assignees WHERE jobID = ?`, [jobID], (err2, rows) => {
           if (err2) return reject('Error retrieving assignees.');
-          const assignees = rows.map(r => r.userID);
-          // Let's pay each user. We'll just pick 1 random pay for everyone, for simplicity.
+          const userIDs = rows.map(r => r.userID);
           const payAmount = Math.floor(Math.random() * 201) + 100; // 100..300
-          // If no assignees, just mark success
-          if (!assignees.length) {
-            return resolve({ success: true, payAmount, assignees: [] });
+          if (!userIDs.length) {
+            // No one assigned
+            return db.run(`DELETE FROM job_assignees WHERE jobID = ?`, [jobID], () =>
+              resolve({ success: true, payAmount, assignees: [] })
+            );
           }
-
-          // For each assigned user, pay them
-          const payPromises = assignees.map(uid => {
-            return new Promise((res) => {
-              // Insert or ignore user
-              db.run(`INSERT OR IGNORE INTO economy (userID, balance) VALUES (?, 0)`, [uid], () => {
-                // Then add to their balance
-                db.run(
-                  `UPDATE economy SET balance = balance + ? WHERE userID = ?`,
-                  [payAmount, uid],
-                  () => {
-                    res(); // ignore any errors for simplicity
-                  }
-                );
-              });
+          // Pay each user
+          const payPromises = userIDs.map(uid => {
+            return new Promise(res => {
+              initUserEconomy(uid)
+                .then(() => {
+                  db.run(
+                    `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
+                    [payAmount, uid],
+                    () => res()
+                  );
+                })
+                .catch(() => res());
             });
           });
-
-          Promise.all(payPromises)
-            .then(() => {
-              // Finally, remove all assignees from job_assignees for this job
-              db.run(`DELETE FROM job_assignees WHERE jobID = ?`, [jobID], (err3) => {
-                if (err3) return reject('Error unassigning job assignees.');
-                return resolve({ success: true, payAmount, assignees });
-              });
-            })
-            .catch(() => {
-              // Something went wrong paying
-              return reject('Error paying assigned users.');
+          Promise.all(payPromises).then(() => {
+            // Unassign them all
+            db.run(`DELETE FROM job_assignees WHERE jobID = ?`, [jobID], (err3) => {
+              if (err3) return reject('Error unassigning users.');
+              resolve({ success: true, payAmount, assignees: userIDs });
             });
+          });
         });
       });
     });
   },
 
-  // -----------------------------
-  // Bot-Specific Admin
-  // -----------------------------
+  /**
+   * -------------------------
+   * Bot-Specific Admin
+   * -------------------------
+   */
   addAdmin(userID) {
     return new Promise((resolve, reject) => {
       db.run(`INSERT INTO admins (userID) VALUES (?)`, [userID], (err) => {
