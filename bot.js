@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, PermissionsBitField } = require('discord.js');
-const db = require('./db'); // The updated DB logic below
+const db = require('./db'); // The updated DB logic
 
 const client = new Client({
   intents: [
@@ -30,7 +30,8 @@ client.on('messageCreate', async (message) => {
        */
       case 'pizzahelp': {
         const helpMessage = `
-**Pizza Bot Commands (with Bank & Rob):**
+**Pizza Bot Commands (with Bank & Rob, Per-User Job Completion):**
+
 **Basic Economy:**
   🍕 **$balance** [@user]: Shows wallet & bank for you or another user.
   🍕 **$deposit <amount>**: Move money from wallet to bank.
@@ -45,27 +46,26 @@ client.on('messageCreate', async (message) => {
 
 **Shop & Inventory:**
   🛍️ **$shop**: View items for sale.
-  🛍️ **$buy <item name>**: Purchase an item (spends from wallet).
+  🛍️ **$buy <item name>**: Purchase an item (from your wallet).
   🛍️ **$inventory** (or **$inv**) [@user]: Show someone's items.
-  🛍️ **$add-item <price> <name> - <description>** (Admin)
-  🛍️ **$remove-item <item name>** (Admin)
+  🛍️ **$add-item <price> <name> - <desc>** (Admin)
+  🛍️ **$remove-item <name>** (Admin)
 
 **Leaderboard & Admin System:**
   🍕 **$leaderboard**: Shows top 10 total (wallet+bank).
   🍕 **$add-admin @user**, **$remove-admin @user**, **$list-admins**
 
-**Jobs (multi-assignee example):**
+**Jobs (multi-assignee, per-user completion):**
   🛠️ **$add-job <desc>** (Admin): Create a new job.
-  🛠️ **$joblist**: View all jobs & assignees.
-  🛠️ **$work**: Assign yourself to a random job.
-  🛠️ **$complete-job <jobID>** (Admin): Pay & unassign everyone.
+  🛠️ **$joblist**: View all jobs & current assignees.
+  🛠️ **$work**: Assign yourself to a random job (multi-person).
+  🛠️ **$complete-job** <@user> <jobID> <reward> (Admin): Pays user for job completion
         `;
         return message.reply(helpMessage);
       }
 
       /**
-       * BALANCE
-       * - Now shows wallet & bank
+       * BALANCE (Shows wallet & bank)
        */
       case 'balance': {
         const targetUser = message.mentions.users.first() || message.author;
@@ -79,12 +79,12 @@ client.on('messageCreate', async (message) => {
       }
 
       /**
-       * DEPOSIT (move from wallet -> bank)
+       * DEPOSIT
        */
       case 'deposit': {
         const amount = parseInt(args[0], 10);
         if (isNaN(amount) || amount <= 0) {
-          return message.reply('Usage: `$deposit <amount>` (positive number).');
+          return message.reply('Usage: `$deposit <amount>`');
         }
         try {
           await db.deposit(userID, amount);
@@ -95,16 +95,16 @@ client.on('messageCreate', async (message) => {
       }
 
       /**
-       * WITHDRAW (move from bank -> wallet)
+       * WITHDRAW
        */
       case 'withdraw': {
         const amount = parseInt(args[0], 10);
         if (isNaN(amount) || amount <= 0) {
-          return message.reply('Usage: `$withdraw <amount>` (positive number).');
+          return message.reply('Usage: `$withdraw <amount>`');
         }
         try {
           await db.withdraw(userID, amount);
-          return message.reply(`✅ Withdrew ${amount} 🍕 from your bank to your wallet.`);
+          return message.reply(`✅ Withdrew ${amount} 🍕 to your wallet.`);
         } catch (err) {
           return message.reply(`🚫 Withdraw failed: ${err}`);
         }
@@ -112,10 +112,6 @@ client.on('messageCreate', async (message) => {
 
       /**
        * ROB
-       * - Attempts to rob another user's wallet
-       * - 50% chance to succeed
-       * - If success, steals a random portion (e.g. 10-40%) of target's wallet
-       * - If fail, the robber pays a penalty to target (optional!)
        */
       case 'rob': {
         const targetUser = message.mentions.users.first();
@@ -132,11 +128,11 @@ client.on('messageCreate', async (message) => {
           }
           if (result.outcome === 'success') {
             return message.reply(
-              `💰 You successfully robbed <@${targetUser.id}> and stole **${result.amountStolen}** 🍕!`
+              `💰 You robbed <@${targetUser.id}> and stole **${result.amountStolen}** 🍕!`
             );
           } else {
             return message.reply(
-              `👮 Your robbery failed! You paid **${result.penalty}** 🍕 to <@${targetUser.id}> as a penalty.`
+              `👮 Your robbery failed! You paid **${result.penalty}** 🍕 to <@${targetUser.id}>.`
             );
           }
         } catch (err) {
@@ -151,13 +147,12 @@ client.on('messageCreate', async (message) => {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
           return message.reply('🚫 Only an admin can bake 🍕.');
         }
-        await db.updateWallet(userID, 6969); // +6969 to wallet
+        await db.updateWallet(userID, 6969);
         return message.reply('🍕 You baked 6969 pizzas into your wallet!');
       }
 
       /**
-       * GIVE MONEY
-       * - Now we always move from the giver's wallet to the recipient's wallet
+       * GIVE-MONEY (Wallet -> Wallet)
        */
       case 'give-money': {
         const targetUser = message.mentions.users.first();
@@ -166,11 +161,11 @@ client.on('messageCreate', async (message) => {
         }
         const amount = parseInt(args[1], 10);
         if (isNaN(amount) || amount <= 0) {
-          return message.reply('🚫 Please specify a valid amount. Usage: `$give-money @user 100`');
+          return message.reply('🚫 Please specify a valid amount.');
         }
         try {
           await db.transferFromWallet(userID, targetUser.id, amount);
-          return message.reply(`✅ You gave ${amount} 🍕 (wallet) to <@${targetUser.id}>!`);
+          return message.reply(`✅ You gave ${amount} 🍕 to <@${targetUser.id}>!`);
         } catch (err) {
           return message.reply(`🚫 Transfer failed: ${err}`);
         }
@@ -207,7 +202,7 @@ client.on('messageCreate', async (message) => {
         }
         try {
           await db.redeemItem(userID, itemName);
-          return message.reply(`🎉 You redeemed **${itemName}**!`);
+          return message.reply(`🎉 You have redeemed **${itemName}**!`);
         } catch (err) {
           return message.reply(`🚫 Redemption failed: ${err}`);
         }
@@ -215,26 +210,25 @@ client.on('messageCreate', async (message) => {
 
       /**
        * LEADERBOARD
-       * - Now sorts by (wallet+bank) desc
        */
       case 'leaderboard': {
         try {
-          const leaderboard = await db.getLeaderboard();
-          if (!leaderboard.length) {
-            return message.reply('🚫 No data available for the leaderboard.');
+          const lb = await db.getLeaderboard();
+          if (!lb.length) {
+            return message.reply('🚫 No data for leaderboard.');
           }
-          const lines = leaderboard.map((row, i) => {
+          const lines = lb.map((row, i) => {
             const total = row.wallet + row.bank;
             return `\`${i + 1}\`. <@${row.userID}> - Wallet: ${row.wallet}, Bank: ${row.bank} (Total: ${total})`;
           });
-          return message.reply(`**🍕 Leaderboard (Top 10 by total) 🍕**\n${lines.join('\n')}`);
+          return message.reply(`**🍕 Leaderboard (Top 10)**\n${lines.join('\n')}`);
         } catch (err) {
-          return message.reply(`🚫 Failed to retrieve leaderboard: ${err}`);
+          return message.reply(`🚫 Leaderboard failed: ${err}`);
         }
       }
 
       /**
-       * SHOP & INVENTORY
+       * SHOP
        */
       case 'shop': {
         try {
@@ -242,38 +236,35 @@ client.on('messageCreate', async (message) => {
           if (!items.length) {
             return message.reply('🚫 The shop is empty.');
           }
-          const lines = items.map(it => 
-            `• **${it.name}** — Cost: ${it.price}\n   *${it.description}*`
+          const lines = items.map(
+            it => `• **${it.name}** — ${it.price}\n   *${it.description}*`
           );
           return message.reply(`🛍️ **Shop Items:**\n${lines.join('\n')}`);
         } catch (err) {
-          return message.reply(`🚫 Failed retrieving shop: ${err}`);
+          return message.reply(`🚫 Error retrieving shop: ${err}`);
         }
       }
 
       case 'buy': {
         const itemName = args.join(' ');
         if (!itemName) {
-          return message.reply('🚫 Usage: `$buy <item name>`');
+          return message.reply('Usage: `$buy <item name>`');
         }
         try {
-          // Get item
           const shopItem = await db.getShopItemByName(itemName);
           if (!shopItem) {
-            return message.reply(`🚫 "${itemName}" not found in shop.`);
+            return message.reply(`🚫 "${itemName}" not in the shop.`);
           }
-          // Check wallet
           const { wallet } = await db.getBalances(userID);
           if (wallet < shopItem.price) {
             return message.reply(
-              `🚫 You only have ${wallet} in your wallet, but "${shopItem.name}" costs ${shopItem.price}.`
+              `🚫 You only have ${wallet}, but **${shopItem.name}** costs ${shopItem.price}.`
             );
           }
-          // Subtract from wallet
+          // Subtract from wallet, add item
           await db.updateWallet(userID, -shopItem.price);
-          // Add item
           await db.addItemToInventory(userID, shopItem.itemID, 1);
-          return message.reply(`✅ You purchased **${shopItem.name}** for ${shopItem.price} 🍕!`);
+          return message.reply(`✅ You purchased **${shopItem.name}**!`);
         } catch (err) {
           return message.reply(`🚫 Purchase failed: ${err}`);
         }
@@ -290,54 +281,55 @@ client.on('messageCreate', async (message) => {
           const txt = inv.map(i => `• **${i.name}** x${i.quantity}`).join('\n');
           return message.reply(`🎒 **${who.username}'s Inventory:**\n${txt}`);
         } catch (err) {
-          return message.reply(`🚫 Inventory retrieval failed: ${err}`);
+          return message.reply(`🚫 Inventory error: ${err}`);
         }
       }
 
       case 'add-item': {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-          return message.reply('🚫 Only admins can add shop items.');
+          return message.reply('🚫 Only admins can add items.');
         }
         const [priceStr, ...rest] = args;
         if (!priceStr || !rest.length) {
-          return message.reply('🚫 Usage: `$add-item <price> <name> - <description>`');
+          return message.reply('Usage: `$add-item <price> <name> - <description>`');
         }
         const price = parseInt(priceStr, 10);
         if (isNaN(price)) {
-          return message.reply('🚫 Price must be a valid number.');
+          return message.reply('Price must be a number.');
         }
         const split = rest.join(' ').split(' - ');
         if (split.length < 2) {
-          return message.reply('🚫 Use `$add-item <price> <name> - <description>`');
+          return message.reply('Format: `$add-item <price> <name> - <description>`');
         }
         const itemName = split[0];
         const itemDesc = split[1];
         try {
           await db.addShopItem(price, itemName, itemDesc);
-          return message.reply(`✅ Added **${itemName}** to the shop for ${price} 🍕.`);
+          return message.reply(`✅ Added **${itemName}** for ${price}.`);
         } catch (err) {
-          return message.reply(`🚫 Failed to add item: ${err}`);
+          return message.reply(`🚫 Add item failed: ${err}`);
         }
       }
 
       case 'remove-item': {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-          return message.reply('🚫 Only admins can remove shop items.');
+          return message.reply('🚫 Only admins can remove items.');
         }
         const itemToRemove = args.join(' ');
         if (!itemToRemove) {
-          return message.reply('🚫 Usage: `$remove-item <item name>`');
+          return message.reply('Usage: `$remove-item <item name>`');
         }
         try {
           await db.removeShopItem(itemToRemove);
-          return message.reply(`✅ Removed **${itemToRemove}** from the shop.`);
+          return message.reply(`✅ Removed **${itemToRemove}** from shop.`);
         } catch (err) {
-          return message.reply(`🚫 Failed to remove item: ${err}`);
+          return message.reply(`🚫 Remove item failed: ${err}`);
         }
       }
 
       /**
-       * JOB COMMANDS (Multi-Assignee Example)
+       * JOB COMMANDS
+       * (Multi-assignee, Per-user completion)
        */
       case 'add-job': {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
@@ -345,13 +337,13 @@ client.on('messageCreate', async (message) => {
         }
         const desc = args.join(' ');
         if (!desc) {
-          return message.reply('🚫 Usage: `$add-job <description>`');
+          return message.reply('Usage: `$add-job <description>`');
         }
         try {
           await db.addJob(desc);
           return message.reply(`✅ Added job: "${desc}"`);
         } catch (err) {
-          return message.reply(`🚫 Failed to add job: ${err}`);
+          return message.reply(`🚫 Add job failed: ${err}`);
         }
       }
 
@@ -361,16 +353,14 @@ client.on('messageCreate', async (message) => {
           if (!jobs.length) {
             return message.reply('🚫 No jobs available.');
           }
-          const lines = jobs.map(job => {
-            if (!job.assignees.length) {
-              return `• [ID: ${job.jobID}] ${job.description} — Assigned: None`;
-            }
-            const assignedStr = job.assignees.map(uid => `<@${uid}>`).join(', ');
-            return `• [ID: ${job.jobID}] ${job.description} — Assigned: ${assignedStr}`;
+          const lines = jobs.map(j => {
+            if (!j.assignees.length) return `• [ID: ${j.jobID}] ${j.description} — None assigned`;
+            const assignedStr = j.assignees.map(u => `<@${u}>`).join(', ');
+            return `• [ID: ${j.jobID}] ${j.description} — ${assignedStr}`;
           });
           return message.reply(`🛠️ **Jobs List:**\n${lines.join('\n')}`);
         } catch (err) {
-          return message.reply(`🚫 Failed retrieving jobs: ${err}`);
+          return message.reply(`🚫 Joblist error: ${err}`);
         }
       }
 
@@ -378,36 +368,43 @@ client.on('messageCreate', async (message) => {
         try {
           const job = await db.assignRandomJob(userID);
           if (!job) {
-            return message.reply('🚫 No unassigned jobs available for you.');
+            return message.reply('🚫 No job available or you are on all of them.');
           }
-          return message.reply(`🛠️ You are now assigned to: "${job.description}" (Job ID: ${job.jobID})`);
+          return message.reply(`🛠️ Assigned to job ID ${job.jobID}: "${job.description}"`);
         } catch (err) {
-          return message.reply(`🚫 Failed assigning job: ${err}`);
+          return message.reply(`🚫 Work failed: ${err}`);
         }
       }
 
+      /**
+       * COMPLETE-JOB (Per-User)
+       */
       case 'complete-job': {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-          return message.reply('🚫 Only admins can complete a job.');
+          return message.reply('🚫 Only admins can complete jobs.');
         }
-        const jobID = parseInt(args[0], 10);
-        if (isNaN(jobID)) {
-          return message.reply('🚫 Usage: `$complete-job <jobID>`');
+        const targetUser = message.mentions.users.first();
+        if (!targetUser || args.length < 3) {
+          return message.reply('Usage: `$complete-job <@user> <jobID> <reward>`');
+        }
+        const jobID = parseInt(args[1], 10);
+        const reward = parseInt(args[2], 10);
+        if (isNaN(jobID) || isNaN(reward)) {
+          return message.reply('Job ID and reward must be numbers.');
         }
         try {
-          const result = await db.completeJob(jobID);
+          const result = await db.completeJob(jobID, targetUser.id, reward);
           if (!result) {
             return message.reply(`🚫 Job ${jobID} does not exist.`);
           }
-          if (!result.assignees.length) {
-            return message.reply(`✅ Job ${jobID} completed. Nobody was assigned.`);
+          if (result.notAssigned) {
+            return message.reply(`🚫 <@${targetUser.id}> is not assigned to job ${jobID}.`);
           }
-          const mentions = result.assignees.map(uid => `<@${uid}>`).join(', ');
           return message.reply(
-            `✅ Job ${jobID} completed! Each assigned user got **${result.payAmount}** 🍕: ${mentions}`
+            `✅ Completed job ${jobID} for <@${targetUser.id}> with reward **${reward}** 🍕!`
           );
         } catch (err) {
-          return message.reply(`🚫 Failed completing job: ${err}`);
+          return message.reply(`🚫 Complete job failed: ${err}`);
         }
       }
 
@@ -450,17 +447,18 @@ client.on('messageCreate', async (message) => {
         try {
           const admins = await db.getAdmins();
           if (!admins.length) {
-            return message.reply('🚫 No admins have been added yet.');
+            return message.reply('🚫 No admins added yet.');
           }
-          const list = admins.map(a => `<@${a}>`).join('\n');
-          return message.reply(`👮 **Current Admins:**\n${list}`);
+          const list = admins.map(a => `<@${a}>`).join(', ');
+          return message.reply(`👮 **Bot Admins:** ${list}`);
         } catch (err) {
-          return message.reply(`🚫 Failed retrieving admin list: ${err}`);
+          return message.reply(`🚫 Failed to list admins: ${err}`);
         }
       }
 
       default:
-        return message.reply('🚫 Unknown command!');
+        // Unknown command
+        break;
     }
   } catch (error) {
     console.error('Error handling command:', error);

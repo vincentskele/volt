@@ -8,9 +8,8 @@ const db = new SQLite.Database('./economy.db', (err) => {
   }
 });
 
-// Create tables if they don't exist
 db.serialize(() => {
-  // economy: now has wallet + bank
+  // economy table with wallet+bank
   db.run(`
     CREATE TABLE IF NOT EXISTS economy (
       userID TEXT PRIMARY KEY,
@@ -45,57 +44,53 @@ db.serialize(() => {
     )
   `);
 
-  // joblist: multi-assignee approach
+  // Jobs
   db.run(`
     CREATE TABLE IF NOT EXISTS joblist (
       jobID INTEGER PRIMARY KEY AUTOINCREMENT,
       description TEXT
     )
   `);
-
   db.run(`
     CREATE TABLE IF NOT EXISTS job_assignees (
       jobID INTEGER,
       userID TEXT,
-      PRIMARY KEY(jobID, userID),
-      FOREIGN KEY(jobID) REFERENCES joblist(jobID)
+      PRIMARY KEY(jobID, userID)
     )
   `);
 });
 
-/** Helper to ensure row in economy table. */
+// Ensure user row
 function initUserEconomy(userID) {
   return new Promise((resolve, reject) => {
-    db.run(`INSERT OR IGNORE INTO economy (userID, wallet, bank) VALUES (?, 0, 0)`, [userID], (err) => {
-      if (err) return reject(err);
-      resolve();
-    });
+    db.run(
+      `INSERT OR IGNORE INTO economy (userID, wallet, bank) VALUES (?, 0, 0)`,
+      [userID],
+      (err) => {
+        if (err) return reject(err);
+        resolve();
+      }
+    );
   });
 }
 
 module.exports = {
   /**
    * -------------------------
-   * BANK & WALLET Functions
+   * Bank & Wallet
    * -------------------------
    */
-  // Return { wallet, bank }
-  getBalances(userID) {
-    return new Promise(async (resolve, reject) => {
-      try {
-        await initUserEconomy(userID);
-      } catch (e) {
-        return reject('Failed to init user economy.');
-      }
+  async getBalances(userID) {
+    await initUserEconomy(userID);
+    return new Promise((resolve, reject) => {
       db.get(`SELECT wallet, bank FROM economy WHERE userID = ?`, [userID], (err, row) => {
-        if (err) return reject('Error retrieving balances.');
+        if (err) return reject('Failed to get balances.');
         if (!row) return resolve({ wallet: 0, bank: 0 });
         resolve({ wallet: row.wallet, bank: row.bank });
       });
     });
   },
 
-  // Directly update the wallet by some amount (can be negative)
   updateWallet(userID, amount) {
     return new Promise(async (resolve, reject) => {
       try {
@@ -110,27 +105,6 @@ module.exports = {
     });
   },
 
-  // deposit: move from wallet -> bank
-  async deposit(userID, amount) {
-    const { wallet } = await this.getBalances(userID);
-    if (wallet < amount) {
-      throw `You only have ${wallet} in your wallet.`;
-    }
-    await this.updateWallet(userID, -amount);
-    await this.updateBank(userID, amount);
-  },
-
-  // withdraw: move from bank -> wallet
-  async withdraw(userID, amount) {
-    const { bank } = await this.getBalances(userID);
-    if (bank < amount) {
-      throw `You only have ${bank} in your bank.`;
-    }
-    await this.updateBank(userID, -amount);
-    await this.updateWallet(userID, amount);
-  },
-
-  // Directly update bank by some amount (can be negative)
   updateBank(userID, amount) {
     return new Promise(async (resolve, reject) => {
       try {
@@ -145,93 +119,86 @@ module.exports = {
     });
   },
 
+  async deposit(userID, amount) {
+    const { wallet } = await this.getBalances(userID);
+    if (wallet < amount) {
+      throw `Not enough in wallet (you have ${wallet}).`;
+    }
+    await this.updateWallet(userID, -amount);
+    await this.updateBank(userID, amount);
+  },
+
+  async withdraw(userID, amount) {
+    const { bank } = await this.getBalances(userID);
+    if (bank < amount) {
+      throw `Not enough in bank (you have ${bank}).`;
+    }
+    await this.updateBank(userID, -amount);
+    await this.updateWallet(userID, amount);
+  },
+
   /**
-   * ROB Function
-   *  - 50% chance success
-   *  - If success, robber steals random portion (10-40%) of target's wallet
-   *  - If fail, robber pays a 25% penalty of that portion to the target
+   * ROB
+   *  - 50% success
+   *  - If success: steals 10-40% of target's wallet
+   *  - If fail: 25% of that portion is paid to target from robber
    */
   async robUser(robberID, targetID) {
-    // 1) Make sure both exist
     await initUserEconomy(robberID);
     await initUserEconomy(targetID);
-
-    // 2) Check target's wallet
     const { wallet: targetWallet } = await this.getBalances(targetID);
     if (targetWallet <= 0) {
-      return { success: false, message: 'They have no money in their wallet.' };
+      return { success: false, message: 'Target has 0 in wallet.' };
     }
 
-    // 3) Roll success/fail
-    const successChance = 0.5; // 50%
-    const isSuccess = Math.random() < successChance;
+    const successChance = 0.5;
+    const success = Math.random() < successChance;
 
-    // 4) Determine how much they'd attempt to steal—say 10% to 40% of target wallet
-    const minPercent = 0.1;
-    const maxPercent = 0.4;
-    const stealPercent = Math.random() * (maxPercent - minPercent) + minPercent;
-    const amount = Math.floor(targetWallet * stealPercent);
+    // 10-40%
+    const percent = 0.1 + Math.random() * 0.3;
+    const amount = Math.floor(targetWallet * percent);
 
-    if (isSuccess) {
-      // Succeed: robber gains 'amount' from target's wallet
+    if (success) {
+      // robber wins
       await this.updateWallet(targetID, -amount);
       await this.updateWallet(robberID, amount);
-      return {
-        success: true,
-        outcome: 'success',
-        amountStolen: amount,
-      };
+      return { success: true, outcome: 'success', amountStolen: amount };
     } else {
-      // Fail: robber pays 25% of that 'amount' as penalty to target
+      // robber fails -> penalty
       const penalty = Math.floor(amount * 0.25);
-      // Check robber's wallet
       const { wallet: robberWallet } = await this.getBalances(robberID);
       if (penalty > 0 && robberWallet >= penalty) {
         await this.updateWallet(robberID, -penalty);
         await this.updateWallet(targetID, penalty);
       }
-      return {
-        success: true,
-        outcome: 'fail',
-        penalty,
-      };
+      return { success: true, outcome: 'fail', penalty };
     }
   },
 
-  /**
-   * Transfer from one user's wallet to another user's wallet
-   */
   async transferFromWallet(fromID, toID, amount) {
     if (amount <= 0) throw 'Amount must be positive.';
-    // fromID must have enough in wallet
     const { wallet } = await this.getBalances(fromID);
     if (wallet < amount) {
       throw `You only have ${wallet} in your wallet.`;
     }
-    // subtract from fromID
+    // subtract
     await this.updateWallet(fromID, -amount);
-    // add to toID
+    // add
     await this.updateWallet(toID, amount);
   },
 
   /**
    * -------------------------
-   * Leaderboard
+   * LEADERBOARD
    * -------------------------
    */
-  // Now we rank by (wallet + bank) DESC
   getLeaderboard() {
     return new Promise((resolve, reject) => {
       db.all(
-        `
-        SELECT userID, wallet, bank
-        FROM economy
-        ORDER BY (wallet + bank) DESC
-        LIMIT 10
-        `,
+        `SELECT userID, wallet, bank FROM economy ORDER BY (wallet + bank) DESC LIMIT 10`,
         [],
         (err, rows) => {
-          if (err) return reject('Failed to retrieve leaderboard.');
+          if (err) return reject(err);
           resolve(rows || []);
         }
       );
@@ -240,7 +207,7 @@ module.exports = {
 
   /**
    * -------------------------
-   * Shop & Inventory
+   * SHOP & INVENTORY
    * -------------------------
    */
   getShopItems() {
@@ -252,9 +219,9 @@ module.exports = {
     });
   },
 
-  getShopItemByName(itemName) {
+  getShopItemByName(name) {
     return new Promise((resolve, reject) => {
-      db.get(`SELECT * FROM items WHERE name = ? AND isAvailable = 1`, [itemName], (err, row) => {
+      db.get(`SELECT * FROM items WHERE name = ? AND isAvailable = 1`, [name], (err, row) => {
         if (err) return reject('Error retrieving item by name.');
         resolve(row || null);
       });
@@ -267,7 +234,7 @@ module.exports = {
         `INSERT INTO items (price, name, description) VALUES (?, ?, ?)`,
         [price, name, description],
         (err) => {
-          if (err) return reject('Failed to add item to the shop.');
+          if (err) return reject(err);
           resolve();
         }
       );
@@ -277,7 +244,7 @@ module.exports = {
   removeShopItem(name) {
     return new Promise((resolve, reject) => {
       db.run(`DELETE FROM items WHERE name = ?`, [name], (err) => {
-        if (err) return reject('Failed to remove item.');
+        if (err) return reject(err);
         resolve();
       });
     });
@@ -294,7 +261,7 @@ module.exports = {
         `,
         [userID, itemID, quantity, quantity],
         (err) => {
-          if (err) return reject('Error adding item to inventory.');
+          if (err) return reject('Error adding item.');
           resolve();
         }
       );
@@ -322,56 +289,61 @@ module.exports = {
   transferItem(fromUserID, toUserID, itemName, qty) {
     return new Promise((resolve, reject) => {
       if (qty <= 0) {
-        return reject('Quantity must be a positive number.');
+        return reject('Quantity must be positive.');
       }
       db.get(`SELECT itemID FROM items WHERE name = ? AND isAvailable = 1`, [itemName], (err, itemRow) => {
         if (err) return reject('Error looking up item.');
-        if (!itemRow) return reject(`Item "${itemName}" does not exist or is not available.`);
+        if (!itemRow) return reject(`Item "${itemName}" not available.`);
 
         const itemID = itemRow.itemID;
-        db.get(`SELECT quantity FROM inventory WHERE userID = ? AND itemID = ?`, [fromUserID, itemID], (err2, row2) => {
-          if (err2) return reject('Error checking sender inventory.');
-          if (!row2 || row2.quantity < qty) {
-            return reject(`You don't have enough of "${itemName}".`);
-          }
-          // subtract from sender
-          const newSenderQty = row2.quantity - qty;
-          if (newSenderQty > 0) {
-            db.run(
-              `UPDATE inventory SET quantity = ? WHERE userID = ? AND itemID = ?`,
-              [newSenderQty, fromUserID, itemID],
-              (err3) => {
-                if (err3) return reject('Error updating sender inventory.');
-                addToRecipient();
-              }
-            );
-          } else {
-            db.run(
-              `DELETE FROM inventory WHERE userID = ? AND itemID = ?`,
-              [fromUserID, itemID],
-              (err3) => {
-                if (err3) return reject('Error removing item from sender inventory.');
-                addToRecipient();
-              }
-            );
-          }
+        db.get(
+          `SELECT quantity FROM inventory WHERE userID = ? AND itemID = ?`,
+          [fromUserID, itemID],
+          (err2, row2) => {
+            if (err2) return reject('Error checking sender inventory.');
+            if (!row2 || row2.quantity < qty) {
+              return reject(`You don't have enough of "${itemName}".`);
+            }
 
-          function addToRecipient() {
-            db.run(
-              `
-              INSERT INTO inventory (userID, itemID, quantity)
-              VALUES (?, ?, ?)
-              ON CONFLICT(userID, itemID)
-              DO UPDATE SET quantity = quantity + ?
-              `,
-              [toUserID, itemID, qty, qty],
-              (err4) => {
-                if (err4) return reject('Error adding item to recipient.');
-                resolve();
-              }
-            );
+            // subtract
+            const newQty = row2.quantity - qty;
+            if (newQty > 0) {
+              db.run(
+                `UPDATE inventory SET quantity = ? WHERE userID = ? AND itemID = ?`,
+                [newQty, fromUserID, itemID],
+                (err3) => {
+                  if (err3) return reject('Error updating inventory.');
+                  addToRecipient();
+                }
+              );
+            } else {
+              db.run(
+                `DELETE FROM inventory WHERE userID = ? AND itemID = ?`,
+                [fromUserID, itemID],
+                (err3) => {
+                  if (err3) return reject('Error removing item.');
+                  addToRecipient();
+                }
+              );
+            }
+
+            function addToRecipient() {
+              db.run(
+                `
+                INSERT INTO inventory (userID, itemID, quantity)
+                VALUES (?, ?, ?)
+                ON CONFLICT(userID, itemID)
+                DO UPDATE SET quantity = quantity + ?
+                `,
+                [toUserID, itemID, qty, qty],
+                (err4) => {
+                  if (err4) return reject('Error adding to recipient inventory.');
+                  resolve();
+                }
+              );
+            }
           }
-        });
+        );
       });
     });
   },
@@ -386,7 +358,7 @@ module.exports = {
         db.get(`SELECT quantity FROM inventory WHERE userID = ? AND itemID = ?`, [userID, itemID], (err2, row2) => {
           if (err2) return reject('Error retrieving inventory.');
           if (!row2 || row2.quantity < 1) {
-            return reject(`You don't have any of "${itemName}" to redeem.`);
+            return reject(`No "${itemName}" to redeem.`);
           }
 
           const newQty = row2.quantity - 1;
@@ -395,7 +367,7 @@ module.exports = {
               `UPDATE inventory SET quantity = ? WHERE userID = ? AND itemID = ?`,
               [newQty, userID, itemID],
               (err3) => {
-                if (err3) return reject('Failed to redeem item.');
+                if (err3) return reject('Redeem failed.');
                 resolve(true);
               }
             );
@@ -404,7 +376,7 @@ module.exports = {
               `DELETE FROM inventory WHERE userID = ? AND itemID = ?`,
               [userID, itemID],
               (err3) => {
-                if (err3) return reject('Failed to redeem item.');
+                if (err3) return reject('Redeem failed.');
                 resolve(true);
               }
             );
@@ -417,6 +389,7 @@ module.exports = {
   /**
    * -------------------------
    * Multi-Assignee Jobs
+   * (Per-User completion)
    * -------------------------
    */
   addJob(description) {
@@ -430,25 +403,22 @@ module.exports = {
 
   getJobList() {
     return new Promise((resolve, reject) => {
-      // First get all jobs
-      db.all(`SELECT jobID, description FROM joblist`, [], (err, jobRows) => {
-        if (err) return reject('Failed to retrieve job list.');
-        if (!jobRows || !jobRows.length) return resolve([]);
+      db.all(`SELECT jobID, description FROM joblist`, [], (err, jobs) => {
+        if (err) return reject('Error retrieving jobs.');
+        if (!jobs || !jobs.length) return resolve([]);
 
-        const jobIDs = jobRows.map(j => j.jobID);
+        const jobIDs = jobs.map(j => j.jobID);
         db.all(
           `SELECT jobID, userID FROM job_assignees WHERE jobID IN (${jobIDs.map(() => '?').join(',')})`,
           jobIDs,
-          (err2, assignees) => {
-            if (err2) return reject('Failed to retrieve job assignees.');
-            // Build a map jobID -> [userIDs...]
+          (err2, assignedRows) => {
+            if (err2) return reject('Error retrieving assignees.');
             const map = {};
-            (assignees || []).forEach(a => {
-              if (!map[a.jobID]) map[a.jobID] = [];
-              map[a.jobID].push(a.userID);
+            (assignedRows || []).forEach(row => {
+              if (!map[row.jobID]) map[row.jobID] = [];
+              map[row.jobID].push(row.userID);
             });
-            // Attach to jobs
-            const result = jobRows.map(j => ({
+            const result = jobs.map(j => ({
               jobID: j.jobID,
               description: j.description,
               assignees: map[j.jobID] || []
@@ -462,23 +432,23 @@ module.exports = {
 
   assignRandomJob(userID) {
     return new Promise((resolve, reject) => {
-      // Get a random job that user is NOT already assigned to
+      // pick a random job user not assigned to
       db.get(
         `
-        SELECT j.jobID, j.description
-        FROM joblist j
-        WHERE j.jobID NOT IN (
+        SELECT jobID, description
+        FROM joblist
+        WHERE jobID NOT IN (
           SELECT jobID FROM job_assignees WHERE userID = ?
         )
-        ORDER BY RANDOM() LIMIT 1
+        ORDER BY RANDOM()
+        LIMIT 1
         `,
         [userID],
         (err, row) => {
-          if (err) return reject('Error retrieving random job.');
+          if (err) return reject('Error finding a job.');
           if (!row) return resolve(null);
-          // Assign user to that job
-          db.run(
-            `INSERT INTO job_assignees (jobID, userID) VALUES (?, ?)`,
+          // add to job_assignees
+          db.run(`INSERT INTO job_assignees (jobID, userID) VALUES (?, ?)`,
             [row.jobID, userID],
             (err2) => {
               if (err2) return reject('Error assigning job.');
@@ -490,45 +460,42 @@ module.exports = {
     });
   },
 
-  completeJob(jobID) {
+  completeJob(jobID, userID, reward) {
     return new Promise((resolve, reject) => {
-      db.get(`SELECT jobID, description FROM joblist WHERE jobID = ?`, [jobID], (err, jobRow) => {
-        if (err) return reject('Error finding job.');
-        if (!jobRow) return resolve(null);
+      // check if job exists
+      db.get(`SELECT jobID FROM joblist WHERE jobID = ?`, [jobID], (err, job) => {
+        if (err) return reject('Error looking up job.');
+        if (!job) return resolve(null); // no job
 
-        // get all assignees
-        db.all(`SELECT userID FROM job_assignees WHERE jobID = ?`, [jobID], (err2, rows) => {
-          if (err2) return reject('Error retrieving assignees.');
-          const userIDs = rows.map(r => r.userID);
-          const payAmount = Math.floor(Math.random() * 201) + 100; // 100..300
-          if (!userIDs.length) {
-            // No one assigned
-            return db.run(`DELETE FROM job_assignees WHERE jobID = ?`, [jobID], () =>
-              resolve({ success: true, payAmount, assignees: [] })
+        // check if user is assigned
+        db.get(
+          `SELECT * FROM job_assignees WHERE jobID = ? AND userID = ?`,
+          [jobID, userID],
+          async (err2, row2) => {
+            if (err2) return reject('Error checking assignment.');
+            if (!row2) {
+              // user not assigned
+              return resolve({ notAssigned: true });
+            }
+
+            // pay user the specified reward
+            try {
+              await this.updateWallet(userID, reward);
+            } catch (err3) {
+              return reject('Error paying user.');
+            }
+
+            // remove from job_assignees
+            db.run(
+              `DELETE FROM job_assignees WHERE jobID = ? AND userID = ?`,
+              [jobID, userID],
+              (err4) => {
+                if (err4) return reject('Error removing assignment.');
+                resolve({ success: true, payAmount: reward });
+              }
             );
           }
-          // Pay each user
-          const payPromises = userIDs.map(uid => {
-            return new Promise(res => {
-              initUserEconomy(uid)
-                .then(() => {
-                  db.run(
-                    `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
-                    [payAmount, uid],
-                    () => res()
-                  );
-                })
-                .catch(() => res());
-            });
-          });
-          Promise.all(payPromises).then(() => {
-            // Unassign them all
-            db.run(`DELETE FROM job_assignees WHERE jobID = ?`, [jobID], (err3) => {
-              if (err3) return reject('Error unassigning users.');
-              resolve({ success: true, payAmount, assignees: userIDs });
-            });
-          });
-        });
+        );
       });
     });
   },
