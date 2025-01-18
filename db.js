@@ -1,9 +1,5 @@
 const SQLite = require('sqlite3').verbose();
 
-/**
- * Initialize the database connection.
- * Make sure your code references exactly './economy.db' if that's your DB file.
- */
 const db = new SQLite.Database('./economy.db', (err) => {
   if (err) {
     console.error('Error connecting to database:', err);
@@ -12,10 +8,7 @@ const db = new SQLite.Database('./economy.db', (err) => {
   }
 });
 
-/**
- * Create tables if they don't exist. 
- * If your existing DB has incorrect schemas, consider dropping those tables.
- */
+// Create tables if they don't exist
 db.serialize(() => {
   // 1) economy table for user balances
   db.run(`
@@ -54,7 +47,7 @@ db.serialize(() => {
     )
   `);
 
-  // 5) joblist table with 'assignedTo' column
+  // 5) joblist table (with 'assignedTo')
   db.run(`
     CREATE TABLE IF NOT EXISTS joblist (
       jobID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,10 +57,9 @@ db.serialize(() => {
   `);
 });
 
-// Export all your database functions.
 module.exports = {
   /**
-   * 1) Get a user's current balance. Returns 0 if user not found.
+   * Get a user's current balance. Returns 0 if user not found.
    */
   getBalance: (userID) => {
     return new Promise((resolve, reject) => {
@@ -82,11 +74,10 @@ module.exports = {
   },
 
   /**
-   * 2) Add or subtract from a user's balance. (amount can be positive or negative.)
+   * Add or subtract from a user's balance. (amount can be positive or negative.)
    */
   updateBalance: (userID, amount) => {
     return new Promise((resolve, reject) => {
-      // Ensure user row exists, then update
       db.run(
         `INSERT OR IGNORE INTO economy (userID, balance) VALUES (?, 0)`,
         [userID],
@@ -112,7 +103,7 @@ module.exports = {
   },
 
   /**
-   * 3) Transfer balance from one user to another.
+   * Transfer balance from one user to another.
    */
   transferBalanceFromTo: (fromUserID, toUserID, amount) => {
     return new Promise((resolve, reject) => {
@@ -157,7 +148,7 @@ module.exports = {
   },
 
   /**
-   * 4) Return top 10 users sorted by balance (descending).
+   * Return top 10 users sorted by balance (descending).
    */
   getLeaderboard: () => {
     return new Promise((resolve, reject) => {
@@ -176,7 +167,7 @@ module.exports = {
   },
 
   /**
-   * 5) Retrieve all available items from the shop.
+   * Retrieve all available items from the shop.
    */
   getShopItems: () => {
     return new Promise((resolve, reject) => {
@@ -191,7 +182,7 @@ module.exports = {
   },
 
   /**
-   * 6) Look up a single shop item by name.
+   * Look up a single shop item by name.
    */
   getShopItemByName: (itemName) => {
     return new Promise((resolve, reject) => {
@@ -210,7 +201,7 @@ module.exports = {
   },
 
   /**
-   * 7) Add a new item to the shop.
+   * Add a new item to the shop.
    */
   addShopItem: (price, name, description) => {
     return new Promise((resolve, reject) => {
@@ -229,7 +220,7 @@ module.exports = {
   },
 
   /**
-   * 8) Remove an existing item from the shop by name.
+   * Remove an existing item from the shop by name.
    */
   removeShopItem: (name) => {
     return new Promise((resolve, reject) => {
@@ -244,8 +235,7 @@ module.exports = {
   },
 
   /**
-   * 9) Add an item to a user's inventory (or increment quantity).
-   * Pass the integer itemID from the 'items' table.
+   * Add an item to a user's inventory (or increment quantity).
    */
   addItemToInventory: (userID, itemID, quantity = 1) => {
     return new Promise((resolve, reject) => {
@@ -267,7 +257,7 @@ module.exports = {
   },
 
   /**
-   * 10) Get a user's inventory. Returns an array of objects: { name, quantity, itemID }
+   * Get a user's inventory. Returns an array of objects: { name, quantity, itemID }
    */
   getInventory: (userID) => {
     return new Promise((resolve, reject) => {
@@ -289,7 +279,99 @@ module.exports = {
   },
 
   /**
-   * 11) Add a new job to the joblist.
+   * Transfer an item from one user to another. 
+   * The quantity is handled by the caller, but we can pass 1 for a single-item transfer.
+   */
+  transferItem: (fromUserID, toUserID, itemName, quantity) => {
+    return new Promise((resolve, reject) => {
+      if (quantity <= 0) {
+        return reject('Quantity must be a positive number.');
+      }
+
+      // 1) Look up the item by name to get its itemID
+      db.get(
+        `SELECT itemID FROM items WHERE name = ? AND isAvailable = 1`,
+        [itemName],
+        (err, itemRow) => {
+          if (err) {
+            console.error('Error retrieving item by name in transferItem:', err);
+            return reject('Error looking up item.');
+          }
+          if (!itemRow) {
+            return reject(`Item "${itemName}" does not exist or is not available.`);
+          }
+
+          const itemID = itemRow.itemID;
+
+          // 2) Check fromUser's inventory
+          db.get(
+            `SELECT quantity FROM inventory WHERE userID = ? AND itemID = ?`,
+            [fromUserID, itemID],
+            (err2, invRow) => {
+              if (err2) {
+                console.error('Error checking fromUser inventory in transferItem:', err2);
+                return reject('Error checking sender inventory.');
+              }
+              if (!invRow || invRow.quantity < quantity) {
+                return reject(`You do not have enough of "${itemName}" to send.`);
+              }
+
+              // 3) Decrement fromUser's inventory
+              const newQuantity = invRow.quantity - quantity;
+              if (newQuantity > 0) {
+                // Just update with new quantity
+                db.run(
+                  `UPDATE inventory SET quantity = ? WHERE userID = ? AND itemID = ?`,
+                  [newQuantity, fromUserID, itemID],
+                  (err3) => {
+                    if (err3) {
+                      console.error('Error updating sender inventory in transferItem:', err3);
+                      return reject('Error updating sender inventory.');
+                    }
+                    addToRecipient(); // proceed
+                  }
+                );
+              } else {
+                // newQuantity = 0 or less, remove row entirely
+                db.run(
+                  `DELETE FROM inventory WHERE userID = ? AND itemID = ?`,
+                  [fromUserID, itemID],
+                  (err3) => {
+                    if (err3) {
+                      console.error('Error removing sender inventory in transferItem:', err3);
+                      return reject('Error removing item from sender inventory.');
+                    }
+                    addToRecipient();
+                  }
+                );
+              }
+
+              // 4) Add to recipient
+              function addToRecipient() {
+                db.run(
+                  `INSERT INTO inventory (userID, itemID, quantity)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(userID, itemID)
+                   DO UPDATE SET quantity = quantity + ?`,
+                  [toUserID, itemID, quantity, quantity],
+                  (err4) => {
+                    if (err4) {
+                      console.error('Error adding item to recipient in transferItem:', err4);
+                      return reject('Error adding item to recipient inventory.');
+                    }
+                    return resolve();
+                  }
+                );
+              }
+            }
+          );
+        }
+      );
+    });
+  },
+
+  /**
+   * Add a new job to the joblist.
    */
   addJob: (description) => {
     return new Promise((resolve, reject) => {
@@ -308,7 +390,7 @@ module.exports = {
   },
 
   /**
-   * 12) Return all unassigned jobs (assignedTo IS NULL).
+   * Return all unassigned jobs (assignedTo IS NULL).
    */
   getJobList: () => {
     return new Promise((resolve, reject) => {
@@ -317,7 +399,6 @@ module.exports = {
         [],
         (err, rows) => {
           if (err) {
-            // LOG THE ACTUAL ERROR
             console.error('Actual SQLite error in getJobList:', err);
             return reject('Failed to retrieve job list.');
           }
@@ -328,25 +409,19 @@ module.exports = {
   },
 
   /**
-   * 13) Assign a random unassigned job to a user — but first check if the user already has one.
-   * If user already has a job, return that existing job.
-   * Otherwise, pick one randomly from all unassigned.
-   * Returns null if no unassigned job is available.
+   * Assign a random unassigned job to a user — but first check if they already have one.
    */
   assignRandomJob: (userID) => {
     return new Promise((resolve, reject) => {
-      // Check if this user already has a job assigned
       db.get(`SELECT * FROM joblist WHERE assignedTo = ? LIMIT 1`, [userID], (err, existingJob) => {
         if (err) {
           console.error('Actual SQLite error in assignRandomJob (check existing):', err);
           return reject('Error checking current job.');
         }
         if (existingJob) {
-          // They already have a job
-          return resolve(existingJob);
+          return resolve(existingJob); // they already have a job
         }
 
-        // Otherwise, pick a random unassigned job
         db.get(
           `SELECT * FROM joblist WHERE assignedTo IS NULL ORDER BY RANDOM() LIMIT 1`,
           [],
@@ -355,9 +430,8 @@ module.exports = {
               console.error('Actual SQLite error in assignRandomJob (select random):', err2);
               return reject('Error retrieving unassigned job.');
             }
-            if (!newJob) return resolve(null); // No unassigned jobs left
+            if (!newJob) return resolve(null);
 
-            // Assign it
             db.run(
               `UPDATE joblist SET assignedTo = ? WHERE jobID = ?`,
               [userID, newJob.jobID],
@@ -376,49 +450,39 @@ module.exports = {
   },
 
   /**
-   * 14) Complete a job by ID (admin command in bot.js).
-   *  - Looks up the assigned user
-   *  - If found, grants a random reward to that user
-   *  - Deletes the job
-   * Returns { success: true, payAmount, assignedUser } if successful, or null if job wasn't found.
+   * Complete a job by ID (admin command). Worker gets a random reward if assigned.
    */
   completeJob: (jobID) => {
     return new Promise((resolve, reject) => {
-      // 1) Find the job to see who it's assigned to
       db.get(`SELECT * FROM joblist WHERE jobID = ?`, [jobID], (err, jobRow) => {
         if (err) {
           console.error('Actual SQLite error in completeJob (select job):', err);
           return reject('Error finding job.');
         }
         if (!jobRow) {
-          // No such job ID
           return resolve(null);
         }
 
         const assignedUser = jobRow.assignedTo;
-        // Random reward between 100 and 300
-        const payAmount = Math.floor(Math.random() * 201) + 100;
+        const payAmount = Math.floor(Math.random() * 201) + 100; // random 100–300
 
-        // 2) Delete the job
         db.run(`DELETE FROM joblist WHERE jobID = ?`, [jobID], function (err2) {
           if (err2) {
             console.error('Actual SQLite error in completeJob (delete job):', err2);
             return reject('Failed to complete job.');
           }
           if (this.changes === 0) {
-            // No job actually deleted
-            return resolve(null);
+            return resolve(null); // no row deleted
           }
 
-          // 3) If there is an assigned user, reward them
           if (assignedUser) {
+            // Reward them
             db.run(
               `INSERT OR IGNORE INTO economy (userID, balance) VALUES (?, 0)`,
               [assignedUser],
               (err3) => {
                 if (err3) {
                   console.error('Actual SQLite error in completeJob (insert assignedUser):', err3);
-                  // We'll still resolve as success, but pay 0
                   return resolve({ success: true, payAmount: 0, assignedUser });
                 }
                 db.run(
@@ -429,14 +493,13 @@ module.exports = {
                       console.error('Failed to pay user for job completion.', err4);
                       return resolve({ success: true, payAmount: 0, assignedUser });
                     }
-                    // All done
                     return resolve({ success: true, payAmount, assignedUser });
                   }
                 );
               }
             );
           } else {
-            // If no assigned user, just complete
+            // No assigned user
             return resolve({ success: true, payAmount: 0, assignedUser: null });
           }
         });
@@ -445,7 +508,7 @@ module.exports = {
   },
 
   /**
-   * 15) Add an admin to the 'admins' table.
+   * Add an admin to the 'admins' table.
    */
   addAdmin: (userID) => {
     return new Promise((resolve, reject) => {
@@ -460,7 +523,7 @@ module.exports = {
   },
 
   /**
-   * 16) Remove an admin from the 'admins' table.
+   * Remove an admin from the 'admins' table.
    */
   removeAdmin: (userID) => {
     return new Promise((resolve, reject) => {
@@ -475,7 +538,7 @@ module.exports = {
   },
 
   /**
-   * 17) Retrieve all bot admins from the DB.
+   * Retrieve all bot admins from the DB.
    */
   getAdmins: () => {
     return new Promise((resolve, reject) => {

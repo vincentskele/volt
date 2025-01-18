@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, PermissionsBitField } = require('discord.js');
-const db = require('./db');
+const db = require('./db'); // The updated DB logic from above
 
 const client = new Client({
   intents: [
@@ -29,14 +29,14 @@ client.on('messageCreate', async (message) => {
 
   try {
     switch (command.toLowerCase()) {
-      // HELP COMMAND
       case 'pizzahelp': {
         const helpMessage = `
-**Pizza Bot Commands:**
+**Pizza Bot Commands (Hard-coded single-item transfer):**
 🍕 **$pizzahelp**: Show this list of commands.
 🍕 **$balance [@user]**: Check your balance or mention another user to see theirs.
 🍕 **$bake**: Admin-only. Bake 6969 🍕 for yourself.
 🍕 **$give-money @user <amount>**: Send 🍕 to another user.
+🍕 **$give-item @user <item name>**: Send **1** of an item to another user.
 🍕 **$leaderboard**: View the top 10 pizza holders.
 🍕 **$add-admin @user**: Admin-only. Add a bot-specific admin.
 🍕 **$remove-admin @user**: Admin-only. Remove a bot-specific admin.
@@ -72,7 +72,7 @@ Joblist Commands:
         }
         const amountToBake = 6969;
         await db.updateBalance(userID, amountToBake);
-        return message.reply(`You baked **${amountToBake}** 🍕 for yourself!`);
+        return message.reply(`🍕 You baked **${amountToBake}** pizzas for yourself!`);
       }
 
       // GIVE-MONEY
@@ -97,6 +97,37 @@ Joblist Commands:
         } catch (error) {
           console.error('Error transferring balance:', error);
           return message.reply('🚫 Failed to transfer funds.');
+        }
+      }
+
+      /**
+       * GIVE-ITEM (Hard-coded to 1 item)
+       * Usage: $give-item @user <itemName>
+       */
+      case 'give-item': {
+        const targetUser = message.mentions.users.first();
+        if (!targetUser) {
+          return message.reply('Usage: `$give-item @user <item name>`');
+        }
+
+        // Remove the mention from args
+        args.shift(); // e.g. removing "@user"
+
+        // Now the rest of args is the item name
+        const itemName = args.join(' ');
+        if (!itemName) {
+          return message.reply('Please specify the item name. Usage: `$give-item @user <item name>`');
+        }
+
+        // Hard-code quantity = 1
+        const quantity = 1;
+
+        try {
+          await db.transferItem(message.author.id, targetUser.id, itemName, quantity);
+          return message.reply(`✅ You sent 1 of "${itemName}" to ${targetUser.username}.`);
+        } catch (error) {
+          console.error('Error transferring item:', error);
+          return message.reply(`🚫 Failed to send item: ${error}`);
         }
       }
 
@@ -182,7 +213,6 @@ Joblist Commands:
           return message.reply('🚫 You must be an admin to add items to the shop.');
         }
         // Format: $add-item <price> <name> - <description>
-        // Example: $add-item 100 "Magic Pizza" - "Heals 50 HP"
         const [priceString, ...itemSplit] = args;
         if (!priceString || !itemSplit.length) {
           return message.reply('🚫 Usage: $add-item <price> <name> - <description>');
@@ -192,7 +222,6 @@ Joblist Commands:
           return message.reply('🚫 The price must be a valid number.');
         }
 
-        // Now we try to split the remainder on " - "
         const itemArgs = itemSplit.join(' ').split(' - ');
         if (itemArgs.length < 2) {
           return message.reply('🚫 Please use the format: $add-item <price> <name> - <description>');
@@ -248,7 +277,6 @@ Joblist Commands:
       case 'joblist': {
         try {
           const jobs = await db.getJobList();
-          console.log('Jobs retrieved from DB:', jobs); // Debug
           if (!jobs.length) {
             return message.reply('🚫 No pending (unassigned) jobs at the moment.');
           }
@@ -268,7 +296,6 @@ Joblist Commands:
           if (!job) {
             return message.reply('🚫 No new jobs available at the moment, or you already have one.');
           }
-          // If the user already had a job, or we just assigned one, show it:
           return message.reply(`🛠️ **Current Task:** ${job.description} (Job ID: ${job.jobID})`);
         } catch (error) {
           console.error('Error assigning job:', error);
@@ -287,7 +314,7 @@ Joblist Commands:
         try {
           const result = await db.completeJob(jobID);
           if (!result) {
-            return message.reply(`🚫 Could not complete job ID ${jobID}. Check if it exists or is already completed.`);
+            return message.reply(`🚫 Could not complete job ID ${jobID}. Check if it exists or was already completed.`);
           }
           if (result.assignedUser) {
             return message.reply(
@@ -302,7 +329,7 @@ Joblist Commands:
         }
       }
 
-      // ADMIN COMMANDS (FOR BOT ADMINS)
+      // BOT-SPECIFIC ADMIN COMMANDS
       case 'add-admin': {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
           return message.reply('🚫 You must be an admin to add another admin.');
