@@ -1,4 +1,4 @@
-// commands/economy.js
+const { currency, formatCurrency } = require('../currency');
 const { PermissionsBitField } = require('discord.js');
 const db = require('../db');
 
@@ -10,9 +10,9 @@ class EconomyModule {
     
     return message.reply(
       `**${targetUser.username}'s Balance**\n` +
-      `Wallet: ${wallet} 🍕\n` +
-      `Bank: ${bank} 🍕\n` +
-      `Total: ${wallet + bank} 🍕`
+      `Wallet: ${formatCurrency(wallet)}\n` +
+      `Bank: ${formatCurrency(bank)}\n` +
+      `Total: ${formatCurrency(wallet + bank)}`
     );
   }
 
@@ -25,7 +25,7 @@ class EconomyModule {
 
     try {
       await db.deposit(message.author.id, amount);
-      return message.reply(`✅ Deposited ${amount} 🍕 into your bank.`);
+      return message.reply(`✅ Deposited ${formatCurrency(amount)} into your bank.`);
     } catch (err) {
       return message.reply(`🚫 Deposit failed: ${err}`);
     }
@@ -40,7 +40,7 @@ class EconomyModule {
 
     try {
       await db.withdraw(message.author.id, amount);
-      return message.reply(`✅ Withdrew ${amount} 🍕 to your wallet.`);
+      return message.reply(`✅ Withdrew ${formatCurrency(amount)} to your wallet.`);
     } catch (err) {
       return message.reply(`🚫 Withdraw failed: ${err}`);
     }
@@ -66,11 +66,11 @@ class EconomyModule {
 
       if (result.outcome === 'success') {
         return message.reply(
-          `💰 You robbed <@${targetUser.id}> and stole **${result.amountStolen}** 🍕!`
+          `💰 You robbed <@${targetUser.id}> and stole **${formatCurrency(result.amountStolen)}**!`
         );
       } else {
         return message.reply(
-          `👮 Your robbery failed! You paid **${result.penalty}** 🍕 to <@${targetUser.id}>.`
+          `👮 Your robbery failed! You paid **${formatCurrency(result.penalty)}** to <@${targetUser.id}>.`
         );
       }
     } catch (err) {
@@ -81,11 +81,11 @@ class EconomyModule {
   // Admin command to generate money
   static async bake(message) {
     if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      return message.reply('🚫 Only an admin can bake 🍕.');
+      return message.reply(`🚫 Only an admin can bake ${currency.symbol}.`);
     }
 
     await db.updateWallet(message.author.id, 6969);
-    return message.reply('🍕 You baked 6969 pizzas into your wallet!');
+    return message.reply(`${currency.symbol} You baked 6969 ${currency.name} into your wallet!`);
   }
 
   // Transfer money between users
@@ -102,7 +102,7 @@ class EconomyModule {
 
     try {
       await db.transferFromWallet(message.author.id, targetUser.id, amount);
-      return message.reply(`✅ You gave ${amount} 🍕 to <@${targetUser.id}>!`);
+      return message.reply(`✅ You gave ${formatCurrency(amount)} to <@${targetUser.id}>!`);
     } catch (err) {
       return message.reply(`🚫 Transfer failed: ${err}`);
     }
@@ -154,10 +154,10 @@ class EconomyModule {
 
       const lines = lb.map((row, i) => {
         const total = row.wallet + row.bank;
-        return `\`${i + 1}\`. <@${row.userID}> - Wallet: ${row.wallet}, Bank: ${row.bank} (Total: ${total})`;
+        return `\`${i + 1}\`. <@${row.userID}> - Wallet: ${formatCurrency(row.wallet)}, Bank: ${formatCurrency(row.bank)} (Total: ${formatCurrency(total)})`;
       });
 
-      return message.reply(`**🍕 Leaderboard (Top 10)**\n${lines.join('\n')}`);
+      return message.reply(`**${currency.symbol} Leaderboard (Top 10)**\n${lines.join('\n')}`);
     } catch (err) {
       return message.reply(`🚫 Leaderboard failed: ${err}`);
     }

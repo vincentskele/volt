@@ -1,4 +1,3 @@
-// bot.js
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const GamesModule = require('./commands/games');
@@ -8,6 +7,8 @@ const JobsModule = require('./commands/jobs');
 const EconomyModule = require('./commands/economy');
 const HelpModule = require('./commands/help');
 
+const { currency } = require('./currency');
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -16,7 +17,7 @@ const client = new Client({
   ],
 });
 
-const PREFIX = '$';
+const PREFIX = process.env.PREFIX || '$';
 
 // Command mapping for easy routing
 const commandModules = {
@@ -58,30 +59,35 @@ const commandModules = {
   'remove-admin': EconomyModule,
   'list-admins': EconomyModule,
 
-  // Help command
-  pizzahelp: HelpModule
+  // Help command (dynamic)
+  [currency.helpCommand]: HelpModule,
 };
 
 client.on('ready', () => {
   console.log(`Logged in as ${client.user.tag}!`);
+  console.log(`Bot is ready to use commands with prefix "${PREFIX}".`);
 });
 
 client.on('messageCreate', async (message) => {
+  // Ignore bot messages and non-prefixed commands
   if (message.author.bot || !message.content.startsWith(PREFIX)) return;
 
   const [command, ...args] = message.content.slice(PREFIX.length).trim().split(/ +/);
   const commandName = command.toLowerCase();
 
   try {
-    // Find the appropriate module and execute the command
+    // Execute the command if it exists in the mapping
     const module = commandModules[commandName];
     if (module) {
       await module.execute(commandName, message, args);
+    } else {
+      console.log(`Unknown command: ${commandName}`);
     }
   } catch (error) {
     console.error('Error handling command:', error);
-    return message.reply('🚫 An error occurred while processing your command.');
+    await message.reply('🚫 An error occurred while processing your command.');
   }
 });
 
+// Login the bot using the token from the .env file
 client.login(process.env.TOKEN);
