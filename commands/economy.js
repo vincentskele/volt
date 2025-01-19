@@ -88,6 +88,64 @@ class EconomyModule {
     return message.reply(`${currency.symbol} You baked 6969 ${currency.name} into your wallet!`);
   }
 
+// Admin management
+
+  // Add admin user
+  static async addAdmin(message) {
+    // Check if user has administrator permissions
+    if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      return message.reply('🚫 Only server administrators can add bot admins.');
+    }
+
+    const targetUser = message.mentions.users.first();
+    if (!targetUser) {
+      return message.reply('Usage: `$add-admin @user`');
+    }
+
+    try {
+      await db.addAdmin(targetUser.id);
+      return message.reply(`✅ Successfully added <@${targetUser.id}> as a bot admin.`);
+    } catch (err) {
+      return message.reply(`🚫 Failed to add admin: ${err}`);
+    }
+  }
+
+  // Remove admin user
+  static async removeAdmin(message) {
+    // Check if user has administrator permissions
+    if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      return message.reply('🚫 Only server administrators can remove bot admins.');
+    }
+
+    const targetUser = message.mentions.users.first();
+    if (!targetUser) {
+      return message.reply('Usage: `$remove-admin @user`');
+    }
+
+    try {
+      await db.removeAdmin(targetUser.id);
+      return message.reply(`✅ Successfully removed <@${targetUser.id}> from bot admins.`);
+    } catch (err) {
+      return message.reply(`🚫 Failed to remove admin: ${err}`);
+    }
+  }
+
+  // List all admin users
+  static async listAdmins(message) {
+    try {
+      const admins = await db.getAdmins();
+      if (!admins.length) {
+        return message.reply('📝 No bot admins configured.');
+      }
+
+      const adminList = admins.map(adminID => `<@${adminID}>`).join('\n');
+      return message.reply(`**📝 Bot Admins:**\n${adminList}`);
+    } catch (err) {
+      return message.reply(`🚫 Failed to retrieve admin list: ${err}`);
+    }
+  }
+
+
   // Transfer money between users
   static async giveMoney(message, args) {
     const targetUser = message.mentions.users.first();
@@ -184,8 +242,14 @@ class EconomyModule {
         return this.redeem(message, args);
       case 'leaderboard':
         return this.leaderboard(message);
-      default:
-        return null;
+        case 'add-admin':
+          return this.addAdmin(message);
+        case 'remove-admin':
+          return this.removeAdmin(message);
+        case 'list-admins':
+          return this.listAdmins(message);
+        default:
+          return null;
     }
   }
 }
