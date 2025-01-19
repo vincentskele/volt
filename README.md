@@ -40,8 +40,13 @@ Follow these steps to set up PizzaBot on your server:
    ```bash
    npm install
    ```
-
-4. Start the bot:
+4. ```bash
+   npm init -y
+   ```
+5. ```bash
+    npm install dotenv
+    ```
+6. Start the bot:
    ```bash
    node bot.js
    ```
