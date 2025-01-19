@@ -33,10 +33,8 @@ Follow these steps to set up PizzaBot on your server:
    cp .env.example .env
    nano .env
    ```
-   Add your Discord bot token to the `.env` file:
-   ```env
-   DISCORD_TOKEN=your_discord_bot_token_here
-   ```
+   Add custom variables to `.env` file:
+
 
 3. Install the required dependencies:
    ```bash
