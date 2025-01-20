@@ -69,8 +69,8 @@ client.on('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
-  // Ignore bot messages and non-prefixed commands
-  if (message.author.bot || !message.content.startsWith(PREFIX)) return;
+  // Only check for prefix now, allowing all bot messages
+  if (!message.content.startsWith(PREFIX)) return;
 
   const [command, ...args] = message.content.slice(PREFIX.length).trim().split(/ +/);
   const commandName = command.toLowerCase();
