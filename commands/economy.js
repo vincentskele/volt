@@ -80,12 +80,23 @@ class EconomyModule {
 
   // Admin command to generate money
   static async bake(message) {
-    if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      return message.reply(`🚫 Only an admin can bake ${currency.symbol}.`);
+    try {
+      // Get list of bot admins from database
+      const admins = await db.getAdmins();
+      
+      // Check if user is either a Discord admin or in bot admin list
+      const isDiscordAdmin = message.member.permissions.has(PermissionsBitField.Flags.Administrator);
+      const isBotAdmin = admins.includes(message.author.id);
+  
+      if (!isDiscordAdmin && !isBotAdmin) {
+        return message.reply(`🚫 Only an admin can bake ${currency.symbol}.`);
+      }
+  
+      await db.updateWallet(message.author.id, 6969);
+      return message.reply(`${currency.symbol} You baked 6969 ${currency.name} into your wallet!`);
+    } catch (err) {
+      return message.reply(`🚫 Command failed: ${err}`);
     }
-
-    await db.updateWallet(message.author.id, 6969);
-    return message.reply(`${currency.symbol} You baked 6969 ${currency.name} into your wallet!`);
   }
 
 // Admin management
