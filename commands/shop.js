@@ -3,6 +3,15 @@ const { PermissionsBitField } = require('discord.js');
 const db = require('../db');
 
 class ShopModule {
+  /**
+   * Check if the user is an admin (either Discord admin or custom bot admin).
+   */
+  static async isAdmin(message) {
+    const isDiscordAdmin = message.member.permissions.has(PermissionsBitField.Flags.Administrator);
+    const isBotAdmin = await db.getAdmins().then(admins => admins.includes(message.author.id));
+    return isDiscordAdmin || isBotAdmin;
+  }
+
   static async viewShop(message) {
     try {
       const items = await db.getShopItems();
@@ -63,7 +72,7 @@ class ShopModule {
   }
 
   static async addShopItem(message, args) {
-    if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+    if (!(await this.isAdmin(message))) {
       return message.reply('🚫 Only admins can add items.');
     }
 
@@ -92,7 +101,7 @@ class ShopModule {
   }
 
   static async removeShopItem(message, args) {
-    if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+    if (!(await this.isAdmin(message))) {
       return message.reply('🚫 Only admins can remove items.');
     }
 
@@ -129,3 +138,4 @@ class ShopModule {
 }
 
 module.exports = ShopModule;
+
