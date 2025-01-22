@@ -203,6 +203,58 @@ async function withdraw(userID, amount) {
   });
 }
 
+// Deposit money from wallet to bank
+async function deposit(userID, amount) {
+  await initUserEconomy(userID); // Ensure the user exists in the database
+  return new Promise((resolve, reject) => {
+    db.serialize(() => {
+      db.get(
+        `SELECT wallet FROM economy WHERE userID = ?`,
+        [userID],
+        (err, row) => {
+          if (err) {
+            return reject('Failed to retrieve wallet balance.');
+          }
+
+          if (!row || row.wallet < amount) {
+            return reject('Insufficient funds in wallet.');
+          }
+
+          db.run(
+            `UPDATE economy SET wallet = wallet - ?, bank = bank + ? WHERE userID = ?`,
+            [amount, amount, userID],
+            (err) => {
+              if (err) {
+                return reject('Failed to deposit funds.');
+              }
+              resolve();
+            }
+          );
+        }
+      );
+    });
+  });
+}
+
+// Get all bot admins
+async function getAdmins() {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT userID FROM admins`,
+      [],
+      (err, rows) => {
+        if (err) {
+          return reject('Failed to retrieve admins.');
+        }
+        // Map the rows to an array of user IDs
+        const adminIDs = rows.map(row => row.userID);
+        resolve(adminIDs);
+      }
+    );
+  });
+}
+
+
 // Rob another user's wallet
 async function robUser(robberId, targetId) {
   await Promise.all([initUserEconomy(robberId), initUserEconomy(targetId)]);
@@ -318,6 +370,8 @@ module.exports = {
   getBalances,
   transferFromWallet,
   robUser,
+  deposit,
+  getAdmins,
   withdraw,
   getShopItems,
   getShopItemByName,
