@@ -174,6 +174,35 @@ async function transferFromWallet(fromUserID, toUserID, amount) {
   });
 }
 
+// Withdraw money from the user's bank to their wallet
+async function withdraw(userID, amount) {
+  await initUserEconomy(userID); // Ensure the user exists in the database
+  return new Promise((resolve, reject) => {
+    db.serialize(() => {
+      db.get(
+        `SELECT bank FROM economy WHERE userID = ?`,
+        [userID],
+        (err, row) => {
+          if (err || !row || row.bank < amount) {
+            return reject('Insufficient funds in the bank or error occurred.');
+          }
+
+          db.run(
+            `UPDATE economy SET bank = bank - ?, wallet = wallet + ? WHERE userID = ?`,
+            [amount, amount, userID],
+            (err) => {
+              if (err) {
+                return reject('Failed to process withdrawal.');
+              }
+              resolve(); // Resolve the promise if the transaction is successful
+            }
+          );
+        }
+      );
+    });
+  });
+}
+
 // Rob another user's wallet
 async function robUser(robberId, targetId) {
   await Promise.all([initUserEconomy(robberId), initUserEconomy(targetId)]);
@@ -289,6 +318,7 @@ module.exports = {
   getBalances,
   transferFromWallet,
   robUser,
+  withdraw,
   getShopItems,
   getShopItemByName,
 };
