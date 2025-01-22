@@ -1,6 +1,7 @@
 // commands/shop.js
 const { PermissionsBitField } = require('discord.js');
 const db = require('../db');
+const { currency } = require('../currency'); // Import the currency module
 
 class ShopModule {
   /**
@@ -19,7 +20,7 @@ class ShopModule {
         return message.reply('🚫 The shop is empty.');
       }
       const lines = items.map(
-        it => `• **${it.name}** — ${it.price} 🍕\n   *${it.description}*`
+        it => `• **${it.name}** — ${it.price} ${currency.symbol}\n   *${it.description}*`
       );
       return message.reply(`🛍️ **Shop Items:**\n${lines.join('\n')}`);
     } catch (err) {
@@ -42,7 +43,7 @@ class ShopModule {
       const { wallet } = await db.getBalances(message.author.id);
       if (wallet < shopItem.price) {
         return message.reply(
-          `🚫 You only have ${wallet} 🍕, but **${shopItem.name}** costs ${shopItem.price} 🍕.`
+          `🚫 You only have ${wallet} ${currency.symbol}, but **${shopItem.name}** costs ${shopItem.price} ${currency.symbol}.`
         );
       }
       
@@ -94,7 +95,7 @@ class ShopModule {
 
     try {
       await db.addShopItem(price, name.trim(), description.trim());
-      return message.reply(`✅ Added **${name}** to the shop for ${price} 🍕.`);
+      return message.reply(`✅ Added **${name}** to the shop for ${price} ${currency.symbol}.`);
     } catch (err) {
       return message.reply(`🚫 Failed to add item: ${err}`);
     }
