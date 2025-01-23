@@ -1,196 +1,121 @@
-const SQLite = require('sqlite3').verbose();
+// db.js
 
+// =========================================================================
+// Require & Connect to SQLite
+// =========================================================================
+const SQLite = require('sqlite3').verbose();
 const db = new SQLite.Database('./economy.db', (err) => {
   if (err) {
-    console.error('Error connecting to database:', err);
+    console.error('Database connection error:', err);
   } else {
-    console.log('Connected to SQLite database.');
+    console.log('Connected to SQLite database');
+    initializeDatabase(); // Automatically initialize DB on connection
   }
 });
 
-// Blackjack table
-db.run(`
-  CREATE TABLE IF NOT EXISTS blackjack_games (
-    gameID INTEGER PRIMARY KEY AUTOINCREMENT,
-    userID TEXT,
-    bet INTEGER,
-    playerHand TEXT,
-    dealerHand TEXT,
-    status TEXT DEFAULT 'active',
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-  )
-`);
+// =========================================================================
+// Database Initialization
+// =========================================================================
+function initializeDatabase() {
+  db.serialize(() => {
+    console.log('Initializing database tables...');
 
-db.serialize(() => {
-  // economy table with wallet and bank columns
-  db.run(`
-    CREATE TABLE IF NOT EXISTS economy (
-      userID TEXT PRIMARY KEY,
-      wallet INTEGER DEFAULT 0,
-      bank INTEGER DEFAULT 0
-    )
-  `);
+    db.run(`
+      CREATE TABLE IF NOT EXISTS economy (
+        userID TEXT PRIMARY KEY,
+        wallet INTEGER DEFAULT 0,
+        bank INTEGER DEFAULT 0
+      )
+    `);
 
-  // items available in shop
-  db.run(`
-    CREATE TABLE IF NOT EXISTS items (
-      itemID INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT UNIQUE,
-      description TEXT,
-      price INTEGER,
-      isAvailable BOOLEAN DEFAULT 1
-    )
-  `);
+    db.run(`
+      CREATE TABLE IF NOT EXISTS items (
+        itemID INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE,
+        description TEXT,
+        price INTEGER,
+        isAvailable BOOLEAN DEFAULT 1
+      )
+    `);
 
-  // user inventory: items owned and their quantity
-  db.run(`
-    CREATE TABLE IF NOT EXISTS inventory (
-      userID TEXT,
-      itemID INTEGER,
-      quantity INTEGER DEFAULT 1,
-      PRIMARY KEY(userID, itemID),
-      FOREIGN KEY(itemID) REFERENCES items(itemID)
-    )
-  `);
+    db.run(`
+      CREATE TABLE IF NOT EXISTS inventory (
+        userID TEXT,
+        itemID INTEGER,
+        quantity INTEGER DEFAULT 1,
+        PRIMARY KEY(userID, itemID),
+        FOREIGN KEY(itemID) REFERENCES items(itemID)
+      )
+    `);
 
-  // administrators for bot-specific commands
-  db.run(`
-    CREATE TABLE IF NOT EXISTS admins (
-      userID TEXT PRIMARY KEY
-    )
-  `);
+    db.run(`
+      CREATE TABLE IF NOT EXISTS admins (
+        userID TEXT PRIMARY KEY
+      )
+    `);
 
-  // Jobs
-  db.run(`
-    CREATE TABLE IF NOT EXISTS joblist (
-      jobID INTEGER PRIMARY KEY AUTOINCREMENT,
-      description TEXT
-    )
-  `);
-  db.run(`
-    CREATE TABLE IF NOT EXISTS job_assignees (
-      jobID INTEGER,
-      userID TEXT,
-      PRIMARY KEY(jobID, userID)
-    )
-  `);
+    db.run(`
+      CREATE TABLE IF NOT EXISTS blackjack_games (
+        gameID INTEGER PRIMARY KEY AUTOINCREMENT,
+        userID TEXT,
+        bet INTEGER,
+        playerHand TEXT,
+        dealerHand TEXT,
+        status TEXT DEFAULT 'active',
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
 
-  // Blackjack games table
-  db.run(`
-    CREATE TABLE IF NOT EXISTS blackjack_games (
-      gameID INTEGER PRIMARY KEY AUTOINCREMENT,
-      userID TEXT,
-      bet INTEGER,
-      playerHand TEXT,
-      dealerHand TEXT,
-      status TEXT DEFAULT 'active',
-      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+    db.run(`
+      CREATE TABLE IF NOT EXISTS joblist (
+        jobID INTEGER PRIMARY KEY AUTOINCREMENT,
+        description TEXT
+      )
+    `);
 
-  // Virtual Pets table
-  db.run(`
-    CREATE TABLE IF NOT EXISTS pets (
-      petID INTEGER PRIMARY KEY AUTOINCREMENT,
-      userID TEXT,
-      name TEXT,
-      type TEXT,
-      level INTEGER DEFAULT 1,
-      exp INTEGER DEFAULT 0,
-      wins INTEGER DEFAULT 0,
-      losses INTEGER DEFAULT 0,
-      lastBattle DATETIME,
-      UNIQUE(userID, name)
-    )
-  `);
-});
+    db.run(`
+      CREATE TABLE IF NOT EXISTS job_assignees (
+        jobID INTEGER,
+        userID TEXT,
+        PRIMARY KEY(jobID, userID)
+      )
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS pets (
+        petID INTEGER PRIMARY KEY AUTOINCREMENT,
+        userID TEXT,
+        name TEXT,
+        type TEXT,
+        level INTEGER DEFAULT 1,
+        exp INTEGER DEFAULT 0,
+        wins INTEGER DEFAULT 0,
+        losses INTEGER DEFAULT 0,
+        lastBattle DATETIME,
+        UNIQUE(userID, name)
+      )
+    `);
+
+    console.log('Database initialization complete.');
+  });
+}
 
 // =========================================================================
-// Helper Functions
+// Core Economy Functions
 // =========================================================================
 
-/**
- * Ensures that a row for the user exists in the economy table.
- */
-function initUserEconomy(userID) {
+// Ensure user has an economy entry
+async function initUserEconomy(userID) {
   return new Promise((resolve, reject) => {
     db.run(
       `INSERT OR IGNORE INTO economy (userID, wallet, bank) VALUES (?, 0, 0)`,
       [userID],
-      (err) => {
-        if (err) return reject(err);
-        resolve();
-      }
+      (err) => (err ? reject(err) : resolve())
     );
   });
 }
 
-/**
- * Creates a new deck of cards and shuffles it.
- */
-function createDeck() {
-  const suits = ['♠', '♥', '♦', '♣'];
-  const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
-  const deck = [];
-  for (const suit of suits) {
-    for (const value of values) {
-      deck.push({ suit, value });
-    }
-  }
-  // Shuffle the deck using the Fisher–Yates shuffle
-  for (let i = deck.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [deck[i], deck[j]] = [deck[j], deck[i]];
-  }
-  return deck;
-}
-
-/**
- * Draws a card from the deck.
- */
-function drawCard(deck) {
-  return deck.pop();
-}
-
-/**
- * Calculates the total of a blackjack hand.
- */
-function calculateHand(hand) {
-  let sum = 0;
-  let aces = 0;
-  hand.forEach(card => {
-    if (card.value === 'A') {
-      aces++;
-      sum += 11;
-    } else if (['K', 'Q', 'J'].includes(card.value)) {
-      sum += 10;
-    } else {
-      sum += parseInt(card.value);
-    }
-  });
-  while (sum > 21 && aces > 0) {
-    sum -= 10;
-    aces--;
-  }
-  return sum;
-}
-
-/**
- * Retrieves a pet by petID.
- */
-function getPetByID(petID) {
-  return new Promise((resolve, reject) => {
-    db.get(`SELECT * FROM pets WHERE petID = ?`, [petID], (err, pet) => {
-      if (err) return reject(err);
-      resolve(pet);
-    });
-  });
-}
-
-// =========================================================================
-// Bank & Wallet Functions
-// =========================================================================
-
+// Get wallet and bank balances for a user
 async function getBalances(userID) {
   await initUserEconomy(userID);
   return new Promise((resolve, reject) => {
@@ -198,104 +123,77 @@ async function getBalances(userID) {
       `SELECT wallet, bank FROM economy WHERE userID = ?`,
       [userID],
       (err, row) => {
-        if (err) return reject('Failed to get balances.');
-        if (!row) return resolve({ wallet: 0, bank: 0 });
-        resolve({ wallet: row.wallet, bank: row.bank });
+        if (err) return reject('Balance check failed');
+        return resolve(row || { wallet: 0, bank: 0 });
       }
     );
   });
 }
 
-function updateWallet(userID, amount) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      await initUserEconomy(userID);
-      db.run(
-        `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
-        [amount, userID],
-        (err) => {
-          if (err) return reject('Error updating wallet.');
-          resolve();
-        }
-      );
-    } catch (err) {
-      reject(err);
-    }
-  });
-}
-
-
-
-function updateBank(userID, amount) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      await initUserEconomy(userID);
-      db.run(
-        `UPDATE economy SET bank = bank + ? WHERE userID = ?`,
-        [amount, userID],
-        (err) => {
-          if (err) return reject('Error updating bank.');
-          resolve();
-        }
-      );
-    } catch (err) {
-      reject(err);
-    }
-  });
-}
-
-async function deposit(userID, amount) {
-  const { wallet } = await getBalances(userID);
-  if (wallet < amount) {
-    throw `Not enough in wallet (you have ${wallet}).`;
-  }
-  await updateWallet(userID, -amount);
-  await updateBank(userID, amount);
-}
-
-async function withdraw(userID, amount) {
-  const { bank } = await getBalances(userID);
-  if (bank < amount) {
-    throw `Not enough in bank (you have ${bank}).`;
-  }
-  await updateBank(userID, -amount);
-  await updateWallet(userID, amount);
-}
-
-async function transferFromWallet(fromID, toID, amount) {
-  if (!fromID || !toID) throw 'Invalid user IDs';
-  if (fromID === toID) throw 'Cannot transfer to yourself';
-  if (amount <= 0) throw 'Amount must be positive';
-  if (!Number.isInteger(amount)) throw 'Amount must be a whole number';
-
-  const { wallet } = await getBalances(fromID);
-  if (wallet < amount) {
-    throw `Insufficient funds: you only have ${wallet} in your wallet`;
-  }
-
+// Transfer money from one user's wallet to another user's wallet
+async function transferFromWallet(fromUserID, toUserID, amount) {
+  await Promise.all([initUserEconomy(fromUserID), initUserEconomy(toUserID)]);
   return new Promise((resolve, reject) => {
     db.serialize(() => {
       db.run('BEGIN TRANSACTION');
-      
-      db.run(
-        'UPDATE economy SET wallet = wallet - ? WHERE userID = ?',
-        [amount, fromID],
-        (err) => {
-          if (err) {
-            db.run('ROLLBACK');
-            return reject('Transfer failed on sender update');
+      db.get(
+        `SELECT wallet FROM economy WHERE userID = ?`,
+        [fromUserID],
+        (err, row) => {
+          if (err || !row || row.wallet < amount) {
+            db.run('ROLLBACK', () => reject('Insufficient funds or error occurred.'));
+            return;
           }
-          
           db.run(
-            'UPDATE economy SET wallet = wallet + ? WHERE userID = ?',
-            [amount, toID],
-            (err2) => {
-              if (err2) {
-                db.run('ROLLBACK');
-                return reject('Transfer failed on receiver update');
+            `UPDATE economy SET wallet = wallet - ? WHERE userID = ?`,
+            [amount, fromUserID],
+            (err) => {
+              if (err) {
+                db.run('ROLLBACK', () => reject('Failed to deduct funds.'));
+                return;
               }
-              
-              db.run('COMMIT');
+              db.run(
+                `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
+                [amount, toUserID],
+                (err) => {
+                  if (err) {
+                    db.run('ROLLBACK', () => reject('Failed to add funds.'));
+                    return;
+                  }
+                  db.run('COMMIT', (err) => {
+                    if (err) reject('Transaction commit failed.');
+                    else resolve();
+                  });
+                }
+              );
+            }
+          );
+        }
+      );
+    });
+  });
+}
+
+// Withdraw money from the user's bank to their wallet
+async function withdraw(userID, amount) {
+  await initUserEconomy(userID);
+  return new Promise((resolve, reject) => {
+    db.serialize(() => {
+      db.get(
+        `SELECT bank FROM economy WHERE userID = ?`,
+        [userID],
+        (err, row) => {
+          if (err || !row || row.bank < amount) {
+            return reject('Insufficient funds in the bank or error occurred.');
+          }
+
+          db.run(
+            `UPDATE economy SET bank = bank - ?, wallet = wallet + ? WHERE userID = ?`,
+            [amount, amount, userID],
+            (err) => {
+              if (err) {
+                return reject('Failed to process withdrawal.');
+              }
               resolve();
             }
           );
@@ -305,601 +203,618 @@ async function transferFromWallet(fromID, toID, amount) {
   });
 }
 
+// Deposit money from wallet to bank
+async function deposit(userID, amount) {
+  await initUserEconomy(userID);
+  return new Promise((resolve, reject) => {
+    db.serialize(() => {
+      db.get(
+        `SELECT wallet FROM economy WHERE userID = ?`,
+        [userID],
+        (err, row) => {
+          if (err) {
+            return reject('Failed to retrieve wallet balance.');
+          }
 
+          if (!row || row.wallet < amount) {
+            return reject('Insufficient funds in wallet.');
+          }
 
-// =========================================================================
-// Blackjack Functions
-// =========================================================================
-
-async function startBlackjackGame(userID, bet) {
-  try {
-    const { wallet } = await getBalances(userID);
-    if (wallet < bet) throw `Not enough money in wallet for the bet`;
-
-    await updateWallet(userID, -bet);
-
-    const deck = createDeck();
-    const playerHand = [drawCard(deck), drawCard(deck)];
-    const dealerHand = [drawCard(deck)]; // Dealer's second card remains hidden initially
-
-    return new Promise((resolve, reject) => {
-      db.run(
-        `INSERT INTO blackjack_games (userID, bet, playerHand, dealerHand) 
-         VALUES (?, ?, ?, ?)`,
-        [userID, bet, JSON.stringify(playerHand), JSON.stringify(dealerHand)],
-        function (err) {
-          if (err) return reject(err);
-          resolve({ gameID: this.lastID, playerHand, dealerHand, bet });
+          db.run(
+            `UPDATE economy SET wallet = wallet - ?, bank = bank + ? WHERE userID = ?`,
+            [amount, amount, userID],
+            (err) => {
+              if (err) {
+                return reject('Failed to deposit funds.');
+              }
+              resolve();
+            }
+          );
         }
       );
     });
-  } catch (err) {
-    throw err;
-  }
-}
-
-function getBlackjackGame(gameID) {
-  return new Promise((resolve, reject) => {
-    db.get(
-      `SELECT * FROM blackjack_games WHERE gameID = ?`,
-      [gameID],
-      (err, game) => {
-        if (err) return reject(err);
-        if (!game) return resolve(null);
-
-        game.playerHand = JSON.parse(game.playerHand);
-        game.dealerHand = JSON.parse(game.dealerHand);
-        resolve(game);
-      }
-    );
   });
 }
 
-async function blackjackHit(gameID) {
-  const game = await getBlackjackGame(gameID);
-  if (!game || game.status !== 'active') throw `No active game found`;
-
-  const deck = createDeck();
-  const usedCards = [...game.playerHand, ...game.dealerHand];
-  const availableCards = deck.filter(card => 
-    !usedCards.some(used => 
-      used.suit === card.suit && used.value === card.value
-    )
-  );
-
-  if (availableCards.length === 0) throw 'No cards left in deck';
-  
-  const newCard = availableCards[Math.floor(Math.random() * availableCards.length)];
-  game.playerHand.push(newCard);
-
-  const playerTotal = calculateHand(game.playerHand);
-  const status = playerTotal > 21 ? 'dealer_win' : 'active';
-
-  return new Promise((resolve, reject) => {
-    db.run(
-      `UPDATE blackjack_games 
-       SET playerHand = ?, status = ?
-       WHERE gameID = ?`,
-      [JSON.stringify(game.playerHand), status, gameID],
-      (err) => {
-        if (err) return reject(err);
-        resolve({ newCard, playerHand: game.playerHand, status });
-      }
-    );
-  });
-}
-
-async function blackjackStand(gameID) {
-  const game = await getBlackjackGame(gameID);
-  if (!game || game.status !== 'active') throw `No active game found`;
-
-  const deck = createDeck();
-  const usedCards = [...game.playerHand, ...game.dealerHand];
-  const availableCards = deck.filter(card => 
-    !usedCards.some(used => 
-      used.suit === card.suit && used.value === card.value
-    )
-  );
-
-  while (calculateHand(game.dealerHand) < 17) {
-    if (availableCards.length === 0) throw 'No cards left in deck';
-    const cardIndex = Math.floor(Math.random() * availableCards.length);
-    game.dealerHand.push(availableCards[cardIndex]);
-    availableCards.splice(cardIndex, 1);
-  }
-
-  const playerTotal = calculateHand(game.playerHand);
-  const dealerTotal = calculateHand(game.dealerHand);
-
-  let status;
-  if (dealerTotal > 21 || playerTotal > dealerTotal) {
-    status = 'player_win';
-    await updateWallet(game.userID, game.bet * 2);
-  } else if (dealerTotal > playerTotal) {
-    status = 'dealer_win';
-  } else {
-    status = 'push';
-    await updateWallet(game.userID, game.bet);
-  }
-
-  return new Promise((resolve, reject) => {
-    db.run(
-      `UPDATE blackjack_games 
-       SET dealerHand = ?, status = ?
-       WHERE gameID = ?`,
-      [JSON.stringify(game.dealerHand), status, gameID],
-      (err) => {
-        if (err) return reject(err);
-        resolve({ 
-          dealerHand: game.dealerHand, 
-          status,
-          playerTotal,
-          dealerTotal
-        });
-      }
-    );
-  });
-}
-
-function getActiveGames(userID) {
+// Get all bot admins
+async function getAdmins() {
   return new Promise((resolve, reject) => {
     db.all(
-      'SELECT * FROM blackjack_games WHERE userID = ? AND status = "active"',
-      [userID],
-      (err, games) => {
-        if (err) return reject(err);
-        games = games || [];
-        games.forEach(game => {
-          try {
-            game.playerHand = JSON.parse(game.playerHand);
-            game.dealerHand = JSON.parse(game.dealerHand);
-          } catch (e) {
-            game.playerHand = [];
-            game.dealerHand = [];
-          }
-        });
-        resolve(games);
-      }
-    );
-  });
-}
-
-
-// =========================================================================
-// Virtual Pets Functions
-// =========================================================================
-
-function createPet(userID, name, type) {
-  return new Promise((resolve, reject) => {
-    db.run(
-      `INSERT INTO pets (userID, name, type)
-       VALUES (?, ?, ?)`,
-      [userID, name, type],
-      function (err) {
-        if (err) return reject(err);
-        resolve(this.lastID);
-      }
-    );
-  });
-}
-
-function getPet(userID, name) {
-  return new Promise((resolve, reject) => {
-    db.get(
-      `SELECT * FROM pets WHERE userID = ? AND name = ?`,
-      [userID, name],
-      (err, pet) => {
-        if (err) return reject(err);
-        resolve(pet);
-      }
-    );
-  });
-}
-
-async function battlePets(pet1ID, pet2ID, betAmount) {
-  const [pet1, pet2] = await Promise.all([
-    getPetByID(pet1ID),
-    getPetByID(pet2ID)
-  ]);
-  
-  if (!pet1 || !pet2) {
-    throw 'Invalid pets for battle';
-  }
-  
-  // Calculate battle power based on level, type advantages, and some randomness
-  const BASE_POWER = 100;
-  const typeMultipliers = {
-    dragon: { phoenix: 1.2, griffin: 0.8, unicorn: 1 },
-    phoenix: { griffin: 1.2, unicorn: 0.8, dragon: 1 },
-    griffin: { unicorn: 1.2, dragon: 0.8, phoenix: 1 },
-    unicorn: { dragon: 1.2, phoenix: 0.8, griffin: 1 }
-  };
-  
-  const pet1Power = BASE_POWER * pet1.level * 
-    (typeMultipliers[pet1.type]?.[pet2.type] || 1) * 
-    (0.8 + Math.random() * 0.4);
-    
-  const pet2Power = BASE_POWER * pet2.level * 
-    (typeMultipliers[pet2.type]?.[pet1.type] || 1) * 
-    (0.8 + Math.random() * 0.4);
-  
-  const pet1Wins = pet1Power > pet2Power;
-  
-  // Update stats for both pets
-  await Promise.all([
-    updatePetStats(pet1ID, pet1Wins, betAmount),
-    updatePetStats(pet2ID, !pet1Wins, betAmount)
-  ]);
-  
-  return {
-    winner: pet1Wins ? pet1 : pet2,
-    loser: pet1Wins ? pet2 : pet1,
-    winnerPower: pet1Wins ? pet1Power : pet2Power,
-    loserPower: pet1Wins ? pet2Power : pet1Power
-  };
-}
-
-function getUserPets(userID) {
-  return new Promise((resolve, reject) => {
-    db.all(
-      `SELECT * FROM pets 
-       WHERE userID = ? 
-       ORDER BY name ASC`,
-      [userID],
-      (err, pets) => {
-        if (err) return reject('Error retrieving pets');
-        resolve(pets || []);
-      }
-    );
-  });
-}
-
-function updatePetStats(petID, won, reward) {
-  return new Promise((resolve, reject) => {
-    const expGain = won ? 10 : 5;
-    db.run(
-      `UPDATE pets 
-       SET wins = wins + ?, 
-           losses = losses + ?,
-           exp = exp + ?,
-           level = CASE 
-             WHEN exp + ? >= level * 100 THEN level + 1 
-             ELSE level 
-           END,
-           lastBattle = CURRENT_TIMESTAMP
-       WHERE petID = ?`,
-      [won ? 1 : 0, won ? 0 : 1, expGain, expGain, petID],
-      async function (err) {
-        if (err) return reject(err);
-        if (won && reward > 0) {
-          try {
-            const pet = await getPetByID(petID);
-            await updateWallet(pet.userID, reward * 2);
-          } catch (e) {
-            return reject(e);
-          }
-        }
-        resolve();
-      }
-    );
-  });
-}
-
-// =========================================================================
-// Rob & Transfer Functions
-// =========================================================================
-
-/**
- * Attempt to rob a target.
- * - 50% chance of success.
- * - If successful: steals 10-40% of target's wallet.
- * - If failed: 25% penalty of the calculated amount is transferred from robber to target.
- */
-async function robUser(robberID, targetID) {
-  await initUserEconomy(robberID);
-  await initUserEconomy(targetID);
-  const { wallet: targetWallet } = await getBalances(targetID);
-  if (targetWallet <= 0) {
-    return { success: false, message: 'Target has 0 in wallet.' };
-  }
-
-  const successChance = 0.5;
-  const success = Math.random() < successChance;
-
-  // 10-40% of target's wallet
-  const percent = 0.1 + Math.random() * 0.3;
-  const amount = Math.floor(targetWallet * percent);
-
-  if (success) {
-    // Robber wins: transfer funds from target
-    await updateWallet(targetID, -amount);
-    await updateWallet(robberID, amount);
-    return { success: true, outcome: 'success', amountStolen: amount };
-  } else {
-    // Robber fails: pay a penalty of 25% of the stolen amount to target
-    const penalty = Math.floor(amount * 0.25);
-    const { wallet: robberWallet } = await getBalances(robberID);
-    if (penalty > 0 && robberWallet >= penalty) {
-      await updateWallet(robberID, -penalty);
-      await updateWallet(targetID, penalty);
-    }
-    return { success: true, outcome: 'fail', penalty };
-  }
-}
-
-async function transferFromWallet(fromID, toID, amount) {
-  if (amount <= 0) throw 'Amount must be positive.';
-  const { wallet } = await getBalances(fromID);
-  if (wallet < amount) {
-    throw `You only have ${wallet} in your wallet.`;
-  }
-  await updateWallet(fromID, -amount);
-  await updateWallet(toID, amount);
-}
-
-// =========================================================================
-// Leaderboard Functions
-// =========================================================================
-
-function getLeaderboard() {
-  return new Promise((resolve, reject) => {
-    db.all(
-      `SELECT userID, wallet, bank FROM economy ORDER BY (wallet + bank) DESC LIMIT 10`,
+      `SELECT userID FROM admins`,
       [],
       (err, rows) => {
-        if (err) return reject(err);
-        resolve(rows || []);
+        if (err) {
+          return reject('Failed to retrieve admins.');
+        }
+        const adminIDs = rows.map(row => row.userID);
+        resolve(adminIDs);
       }
     );
   });
 }
 
-// =========================================================================
-// Shop & Inventory Functions
-// =========================================================================
+// Rob another user's wallet
+async function robUser(robberId, targetId) {
+  await Promise.all([initUserEconomy(robberId), initUserEconomy(targetId)]);
 
-function getShopItems() {
   return new Promise((resolve, reject) => {
-    db.all(`SELECT * FROM items WHERE isAvailable = 1`, [], (err, rows) => {
-      if (err) return reject('Error retrieving shop items.');
-      resolve(rows || []);
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+      
+      db.get(
+        `SELECT wallet FROM economy WHERE userID = ?`,
+        [targetId],
+        (err, targetRow) => {
+          if (err || !targetRow) {
+            db.run('ROLLBACK');
+            return reject('Error retrieving target user wallet.');
+          }
+
+          const targetWallet = targetRow.wallet;
+          if (targetWallet <= 0) {
+            db.run('ROLLBACK');
+            return resolve({
+              success: false,
+              message: 'Target has no money to rob!',
+            });
+          }
+
+          const isSuccessful = Math.random() < 0.5; // 50% chance of success
+          const amountStolen = Math.min(targetWallet, 100); // Limit the max stolen
+
+          if (isSuccessful) {
+            // Successful robbery
+            db.run(
+              `UPDATE economy SET wallet = wallet - ? WHERE userID = ?`,
+              [amountStolen, targetId],
+              (err) => {
+                if (err) {
+                  db.run('ROLLBACK');
+                  return reject('Failed to deduct money from the target.');
+                }
+                db.run(
+                  `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
+                  [amountStolen, robberId],
+                  (err) => {
+                    if (err) {
+                      db.run('ROLLBACK');
+                      return reject('Failed to add money to the robber.');
+                    }
+                    db.run('COMMIT');
+                    return resolve({
+                      success: true,
+                      outcome: 'success',
+                      amountStolen,
+                    });
+                  }
+                );
+              }
+            );
+          } else {
+            // Failed robbery; penalize robber
+            const penalty = 50;
+            db.run(
+              `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
+              [penalty, targetId],
+              (err) => {
+                if (err) {
+                  db.run('ROLLBACK');
+                  return reject('Failed to add penalty money to the target.');
+                }
+                db.run(
+                  `UPDATE economy SET wallet = wallet - ? WHERE userID = ?`,
+                  [penalty, robberId],
+                  (err) => {
+                    if (err) {
+                      db.run('ROLLBACK');
+                      return reject('Failed to deduct penalty money from the robber.');
+                    }
+                    db.run('COMMIT');
+                    return resolve({
+                      success: true,
+                      outcome: 'fail',
+                      penalty,
+                    });
+                  }
+                );
+              }
+            );
+          }
+        }
+      );
     });
   });
 }
 
-function getShopItemByName(name) {
-  return new Promise((resolve, reject) => {
-    db.get(`SELECT * FROM items WHERE name = ? AND isAvailable = 1`, [name], (err, row) => {
-      if (err) return reject('Error retrieving item by name.');
-      resolve(row || null);
-    });
-  });
-}
+// ==============================
+// Pets System
+// ==============================
 
-function addShopItem(price, name, description) {
-  return new Promise((resolve, reject) => {
-    db.run(
-      `INSERT INTO items (price, name, description) VALUES (?, ?, ?)`,
-      [price, name, description],
-      (err) => {
-        if (err) return reject(err);
-        resolve();
-      }
-    );
-  });
-}
 
-function removeShopItem(name) {
+/**
+ * Create a new pet for a user.
+ * @param {string} userId - The ID of the user.
+ * @param {string} name - The name of the pet.
+ * @param {string} type - The type of the pet.
+ */
+async function createPet(userId, name, type) {
   return new Promise((resolve, reject) => {
-    db.run(`DELETE FROM items WHERE name = ?`, [name], (err) => {
+    const query = `
+      INSERT INTO pets (userId, name, type, level, exp, wins, losses)
+      VALUES (?, ?, ?, 1, 0, 0, 0)
+    `;
+    db.run(query, [userId, name, type], function (err) {
       if (err) return reject(err);
       resolve();
     });
   });
 }
 
-function addItemToInventory(userID, itemID, quantity = 1) {
+/**
+ * Retrieve all pets for a user.
+ * @param {string} userId - The ID of the user.
+ * @returns {Promise<Array>} - Array of pets owned by the user.
+ */
+async function getUserPets(userId) {
   return new Promise((resolve, reject) => {
+    const query = `SELECT * FROM pets WHERE userId = ?`;
+    db.all(query, [userId], (err, rows) => {
+      if (err) return reject(err);
+      resolve(rows);
+    });
+  });
+}
+
+/**
+ * Retrieve a specific pet by userId and name.
+ * @param {string} userId - The ID of the user.
+ * @param {string} name - The name of the pet.
+ * @returns {Promise<Object>} - The pet object.
+ */
+async function getPet(userId, name) {
+  return new Promise((resolve, reject) => {
+    const query = `SELECT * FROM pets WHERE userId = ? AND name = ?`;
+    db.get(query, [userId, name], (err, row) => {
+      if (err) return reject(err);
+      resolve(row);
+    });
+  });
+}
+
+/**
+ * Battle two pets and update their stats.
+ * @param {number} pet1Id - The ID of the first pet.
+ * @param {number} pet2Id - The ID of the second pet.
+ * @param {number} bet - The bet amount.
+ * @returns {Promise<Object>} - Battle result with winner and loser.
+ */
+async function battlePets(pet1Id, pet2Id, bet) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const pet1 = await getPetById(pet1Id);
+      const pet2 = await getPetById(pet2Id);
+
+      const pet1Power = pet1.level * Math.random();
+      const pet2Power = pet2.level * Math.random();
+
+      const winner = pet1Power > pet2Power ? pet1 : pet2;
+      const loser = pet1Power > pet2Power ? pet2 : pet1;
+
+      // Update winner and loser stats
+      db.serialize(() => {
+        db.run(`UPDATE pets SET wins = wins + 1, exp = exp + 10 WHERE petID = ?`, [winner.petID]);
+        db.run(`UPDATE pets SET losses = losses + 1 WHERE petID = ?`, [loser.petID]);
+      });
+
+      resolve({
+        winner,
+        loser,
+        winnerPower: pet1Power > pet2Power ? pet1Power : pet2Power,
+        loserPower: pet1Power > pet2Power ? pet2Power : pet1Power,
+      });
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+/**
+ * Helper function to get a pet by its ID.
+ * @param {number} petId - The pet's ID.
+ * @returns {Promise<Object>} - The pet object.
+ */
+async function getPetById(petId) {
+  return new Promise((resolve, reject) => {
+    const query = `SELECT * FROM pets WHERE petID = ?`;
+    db.get(query, [petId], (err, row) => {
+      if (err) return reject(err);
+      resolve(row);
+    });
+  });
+}
+
+
+// =========================================================================
+// Job System
+// =========================================================================
+
+// Add a new job to the job list
+function addJob(description) {
+  return new Promise((resolve, reject) => {
+    if (!description || typeof description !== 'string') {
+      return reject('Invalid job description');
+    }
+
     db.run(
-      `
-      INSERT INTO inventory (userID, itemID, quantity)
-      VALUES (?, ?, ?)
-      ON CONFLICT(userID, itemID)
-      DO UPDATE SET quantity = quantity + ?
-      `,
-      [userID, itemID, quantity, quantity],
-      (err) => {
-        if (err) return reject('Error adding item.');
-        resolve();
+      `INSERT INTO joblist (description) VALUES (?)`,
+      [description],
+      function (err) {
+        if (err) {
+          return reject('Failed to add job');
+        }
+        resolve({ 
+          jobID: this.lastID, 
+          description 
+        });
       }
     );
   });
 }
 
-function getInventory(userID) {
+// Get the list of all jobs with their assignees
+function getJobList() {
   return new Promise((resolve, reject) => {
     db.all(
       `
-      SELECT items.name, inventory.quantity
-      FROM inventory
-      INNER JOIN items ON inventory.itemID = items.itemID
-      WHERE inventory.userID = ?
+      SELECT 
+        j.jobID,
+        j.description,
+        GROUP_CONCAT(ja.userID) as assignees
+      FROM joblist j
+      LEFT JOIN job_assignees ja ON j.jobID = ja.jobID
+      GROUP BY j.jobID
       `,
+      [],
+      (err, rows) => {
+        if (err) {
+          return reject('Failed to retrieve job list');
+        }
+        
+        const jobs = rows.map(row => ({
+          jobID: row.jobID,
+          description: row.description,
+          assignees: row.assignees ? row.assignees.split(',') : []
+        }));
+        
+        resolve(jobs);
+      }
+    );
+  });
+}
+
+// Assign a random job to a user
+function assignRandomJob(userID) {
+  return new Promise((resolve, reject) => {
+    if (!userID) {
+      return reject('Invalid user ID');
+    }
+
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+
+      // First check current assignments
+      db.get(
+        `SELECT COUNT(*) as count FROM job_assignees WHERE userID = ?`,
+        [userID],
+        (err, result) => {
+          if (err) {
+            db.run('ROLLBACK');
+            return reject('Failed to check existing assignments');
+          }
+
+          // Get an unassigned job
+          db.get(
+            `
+            SELECT j.jobID, j.description 
+            FROM joblist j
+            WHERE j.jobID NOT IN (
+              SELECT jobID FROM job_assignees WHERE userID = ?
+            )
+            ORDER BY RANDOM() 
+            LIMIT 1
+            `,
+            [userID],
+            (err, job) => {
+              if (err) {
+                db.run('ROLLBACK');
+                return reject('Database error while finding job');
+              }
+              
+              if (!job) {
+                db.run('ROLLBACK');
+                return reject('No available jobs found');
+              }
+
+              // Assign the job
+              db.run(
+                `INSERT INTO job_assignees (jobID, userID) VALUES (?, ?)`,
+                [job.jobID, userID],
+                (err) => {
+                  if (err) {
+                    db.run('ROLLBACK');
+                    return reject('Failed to assign job');
+                  }
+
+                  db.run('COMMIT');
+                  resolve({
+                    jobID: job.jobID,
+                    description: job.description
+                  });
+                }
+              );
+            }
+          );
+        }
+      );
+    });
+  });
+}
+
+// Complete a job and reward the user
+function completeJob(jobID, userID, reward) {
+  return new Promise((resolve, reject) => {
+    if (!jobID || !userID || !reward) {
+      return reject('Missing required parameters');
+    }
+
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+
+      db.get(
+        `SELECT 1 FROM job_assignees WHERE jobID = ? AND userID = ?`,
+        [jobID, userID],
+        (err, row) => {
+          if (err) {
+            db.run('ROLLBACK');
+            return reject('Database error while checking job assignment');
+          }
+          
+          if (!row) {
+            db.run('ROLLBACK');
+            return resolve({ notAssigned: true });
+          }
+
+          // Remove the job assignment
+          db.run(
+            `DELETE FROM job_assignees WHERE jobID = ? AND userID = ?`,
+            [jobID, userID],
+            (err) => {
+              if (err) {
+                db.run('ROLLBACK');
+                return reject('Failed to remove job assignment');
+              }
+
+              // Add the reward
+              db.run(
+                `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
+                [reward, userID],
+                (err) => {
+                  if (err) {
+                    db.run('ROLLBACK');
+                    return reject('Failed to add reward');
+                  }
+
+                  db.run('COMMIT');
+                  resolve({ success: true });
+                }
+              );
+            }
+          );
+        }
+      );
+    });
+  });
+}
+
+// =========================================================================
+// Shop System
+// =========================================================================
+
+/**
+ * Get all available shop items.
+ * @returns {Promise<Array>} - Resolves with an array of available items.
+ */
+function getShopItems() {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT * FROM items WHERE isAvailable = 1`,
+      [],
+      (err, rows) => {
+        if (err) {
+          console.error('Error retrieving shop items:', err);
+          reject('🚫 Shop is currently unavailable. Please try again later.');
+        } else {
+          resolve(rows || []);
+        }
+      }
+    );
+  });
+}
+
+/**
+ * Get a specific shop item by name.
+ * @param {string} name - The name of the item to retrieve.
+ * @returns {Promise<Object>} - Resolves with the item details.
+ */
+function getShopItemByName(name) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT * FROM items WHERE name = ? AND isAvailable = 1`,
+      [name],
+      (err, row) => {
+        if (err) {
+          console.error(`Error looking up item "${name}":`, err);
+          reject('🚫 Unable to retrieve item information. Please try again.');
+        } else if (!row) {
+          reject(`🚫 The item "${name}" is not available in the shop.`);
+        } else {
+          resolve(row);
+        }
+      }
+    );
+  });
+}
+
+/**
+ * Add a new item to the shop.
+ * @param {number} price - The price of the item.
+ * @param {string} name - The name of the item.
+ * @param {string} description - A description of the item.
+ * @returns {Promise<void>} - Resolves when the item is added.
+ */
+function addShopItem(price, name, description) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `INSERT INTO items (price, name, description, isAvailable) VALUES (?, ?, ?, 1)`,
+      [price, name, description],
+      (err) => {
+        if (err) {
+          console.error('Error adding new shop item:', err);
+          reject('🚫 Failed to add the item to the shop. Please try again.');
+        } else {
+          resolve();
+        }
+      }
+    );
+  });
+}
+
+/**
+ * Remove an item from the shop by name.
+ * @param {string} name - The name of the item to remove.
+ * @returns {Promise<void>} - Resolves when the item is removed.
+ */
+function removeShopItem(name) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `UPDATE items SET isAvailable = 0 WHERE name = ?`,
+      [name],
+      (err) => {
+        if (err) {
+          console.error(`Error removing item "${name}" from the shop:`, err);
+          reject('🚫 Failed to remove the item from the shop. Please try again.');
+        } else {
+          resolve();
+        }
+      }
+    );
+  });
+}
+
+/**
+ * Get the inventory for a user.
+ * @param {string} userId - The user's ID.
+ * @returns {Promise<Array>} - Resolves with an array of inventory items.
+ */
+function getInventory(userId) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT i.name, i.description, inv.quantity
+       FROM inventory inv
+       JOIN items i ON inv.itemID = i.itemID
+       WHERE inv.userId = ?`,
+      [userId],
+      (err, rows) => {
+        if (err) {
+          console.error(`Error retrieving inventory for user ${userId}:`, err);
+          reject('🚫 Failed to retrieve inventory. Please try again later.');
+        } else {
+          resolve(rows || []);
+        }
+      }
+    );
+  });
+}
+
+
+// =========================================================================
+// Blackjack Functions
+// =========================================================================
+
+// Retrieve all active Blackjack games for a user
+async function getActiveGames(userID) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT * FROM blackjack_games WHERE userID = ? AND status = 'active'`,
       [userID],
       (err, rows) => {
-        if (err) return reject('Error retrieving inventory.');
+        if (err) {
+          return reject('Failed to retrieve active games.');
+        }
         resolve(rows || []);
       }
     );
   });
 }
 
-function transferItem(fromUserID, toUserID, itemName, qty) {
+// Start a new Blackjack game
+async function startBlackjackGame(userID, bet) {
+  await initUserEconomy(userID);
   return new Promise((resolve, reject) => {
-    if (qty <= 0) {
-      return reject('Quantity must be positive.');
-    }
-    db.get(`SELECT itemID FROM items WHERE name = ? AND isAvailable = 1`, [itemName], (err, itemRow) => {
-      if (err) return reject('Error looking up item.');
-      if (!itemRow) return reject(`Item "${itemName}" not available.`);
-
-      const itemID = itemRow.itemID;
-      db.get(
-        `SELECT quantity FROM inventory WHERE userID = ? AND itemID = ?`,
-        [fromUserID, itemID],
-        (err2, row2) => {
-          if (err2) return reject('Error checking sender inventory.');
-          if (!row2 || row2.quantity < qty) {
-            return reject(`You don't have enough of "${itemName}".`);
-          }
-
-          // Subtract from sender
-          const newQty = row2.quantity - qty;
-          if (newQty > 0) {
-            db.run(
-              `UPDATE inventory SET quantity = ? WHERE userID = ? AND itemID = ?`,
-              [newQty, fromUserID, itemID],
-              (err3) => {
-                if (err3) return reject('Error updating inventory.');
-                addToRecipient();
-              }
-            );
-          } else {
-            db.run(
-              `DELETE FROM inventory WHERE userID = ? AND itemID = ?`,
-              [fromUserID, itemID],
-              (err3) => {
-                if (err3) return reject('Error removing item.');
-                addToRecipient();
-              }
-            );
-          }
-
-          function addToRecipient() {
-            db.run(
-              `
-              INSERT INTO inventory (userID, itemID, quantity)
-              VALUES (?, ?, ?)
-              ON CONFLICT(userID, itemID)
-              DO UPDATE SET quantity = quantity + ?
-              `,
-              [toUserID, itemID, qty, qty],
-              (err4) => {
-                if (err4) return reject('Error adding to recipient inventory.');
-                resolve();
-              }
-            );
-          }
-        }
-      );
-    });
-  });
-}
-
-function redeemItem(userID, itemName) {
-  return new Promise((resolve, reject) => {
-    db.get(`SELECT itemID FROM items WHERE name = ?`, [itemName], (err, itemRow) => {
-      if (err) return reject('Error looking up item.');
-      if (!itemRow) return reject(`Item "${itemName}" does not exist.`);
-
-      const itemID = itemRow.itemID;
-      db.get(`SELECT quantity FROM inventory WHERE userID = ? AND itemID = ?`, [userID, itemID], (err2, row2) => {
-        if (err2) return reject('Error retrieving inventory.');
-        if (!row2 || row2.quantity < 1) {
-          return reject(`No "${itemName}" to redeem.`);
-        }
-
-        const newQty = row2.quantity - 1;
-        if (newQty > 0) {
-          db.run(
-            `UPDATE inventory SET quantity = ? WHERE userID = ? AND itemID = ?`,
-            [newQty, userID, itemID],
-            (err3) => {
-              if (err3) return reject('Redeem failed.');
-              resolve(true);
-            }
-          );
-        } else {
-          db.run(
-            `DELETE FROM inventory WHERE userID = ? AND itemID = ?`,
-            [userID, itemID],
-            (err3) => {
-              if (err3) return reject('Redeem failed.');
-              resolve(true);
-            }
-          );
-        }
-      });
-    });
-  });
-}
-
-// =========================================================================
-// Multi-Assignee Jobs Functions
-// =========================================================================
-
-function addJob(description) {
-  return new Promise((resolve, reject) => {
-    db.run(`INSERT INTO joblist (description) VALUES (?)`, [description], (err) => {
-      if (err) return reject('Failed to add job.');
-      resolve();
-    });
-  });
-}
-
-function getJobList() {
-  return new Promise((resolve, reject) => {
-    db.all(`SELECT jobID, description FROM joblist`, [], (err, jobs) => {
-      if (err) return reject('Error retrieving jobs.');
-      if (!jobs || !jobs.length) return resolve([]);
-
-      const jobIDs = jobs.map(j => j.jobID);
-      db.all(
-        `SELECT jobID, userID FROM job_assignees WHERE jobID IN (${jobIDs.map(() => '?').join(',')})`,
-        jobIDs,
-        (err2, assignedRows) => {
-          if (err2) return reject('Error retrieving assignees.');
-          const map = {};
-          (assignedRows || []).forEach(row => {
-            if (!map[row.jobID]) map[row.jobID] = [];
-            map[row.jobID].push(row.userID);
-          });
-          const result = jobs.map(j => ({
-            jobID: j.jobID,
-            description: j.description,
-            assignees: map[j.jobID] || []
-          }));
-          resolve(result);
-        }
-      );
-    });
-  });
-}
-
-function assignRandomJob(userID) {
-  return new Promise((resolve, reject) => {
-    // Pick a random job to which the user is not yet assigned.
     db.get(
-      `
-      SELECT jobID, description
-      FROM joblist
-      WHERE jobID NOT IN (
-        SELECT jobID FROM job_assignees WHERE userID = ?
-      )
-      ORDER BY RANDOM()
-      LIMIT 1
-      `,
+      `SELECT wallet FROM economy WHERE userID = ?`,
       [userID],
       (err, row) => {
-        if (err) return reject('Error finding a job.');
-        if (!row) return resolve(null);
-        // Add assignment
+        if (err || !row || row.wallet < bet) {
+          return reject('Insufficient wallet balance to start the game.');
+        }
+
+        const playerHand = JSON.stringify([drawCard(), drawCard()]);
+        const dealerHand = JSON.stringify([drawCard()]);
+
         db.run(
-          `INSERT INTO job_assignees (jobID, userID) VALUES (?, ?)`,
-          [row.jobID, userID],
-          (err2) => {
-            if (err2) return reject('Error assigning job.');
-            resolve(row);
+          `UPDATE economy SET wallet = wallet - ? WHERE userID = ?`,
+          [bet, userID],
+          (updateErr) => {
+            if (updateErr) {
+              return reject('Failed to deduct bet from wallet.');
+            }
+
+            db.run(
+              `INSERT INTO blackjack_games (userID, bet, playerHand, dealerHand) VALUES (?, ?, ?, ?)`,
+              [userID, bet, playerHand, dealerHand],
+              function (insertErr) {
+                if (insertErr) {
+                  return reject('Failed to create new Blackjack game.');
+                }
+                resolve({
+                  gameID: this.lastID,
+                  bet,
+                  playerHand: JSON.parse(playerHand),
+                  dealerHand: JSON.parse(dealerHand),
+                });
+              }
+            );
           }
         );
       }
@@ -907,151 +822,64 @@ function assignRandomJob(userID) {
   });
 }
 
-function completeJob(jobID, userID, reward) {
-  return new Promise((resolve, reject) => {
-    // Check if job exists.
-    db.get(`SELECT jobID FROM joblist WHERE jobID = ?`, [jobID], (err, job) => {
-      if (err) return reject('Error looking up job.');
-      if (!job) return resolve(null); // No such job exists.
+// Utility: Draw a random card
+function drawCard() {
+  const suits = ['♠', '♥', '♦', '♣'];
+  const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+  const value = values[Math.floor(Math.random() * values.length)];
+  const suit = suits[Math.floor(Math.random() * suits.length)];
+  return { value, suit };
+}
 
-      // Check if user is assigned to the job.
-      db.get(
-        `SELECT * FROM job_assignees WHERE jobID = ? AND userID = ?`,
-        [jobID, userID],
-        async (err2, row2) => {
-          if (err2) return reject('Error checking assignment.');
-          if (!row2) {
-            // User not assigned.
-            return resolve({ notAssigned: true });
-          }
+// Utility: Calculate the total value of a Blackjack hand
+function calculateHandTotal(hand) {
+  let total = 0;
+  let aces = 0;
 
-          // Pay user the specified reward.
-          try {
-            await updateWallet(userID, reward);
-          } catch (err3) {
-            return reject('Error paying user.');
-          }
+  for (const card of hand) {
+    if (card.value === 'A') {
+      aces++;
+    } else if (['K', 'Q', 'J'].includes(card.value)) {
+      total += 10;
+    } else {
+      total += parseInt(card.value, 10);
+    }
+  }
 
-          // Remove assignment.
-          db.run(
-            `DELETE FROM job_assignees WHERE jobID = ? AND userID = ?`,
-            [jobID, userID],
-            (err4) => {
-              if (err4) return reject('Error removing assignment.');
-              resolve({ success: true, payAmount: reward });
-            }
-          );
-        }
-      );
-    });
-  });
+  for (let i = 0; i < aces; i++) {
+    total += total + 11 > 21 ? 1 : 11;
+  }
+
+  return total;
 }
 
 // =========================================================================
-// Admin Functions
+// Exports
 // =========================================================================
-
-function addAdmin(userID) {
-  return new Promise((resolve, reject) => {
-    db.run(`INSERT INTO admins (userID) VALUES (?)`, [userID], (err) => {
-      if (err) return reject('Failed to add admin.');
-      resolve();
-    });
-  });
-}
-
-function removeAdmin(userID) {
-  return new Promise((resolve, reject) => {
-    db.run(`DELETE FROM admins WHERE userID = ?`, [userID], (err) => {
-      if (err) return reject('Failed to remove admin.');
-      resolve();
-    });
-  });
-}
-
-function getAdmins() {
-  return new Promise((resolve, reject) => {
-    db.all(`SELECT userID FROM admins`, [], (err, rows) => {
-      if (err) return reject('Failed to retrieve admins.');
-      resolve(rows.map(r => r.userID));
-    });
-  });
-}
-
-// =========================================================================
-// Export All Functions
-// =========================================================================
-
 module.exports = {
-  // Bank & Wallet
+  db,
+  initUserEconomy,
   getBalances,
-  updateWallet,
-  updateBank,
-  deposit,
-  withdraw,
-
-  // Blackjack
-  startBlackjackGame,
-  getBlackjackGame,
-  blackjackHit,
-  blackjackStand,
-
-  getActiveGames(userID) {
-    return new Promise((resolve, reject) => {
-      db.all(
-        'SELECT * FROM blackjack_games WHERE userID = ? AND status = "active"',
-        [userID],
-        (err, games) => {
-          if (err) return reject(err);
-          games = games || [];
-          games.forEach(game => {
-            try {
-              game.playerHand = JSON.parse(game.playerHand);
-              game.dealerHand = JSON.parse(game.dealerHand);
-            } catch (e) {
-              game.playerHand = [];
-              game.dealerHand = [];
-            }
-          });
-          resolve(games);
-        }
-      );
-    });
-  },
-
-  // Virtual Pets
-  createPet,
-  getPet,
-  getUserPets,
-  updatePetStats,
-  getPetByID,
-  battlePets,
-
-  // Rob & Transfer
-  robUser,
   transferFromWallet,
-
-  // Leaderboard
-  getLeaderboard,
-
-  // Shop & Inventory
+  robUser,
+  deposit,
+  getAdmins,
+  withdraw,
+  getActiveGames,
+  startBlackjackGame,
+  drawCard,
+  calculateHandTotal,
   getShopItems,
+  createPet,
+  getUserPets,
+  getPet,
+  battlePets,
   getShopItemByName,
   addShopItem,
   removeShopItem,
-  addItemToInventory,
   getInventory,
-  transferItem,
-  redeemItem,
-
-  // Multi-Assignee Jobs
   addJob,
   getJobList,
   assignRandomJob,
   completeJob,
-
-  // Admin
-  addAdmin,
-  removeAdmin,
-  getAdmins
 };
