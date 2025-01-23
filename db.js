@@ -337,6 +337,236 @@ async function robUser(robberId, targetId) {
     });
   });
 }
+// =========================================================================
+// Blackjack Functions
+// =========================================================================
+
+// Retrieve all active Blackjack games for a user
+async function getActiveGames(userID) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT * FROM blackjack_games WHERE userID = ? AND status = 'active'`,
+      [userID],
+      (err, rows) => {
+        if (err) {
+          return reject('Failed to retrieve active games.');
+        }
+        resolve(rows || []);
+      }
+    );
+  });
+}
+
+// Start a new Blackjack game
+async function startBlackjackGame(userID, bet) {
+  await initUserEconomy(userID);
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT wallet FROM economy WHERE userID = ?`,
+      [userID],
+      (err, row) => {
+        if (err || !row || row.wallet < bet) {
+          return reject('Insufficient wallet balance to start the game.');
+        }
+
+        const playerHand = JSON.stringify([drawCard(), drawCard()]);
+        const dealerHand = JSON.stringify([drawCard()]);
+
+        db.run(
+          `UPDATE economy SET wallet = wallet - ? WHERE userID = ?`,
+          [bet, userID],
+          (updateErr) => {
+            if (updateErr) {
+              return reject('Failed to deduct bet from wallet.');
+            }
+
+            db.run(
+              `INSERT INTO blackjack_games (userID, bet, playerHand, dealerHand) VALUES (?, ?, ?, ?)`,
+              [userID, bet, playerHand, dealerHand],
+              function (insertErr) {
+                if (insertErr) {
+                  return reject('Failed to create new Blackjack game.');
+                }
+                resolve({
+                  gameID: this.lastID,
+                  bet,
+                  playerHand: JSON.parse(playerHand),
+                  dealerHand: JSON.parse(dealerHand),
+                });
+              }
+            );
+          }
+        );
+      }
+    );
+  });
+}
+
+// Draw a card for Blackjack
+async function blackjackHit(gameID) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT playerHand, dealerHand FROM blackjack_games WHERE gameID = ? AND status = 'active'`,
+      [gameID],
+      (err, game) => {
+        if (err || !game) {
+          return reject('No active game found with the given ID.');
+        }
+
+        const playerHand = JSON.parse(game.playerHand);
+        const dealerHand = JSON.parse(game.dealerHand);
+
+        const newCard = drawCard();
+        playerHand.push(newCard);
+
+        const playerTotal = calculateHandTotal(playerHand);
+
+        if (playerTotal > 21) {
+          // Bust, update the game status
+          db.run(
+            `UPDATE blackjack_games SET playerHand = ?, status = 'dealer_win' WHERE gameID = ?`,
+            [JSON.stringify(playerHand), gameID],
+            (updateErr) => {
+              if (updateErr) {
+                return reject('Failed to update game status.');
+              }
+              resolve({
+                status: 'dealer_win',
+                newCard,
+                playerHand,
+                playerTotal,
+              });
+            }
+          );
+        } else {
+          // Game continues
+          db.run(
+            `UPDATE blackjack_games SET playerHand = ? WHERE gameID = ?`,
+            [JSON.stringify(playerHand), gameID],
+            (updateErr) => {
+              if (updateErr) {
+                return reject('Failed to update player hand.');
+              }
+              resolve({
+                status: 'continue',
+                newCard,
+                playerHand,
+                playerTotal,
+              });
+            }
+          );
+        }
+      }
+    );
+  });
+}
+
+// Stand and let the dealer play
+async function blackjackStand(gameID) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT userID, bet, playerHand, dealerHand FROM blackjack_games WHERE gameID = ? AND status = 'active'`,
+      [gameID],
+      (err, game) => {
+        if (err || !game) {
+          return reject('No active game found with the given ID.');
+        }
+
+        const playerHand = JSON.parse(game.playerHand);
+        const dealerHand = JSON.parse(game.dealerHand);
+
+        let dealerTotal = calculateHandTotal(dealerHand);
+        while (dealerTotal < 17) {
+          dealerHand.push(drawCard());
+          dealerTotal = calculateHandTotal(dealerHand);
+        }
+
+        const playerTotal = calculateHandTotal(playerHand);
+        let status = '';
+        let winnings = 0;
+
+        if (playerTotal > 21 || (dealerTotal <= 21 && dealerTotal >= playerTotal)) {
+          status = 'dealer_win';
+        } else if (dealerTotal > 21 || playerTotal > dealerTotal) {
+          status = 'player_win';
+          winnings = playerHand.length === 2 && playerTotal === 21 ? Math.floor(game.bet * 2.5) : game.bet * 2;
+        } else {
+          status = 'push';
+          winnings = game.bet;
+        }
+
+        // Update the game in the database
+        db.run(
+          `UPDATE blackjack_games SET dealerHand = ?, status = ? WHERE gameID = ?`,
+          [JSON.stringify(dealerHand), status, gameID],
+          (updateErr) => {
+            if (updateErr) {
+              return reject('Failed to update game results.');
+            }
+
+            // Pay out winnings or return bet if it's a push
+            if (status === 'player_win' || status === 'push') {
+              db.run(
+                `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
+                [winnings, game.userID],
+                (payoutErr) => {
+                  if (payoutErr) {
+                    return reject('Failed to pay out winnings.');
+                  }
+                  resolve({
+                    status,
+                    winnings,
+                    playerTotal,
+                    dealerTotal,
+                    dealerHand,
+                  });
+                }
+              );
+            } else {
+              resolve({
+                status,
+                playerTotal,
+                dealerTotal,
+                dealerHand,
+              });
+            }
+          }
+        );
+      }
+    );
+  });
+}
+
+// Utility: Draw a random card
+function drawCard() {
+  const suits = ['♠', '♥', '♦', '♣'];
+  const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+  const value = values[Math.floor(Math.random() * values.length)];
+  const suit = suits[Math.floor(Math.random() * suits.length)];
+  return { value, suit };
+}
+
+// Utility: Calculate the total value of a Blackjack hand
+function calculateHandTotal(hand) {
+  let total = 0;
+  let aces = 0;
+
+  for (const card of hand) {
+    if (card.value === 'A') {
+      aces++;
+    } else if (['K', 'Q', 'J'].includes(card.value)) {
+      total += 10;
+    } else {
+      total += parseInt(card.value, 10);
+    }
+  }
+
+  for (let i = 0; i < aces; i++) {
+    total += total + 11 > 21 ? 1 : 11;
+  }
+
+  return total;
+}
 
 // =========================================================================
 // Shop System
@@ -373,6 +603,10 @@ module.exports = {
   deposit,
   getAdmins,
   withdraw,
+  getActiveGames,
+  startBlackjackGame,
+  blackjackHit,
+  blackjackStand,
   getShopItems,
   getShopItemByName,
 };
