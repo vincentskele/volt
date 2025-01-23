@@ -639,25 +639,123 @@ function completeJob(jobID, userID, reward) {
 // =========================================================================
 // Shop System
 // =========================================================================
+
+/**
+ * Get all available shop items.
+ * @returns {Promise<Array>} - Resolves with an array of available items.
+ */
 function getShopItems() {
   return new Promise((resolve, reject) => {
     db.all(
       `SELECT * FROM items WHERE isAvailable = 1`,
       [],
-      (err, rows) => (err ? reject('Shop unavailable') : resolve(rows || []))
+      (err, rows) => {
+        if (err) {
+          console.error('Error retrieving shop items:', err);
+          reject('🚫 Shop is currently unavailable. Please try again later.');
+        } else {
+          resolve(rows || []);
+        }
+      }
     );
   });
 }
 
+/**
+ * Get a specific shop item by name.
+ * @param {string} name - The name of the item to retrieve.
+ * @returns {Promise<Object>} - Resolves with the item details.
+ */
 function getShopItemByName(name) {
   return new Promise((resolve, reject) => {
     db.get(
       `SELECT * FROM items WHERE name = ? AND isAvailable = 1`,
       [name],
-      (err, row) => (err ? reject('Item lookup failed') : resolve(row))
+      (err, row) => {
+        if (err) {
+          console.error(`Error looking up item "${name}":`, err);
+          reject('🚫 Unable to retrieve item information. Please try again.');
+        } else if (!row) {
+          reject(`🚫 The item "${name}" is not available in the shop.`);
+        } else {
+          resolve(row);
+        }
+      }
     );
   });
 }
+
+/**
+ * Add a new item to the shop.
+ * @param {number} price - The price of the item.
+ * @param {string} name - The name of the item.
+ * @param {string} description - A description of the item.
+ * @returns {Promise<void>} - Resolves when the item is added.
+ */
+function addShopItem(price, name, description) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `INSERT INTO items (price, name, description, isAvailable) VALUES (?, ?, ?, 1)`,
+      [price, name, description],
+      (err) => {
+        if (err) {
+          console.error('Error adding new shop item:', err);
+          reject('🚫 Failed to add the item to the shop. Please try again.');
+        } else {
+          resolve();
+        }
+      }
+    );
+  });
+}
+
+/**
+ * Remove an item from the shop by name.
+ * @param {string} name - The name of the item to remove.
+ * @returns {Promise<void>} - Resolves when the item is removed.
+ */
+function removeShopItem(name) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `UPDATE items SET isAvailable = 0 WHERE name = ?`,
+      [name],
+      (err) => {
+        if (err) {
+          console.error(`Error removing item "${name}" from the shop:`, err);
+          reject('🚫 Failed to remove the item from the shop. Please try again.');
+        } else {
+          resolve();
+        }
+      }
+    );
+  });
+}
+
+/**
+ * Get the inventory for a user.
+ * @param {string} userId - The user's ID.
+ * @returns {Promise<Array>} - Resolves with an array of inventory items.
+ */
+function getInventory(userId) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT i.name, i.description, inv.quantity
+       FROM inventory inv
+       JOIN items i ON inv.itemID = i.itemID
+       WHERE inv.userId = ?`,
+      [userId],
+      (err, rows) => {
+        if (err) {
+          console.error(`Error retrieving inventory for user ${userId}:`, err);
+          reject('🚫 Failed to retrieve inventory. Please try again later.');
+        } else {
+          resolve(rows || []);
+        }
+      }
+    );
+  });
+}
+
 
 // =========================================================================
 // Blackjack Functions
@@ -777,6 +875,9 @@ module.exports = {
   getPet,
   battlePets,
   getShopItemByName,
+  addShopItem,
+  removeShopItem,
+  getInventory,
   addJob,
   getJobList,
   assignRandomJob,
