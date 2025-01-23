@@ -346,6 +346,114 @@ async function robUser(robberId, targetId) {
   });
 }
 
+// ==============================
+// Pets System
+// ==============================
+
+
+/**
+ * Create a new pet for a user.
+ * @param {string} userId - The ID of the user.
+ * @param {string} name - The name of the pet.
+ * @param {string} type - The type of the pet.
+ */
+async function createPet(userId, name, type) {
+  return new Promise((resolve, reject) => {
+    const query = `
+      INSERT INTO pets (userId, name, type, level, exp, wins, losses)
+      VALUES (?, ?, ?, 1, 0, 0, 0)
+    `;
+    db.run(query, [userId, name, type], function (err) {
+      if (err) return reject(err);
+      resolve();
+    });
+  });
+}
+
+/**
+ * Retrieve all pets for a user.
+ * @param {string} userId - The ID of the user.
+ * @returns {Promise<Array>} - Array of pets owned by the user.
+ */
+async function getUserPets(userId) {
+  return new Promise((resolve, reject) => {
+    const query = `SELECT * FROM pets WHERE userId = ?`;
+    db.all(query, [userId], (err, rows) => {
+      if (err) return reject(err);
+      resolve(rows);
+    });
+  });
+}
+
+/**
+ * Retrieve a specific pet by userId and name.
+ * @param {string} userId - The ID of the user.
+ * @param {string} name - The name of the pet.
+ * @returns {Promise<Object>} - The pet object.
+ */
+async function getPet(userId, name) {
+  return new Promise((resolve, reject) => {
+    const query = `SELECT * FROM pets WHERE userId = ? AND name = ?`;
+    db.get(query, [userId, name], (err, row) => {
+      if (err) return reject(err);
+      resolve(row);
+    });
+  });
+}
+
+/**
+ * Battle two pets and update their stats.
+ * @param {number} pet1Id - The ID of the first pet.
+ * @param {number} pet2Id - The ID of the second pet.
+ * @param {number} bet - The bet amount.
+ * @returns {Promise<Object>} - Battle result with winner and loser.
+ */
+async function battlePets(pet1Id, pet2Id, bet) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const pet1 = await getPetById(pet1Id);
+      const pet2 = await getPetById(pet2Id);
+
+      const pet1Power = pet1.level * Math.random();
+      const pet2Power = pet2.level * Math.random();
+
+      const winner = pet1Power > pet2Power ? pet1 : pet2;
+      const loser = pet1Power > pet2Power ? pet2 : pet1;
+
+      // Update winner and loser stats
+      db.serialize(() => {
+        db.run(`UPDATE pets SET wins = wins + 1, exp = exp + 10 WHERE petID = ?`, [winner.petID]);
+        db.run(`UPDATE pets SET losses = losses + 1 WHERE petID = ?`, [loser.petID]);
+      });
+
+      resolve({
+        winner,
+        loser,
+        winnerPower: pet1Power > pet2Power ? pet1Power : pet2Power,
+        loserPower: pet1Power > pet2Power ? pet2Power : pet1Power,
+      });
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+/**
+ * Helper function to get a pet by its ID.
+ * @param {number} petId - The pet's ID.
+ * @returns {Promise<Object>} - The pet object.
+ */
+async function getPetById(petId) {
+  return new Promise((resolve, reject) => {
+    const query = `SELECT * FROM pets WHERE petID = ?`;
+    db.get(query, [petId], (err, row) => {
+      if (err) return reject(err);
+      resolve(row);
+    });
+  });
+}
+
+
 // =========================================================================
 // Job System
 // =========================================================================
@@ -664,6 +772,10 @@ module.exports = {
   drawCard,
   calculateHandTotal,
   getShopItems,
+  createPet,
+  getUserPets,
+  getPet,
+  battlePets,
   getShopItemByName,
   addJob,
   getJobList,
