@@ -1,5 +1,4 @@
 // db.js
-
 // =========================================================================
 // Require & Connect to SQLite
 // =========================================================================
@@ -130,9 +129,74 @@ async function getBalances(userID) {
   });
 }
 
+// Add a bot admin
+async function addAdmin(userID) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `INSERT OR IGNORE INTO admins (userID) VALUES (?)`,
+      [userID],
+      (err) => (err ? reject('Failed to add admin.') : resolve())
+    );
+  });
+}
+
+// Get all bot admins
+async function getAdmins() {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT userID FROM admins`,
+      [],
+      (err, rows) => {
+        if (err) {
+          return reject('Failed to retrieve admins.');
+        }
+        const adminIDs = rows.map((row) => row.userID);
+        resolve(adminIDs);
+      }
+    );
+  });
+}
+
+// Remove a bot admin
+async function removeAdmin(userID) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `DELETE FROM admins WHERE userID = ?`,
+      [userID],
+      function (err) {
+        if (err) {
+          return reject('Failed to remove admin.');
+        }
+        resolve({ changes: this.changes });
+      }
+    );
+  });
+}
+
+
+// Update wallet balance for a user
+async function updateWallet(userID, amount) {
+  await initUserEconomy(userID);
+  return new Promise((resolve, reject) => {
+    db.run(
+      `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
+      [amount, userID],
+      function (err) {
+        if (err) {
+          return reject('Failed to update wallet balance.');
+        }
+        resolve({ changes: this.changes });
+      }
+    );
+  });
+}
+
+
 // Transfer money from one user's wallet to another user's wallet
 async function transferFromWallet(fromUserID, toUserID, amount) {
+  if (amount <= 0) throw new Error('Invalid transfer amount.');
   await Promise.all([initUserEconomy(fromUserID), initUserEconomy(toUserID)]);
+
   return new Promise((resolve, reject) => {
     db.serialize(() => {
       db.run('BEGIN TRANSACTION');
@@ -144,6 +208,7 @@ async function transferFromWallet(fromUserID, toUserID, amount) {
             db.run('ROLLBACK', () => reject('Insufficient funds or error occurred.'));
             return;
           }
+
           db.run(
             `UPDATE economy SET wallet = wallet - ? WHERE userID = ?`,
             [amount, fromUserID],
@@ -152,6 +217,7 @@ async function transferFromWallet(fromUserID, toUserID, amount) {
                 db.run('ROLLBACK', () => reject('Failed to deduct funds.'));
                 return;
               }
+
               db.run(
                 `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
                 [amount, toUserID],
@@ -176,7 +242,9 @@ async function transferFromWallet(fromUserID, toUserID, amount) {
 
 // Withdraw money from the user's bank to their wallet
 async function withdraw(userID, amount) {
+  if (amount <= 0) throw new Error('Invalid withdrawal amount.');
   await initUserEconomy(userID);
+
   return new Promise((resolve, reject) => {
     db.serialize(() => {
       db.get(
@@ -205,18 +273,16 @@ async function withdraw(userID, amount) {
 
 // Deposit money from wallet to bank
 async function deposit(userID, amount) {
+  if (amount <= 0) throw new Error('Invalid deposit amount.');
   await initUserEconomy(userID);
+
   return new Promise((resolve, reject) => {
     db.serialize(() => {
       db.get(
         `SELECT wallet FROM economy WHERE userID = ?`,
         [userID],
         (err, row) => {
-          if (err) {
-            return reject('Failed to retrieve wallet balance.');
-          }
-
-          if (!row || row.wallet < amount) {
+          if (err || !row || row.wallet < amount) {
             return reject('Insufficient funds in wallet.');
           }
 
@@ -236,23 +302,6 @@ async function deposit(userID, amount) {
   });
 }
 
-// Get all bot admins
-async function getAdmins() {
-  return new Promise((resolve, reject) => {
-    db.all(
-      `SELECT userID FROM admins`,
-      [],
-      (err, rows) => {
-        if (err) {
-          return reject('Failed to retrieve admins.');
-        }
-        const adminIDs = rows.map(row => row.userID);
-        resolve(adminIDs);
-      }
-    );
-  });
-}
-
 // Rob another user's wallet
 async function robUser(robberId, targetId) {
   await Promise.all([initUserEconomy(robberId), initUserEconomy(targetId)]);
@@ -260,7 +309,7 @@ async function robUser(robberId, targetId) {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
       db.run('BEGIN TRANSACTION');
-      
+
       db.get(
         `SELECT wallet FROM economy WHERE userID = ?`,
         [targetId],
@@ -281,9 +330,9 @@ async function robUser(robberId, targetId) {
 
           const isSuccessful = Math.random() < 0.5; // 50% chance of success
           const amountStolen = Math.min(targetWallet, 100); // Limit the max stolen
+          const penalty = 50;
 
           if (isSuccessful) {
-            // Successful robbery
             db.run(
               `UPDATE economy SET wallet = wallet - ? WHERE userID = ?`,
               [amountStolen, targetId],
@@ -292,6 +341,7 @@ async function robUser(robberId, targetId) {
                   db.run('ROLLBACK');
                   return reject('Failed to deduct money from the target.');
                 }
+
                 db.run(
                   `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
                   [amountStolen, robberId],
@@ -311,8 +361,6 @@ async function robUser(robberId, targetId) {
               }
             );
           } else {
-            // Failed robbery; penalize robber
-            const penalty = 50;
             db.run(
               `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
               [penalty, targetId],
@@ -321,6 +369,7 @@ async function robUser(robberId, targetId) {
                   db.run('ROLLBACK');
                   return reject('Failed to add penalty money to the target.');
                 }
+
                 db.run(
                   `UPDATE economy SET wallet = wallet - ? WHERE userID = ?`,
                   [penalty, robberId],
@@ -345,7 +394,6 @@ async function robUser(robberId, targetId) {
     });
   });
 }
-
 // ==============================
 // Pets System
 // ==============================
@@ -636,6 +684,7 @@ function completeJob(jobID, userID, reward) {
   });
 }
 
+
 // =========================================================================
 // Shop System
 // =========================================================================
@@ -822,6 +871,44 @@ async function startBlackjackGame(userID, bet) {
   });
 }
 
+// Perform a "hit" action
+async function blackjackHit(gameID) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT playerHand FROM blackjack_games WHERE gameID = ? AND status = 'active'`,
+      [gameID],
+      (err, row) => {
+        if (err || !row) {
+          return reject('Failed to retrieve the game.');
+        }
+
+        const playerHand = JSON.parse(row.playerHand || '[]');
+        const newCard = drawCard();
+        playerHand.push(newCard);
+
+        const playerTotal = calculateHandTotal(playerHand);
+        const status = playerTotal > 21 ? 'dealer_win' : 'active';
+
+        db.run(
+          `UPDATE blackjack_games SET playerHand = ?, status = ? WHERE gameID = ?`,
+          [JSON.stringify(playerHand), status, gameID],
+          (updateErr) => {
+            if (updateErr) {
+              return reject('Failed to update the game after hit.');
+            }
+
+            resolve({
+              playerHand,
+              newCard,
+              status,
+            });
+          }
+        );
+      }
+    );
+  });
+}
+
 // Utility: Draw a random card
 function drawCard() {
   const suits = ['♠', '♥', '♦', '♣'];
@@ -833,10 +920,14 @@ function drawCard() {
 
 // Utility: Calculate the total value of a Blackjack hand
 function calculateHandTotal(hand) {
+  if (!Array.isArray(hand)) return 0;
+
   let total = 0;
   let aces = 0;
 
   for (const card of hand) {
+    if (!card || !card.value) continue;
+
     if (card.value === 'A') {
       aces++;
     } else if (['K', 'Q', 'J'].includes(card.value)) {
@@ -853,11 +944,85 @@ function calculateHandTotal(hand) {
   return total;
 }
 
+// Perform a "stand" action
+async function blackjackStand(gameID) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT playerHand, dealerHand, bet FROM blackjack_games WHERE gameID = ? AND status = 'active'`,
+      [gameID],
+      (err, row) => {
+        if (err || !row) {
+          return reject('Failed to retrieve the game.');
+        }
+
+        const playerHand = JSON.parse(row.playerHand || '[]');
+        let dealerHand = JSON.parse(row.dealerHand || '[]');
+        const bet = row.bet;
+
+        const playerTotal = calculateHandTotal(playerHand);
+        let dealerTotal = calculateHandTotal(dealerHand);
+
+        // Dealer logic: draw cards until total is at least 17
+        while (dealerTotal < 17) {
+          const newCard = drawCard();
+          dealerHand.push(newCard);
+          dealerTotal = calculateHandTotal(dealerHand);
+        }
+
+        let status;
+        let winnings = 0;
+
+        if (playerTotal > 21) {
+          status = 'dealer_win';
+        } else if (dealerTotal > 21 || playerTotal > dealerTotal) {
+          status = 'player_win';
+          winnings = bet * 2;
+        } else if (playerTotal < dealerTotal) {
+          status = 'dealer_win';
+        } else {
+          status = 'draw';
+          winnings = bet; // Return bet in case of a draw
+        }
+
+        // Update the game and player balance
+        db.serialize(() => {
+          db.run(
+            `UPDATE blackjack_games SET dealerHand = ?, status = ? WHERE gameID = ?`,
+            [JSON.stringify(dealerHand), status, gameID],
+            (updateErr) => {
+              if (updateErr) {
+                return reject('Failed to update game status.');
+              }
+
+              if (winnings > 0) {
+                db.run(
+                  `UPDATE economy SET wallet = wallet + ? WHERE userID = (SELECT userID FROM blackjack_games WHERE gameID = ?)`,
+                  [winnings, gameID],
+                  (walletErr) => {
+                    if (walletErr) {
+                      return reject('Failed to update wallet balance.');
+                    }
+                    resolve({ status, playerHand, dealerHand, playerTotal, dealerTotal, winnings });
+                  }
+                );
+              } else {
+                resolve({ status, playerHand, dealerHand, playerTotal, dealerTotal, winnings });
+              }
+            }
+          );
+        });
+      }
+    );
+  });
+}
 // =========================================================================
 // Exports
 // =========================================================================
 module.exports = {
   db,
+  addAdmin,
+  removeAdmin,
+  updateWallet,
   initUserEconomy,
   getBalances,
   transferFromWallet,
@@ -867,6 +1032,8 @@ module.exports = {
   withdraw,
   getActiveGames,
   startBlackjackGame,
+  blackjackHit,
+  blackjackStand,
   drawCard,
   calculateHandTotal,
   getShopItems,

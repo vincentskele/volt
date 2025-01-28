@@ -1,6 +1,7 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { PermissionsBitField } = require('discord.js');
 const db = require('../../db');
+const { currency, formatCurrency } = require('../../currency'); // Import currency module
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -25,6 +26,7 @@ module.exports = {
   async execute(interaction) {
     const { options, member } = interaction;
 
+    // Check for admin permissions
     if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
       return interaction.reply({ content: '🚫 Only admins can complete jobs.', ephemeral: true });
     }
@@ -33,8 +35,9 @@ module.exports = {
     const jobID = options.getInteger('jobid');
     const reward = options.getInteger('reward');
 
-    if (!targetUser || !jobID || !reward) {
-      return interaction.reply({ content: '🚫 All fields (user, job ID, reward) are required.', ephemeral: true });
+    // Validate input
+    if (!targetUser || !jobID || reward <= 0) {
+      return interaction.reply({ content: '🚫 All fields (user, job ID, reward) are required, and reward must be positive.', ephemeral: true });
     }
 
     try {
@@ -45,12 +48,13 @@ module.exports = {
       if (result.notAssigned) {
         return interaction.reply({ content: `🚫 <@${targetUser.id}> is not assigned to job ${jobID}.`, ephemeral: true });
       }
+
       return interaction.reply(
-        `✅ Completed job ${jobID} for <@${targetUser.id}> with reward **${reward}** 🍕!`
+        `✅ Completed job ${jobID} for <@${targetUser.id}> with reward **${formatCurrency(reward)}**!`
       );
     } catch (err) {
       console.error('Complete Job Slash Error:', err);
       return interaction.reply({ content: `🚫 Complete job failed: ${err.message || err}`, ephemeral: true });
     }
-  }
+  },
 };
