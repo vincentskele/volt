@@ -3,6 +3,7 @@ const { formatCurrency } = require('../../currency');
 const db = require('../../db');
 
 module.exports = {
+  // Slash command registration
   data: new SlashCommandBuilder()
     .setName('balance')
     .setDescription('Check your balance or another user\'s balance.')
@@ -11,28 +12,62 @@ module.exports = {
         .setDescription('The user to check the balance of')
         .setRequired(false)),
 
+  // Slash command execution
   async execute(interaction) {
-    try {
-      // Get the target user or default to the interaction user
-      const targetUser = interaction.options.getUser('user') || interaction.user;
+    await handleBalanceCommand(interaction, true);
+  },
 
-      // Fetch balances from the database
-      const { wallet, bank } = await db.getBalances(targetUser.id);
+  // Prefix command execution
+  async executePrefix(message, args) {
+    const targetUser = message.mentions.users.first() || message.author;
+    await handleBalanceCommand(message, false, targetUser);
+  },
+};
 
-      // Reply with the user's balance
-      await interaction.reply(
-        `**${targetUser.username}'s Balance**\n` +
-        `Wallet: ${formatCurrency(wallet)}\n` +
-        `Bank: ${formatCurrency(bank)}\n` +
-        `Total: ${formatCurrency(wallet + bank)}`
-      );
-    } catch (err) {
-      console.error('Error in /balance command:', err);
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({ content: '🚫 Failed to retrieve balance.', ephemeral: true });
+// Shared command handler for both slash and prefix commands
+async function handleBalanceCommand(ctx, isSlash, targetUser = null) {
+  try {
+    let user;
+
+    // Resolve the user based on the command type
+    if (isSlash) {
+      user = ctx.options?.getUser('user') || ctx.user; // Slash command: options user or interaction user
+    } else {
+      user = targetUser; // Prefix command: resolved user from mentions or author
+    }
+
+    if (!user) {
+      throw new Error('Unable to determine user.');
+    }
+
+    // Fetch balances from the database
+    const { wallet, bank } = await db.getBalances(user.id);
+
+    // Format the response
+    const response =
+      `**${user.username}'s Balance**\n` +
+      `Wallet: ${formatCurrency(wallet)}\n` +
+      `Bank: ${formatCurrency(bank)}\n` +
+      `Total: ${formatCurrency(wallet + bank)}`;
+
+    // Send the response
+    if (isSlash) {
+      await ctx.reply(response);
+    } else {
+      await ctx.channel.send(response);
+    }
+  } catch (error) {
+    console.error('Error in balance command:', error);
+
+    const errorMsg = '🚫 Failed to retrieve balance.';
+    if (isSlash) {
+      if (ctx.replied || ctx.deferred) {
+        await ctx.followUp({ content: errorMsg, ephemeral: true });
       } else {
-        await interaction.reply({ content: '🚫 Failed to retrieve balance.', ephemeral: true });
+        await ctx.reply({ content: errorMsg, ephemeral: true });
       }
+    } else {
+      await ctx.channel.send(errorMsg).catch(console.error);
     }
   }
-};
+}
