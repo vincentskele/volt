@@ -11,8 +11,18 @@ module.exports = {
     .setDescription('Create a giveaway for currency or shop items.')
     .addIntegerOption(option =>
       option.setName('duration')
-        .setDescription('Duration of the giveaway in minutes')
+        .setDescription('Duration of the giveaway')
         .setRequired(true)
+    )
+    .addStringOption(option =>
+      option.setName('timeunit')
+        .setDescription('Unit of time: minutes, hours, or days')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Minutes', value: 'minutes' },
+          { name: 'Hours', value: 'hours' },
+          { name: 'Days', value: 'days' }
+        )
     )
     .addIntegerOption(option =>
       option.setName('winners')
@@ -27,28 +37,48 @@ module.exports = {
 
   async execute(...args) {
     let isPrefix = false;
-    let duration, winners, prizeInput;
+    let duration, timeUnit, winners, prizeInput;
     let interaction;
 
     if (args[0] === 'prefix') {
       isPrefix = true;
       interaction = args[1];
       const commandArgs = args[2];
+
       duration = parseInt(commandArgs[0], 10);
-      winners = parseInt(commandArgs[1], 10);
-      prizeInput = commandArgs.slice(2).join(' ');
+      timeUnit = commandArgs[1].toLowerCase();
+      winners = parseInt(commandArgs[2], 10);
+      prizeInput = commandArgs.slice(3).join(' ');
     } else {
       interaction = args[0];
       duration = interaction.options.getInteger('duration');
+      timeUnit = interaction.options.getString('timeunit');
       winners = interaction.options.getInteger('winners');
       prizeInput = interaction.options.getString('prize');
     }
 
     if (isNaN(duration) || duration <= 0) {
-      return interaction.reply({ content: '🚫 Please provide a valid duration (in minutes).', ephemeral: true });
+      return interaction.reply({ content: '🚫 Please provide a valid duration.', ephemeral: true });
+    }
+    if (!['minutes', 'hours', 'days'].includes(timeUnit)) {
+      return interaction.reply({ content: '🚫 Invalid time unit. Use minutes, hours, or days.', ephemeral: true });
     }
     if (isNaN(winners) || winners <= 0) {
       return interaction.reply({ content: '🚫 Please provide a valid number of winners.', ephemeral: true });
+    }
+
+    // Convert time to milliseconds
+    let durationMs;
+    switch (timeUnit) {
+      case 'minutes':
+        durationMs = duration * 60 * 1000;
+        break;
+      case 'hours':
+        durationMs = duration * 60 * 60 * 1000;
+        break;
+      case 'days':
+        durationMs = duration * 24 * 60 * 60 * 1000;
+        break;
     }
 
     const prizeCurrency = parseInt(prizeInput, 10);
@@ -64,7 +94,7 @@ module.exports = {
     const giveawayAnnouncement = `🎉 **GIVEAWAY TIME!** 🎉
 
 React with 🎉 to join!
-**Duration:** ${duration} minute(s)
+**Duration:** ${duration} ${timeUnit}
 **Winners:** ${winners}
 **Prize:** ${prizeType === 'currency' ? `${prizeValue} ${CURRENCY_SYMBOL}${CURRENCY_NAME}` : prizeValue}`;
 
@@ -87,7 +117,7 @@ React with 🎉 to join!
       console.error('Failed to add reaction:', err);
     }
 
-    interaction.followUp({ content: `✅ Giveaway started! It will end in ${duration} minute(s).`, ephemeral: true });
+    interaction.followUp({ content: `✅ Giveaway started! It will end in ${duration} ${timeUnit}.`, ephemeral: true });
 
     setTimeout(async () => {
       try {
@@ -132,6 +162,6 @@ React with 🎉 to join!
       } catch (err) {
         console.error('Error concluding giveaway:', err);
       }
-    }, duration * 60000);
+    }, durationMs);
   },
 };
