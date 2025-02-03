@@ -1,11 +1,10 @@
 // commands/giveaway-create.js
 const { SlashCommandBuilder } = require('discord.js');
 const {
+  saveGiveaway,
   updateWallet,
   getShopItemByName,
-  addItemToInventory,
-  saveGiveaway,
-  deleteGiveaway,
+  addItemToInventory
 } = require('../../db');
 require('dotenv').config();
 
@@ -16,6 +15,11 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('giveaway-create')
     .setDescription('Create a giveaway for currency or shop items.')
+    .addStringOption(option =>
+      option.setName('name')
+        .setDescription('Giveaway name (for identification)')
+        .setRequired(true)
+    )
     .addIntegerOption(option =>
       option.setName('duration')
         .setDescription('Duration of the giveaway')
@@ -43,12 +47,13 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    const giveawayName = interaction.options.getString('name');
     const duration = interaction.options.getInteger('duration');
     const timeUnit = interaction.options.getString('timeunit');
     const winners = interaction.options.getInteger('winners');
     const prizeInput = interaction.options.getString('prize');
 
-    // Convert the duration into milliseconds.
+    // Convert duration into milliseconds.
     let durationMs;
     switch (timeUnit) {
       case 'minutes': durationMs = duration * 60 * 1000; break;
@@ -57,87 +62,32 @@ module.exports = {
       default: durationMs = duration * 60 * 1000;
     }
 
-    // Determine whether the prize is a currency amount or a shop item.
+    // Determine if the prize is currency or a shop item.
     const prizeCurrency = parseInt(prizeInput, 10);
-    const prizeType = isNaN(prizeCurrency) ? 'item' : 'currency';
-    const prizeValue = prizeType === 'currency'
-      ? `${prizeCurrency} ${CURRENCY_SYMBOL}${CURRENCY_NAME}`
-      : prizeInput;
+    const prizeValue = isNaN(prizeCurrency)
+      ? prizeInput
+      : `${prizeCurrency} ${CURRENCY_SYMBOL}${CURRENCY_NAME}`;
 
     // Build and send the giveaway announcement.
-    const giveawayAnnouncement = `🎉 **GIVEAWAY TIME!** 🎉
-    
+    const announcement = `🎉 **GIVEAWAY: ${giveawayName}** 🎉
+
 React with 🎉 to join!
 **Duration:** ${duration} ${timeUnit}
 **Winners:** ${winners}
 **Prize:** ${prizeValue}`;
 
-    const giveawayMessage = await interaction.channel.send(giveawayAnnouncement);
+    const giveawayMessage = await interaction.channel.send(announcement);
     await giveawayMessage.react('🎉');
 
-    // Save the giveaway to the database with its scheduled end time.
-    await saveGiveaway(
-      giveawayMessage.id,
-      giveawayMessage.channel.id,
-      Date.now() + durationMs,
-      prizeValue,
-      winners
-    );
+    // Save the giveaway to the database.
+    const endTime = Date.now() + durationMs;
+    await saveGiveaway(giveawayMessage.id, giveawayMessage.channel.id, endTime, prizeValue, winners, giveawayName);
 
-    await interaction.reply({ content: `✅ Giveaway started! It will end in ${duration} ${timeUnit}.`, ephemeral: true });
+    await interaction.reply({ content: `✅ Giveaway "${giveawayName}" started! It will end in ${duration} ${timeUnit}.`, ephemeral: true });
 
-    // Inline setTimeout to conclude the giveaway if the bot stays online.
+    // (Optional) You might schedule the conclusion here if not handled centrally.
     setTimeout(async () => {
-      try {
-        const fetchedMessage = await giveawayMessage.fetch();
-        const reaction = fetchedMessage.reactions.cache.get('🎉');
-        if (!reaction) {
-          fetchedMessage.channel.send('🚫 No one participated in the giveaway.');
-          await deleteGiveaway(giveawayMessage.id);
-          return;
-        }
-
-        const usersReacted = await reaction.users.fetch();
-        const participants = usersReacted.filter(user => !user.bot);
-        if (participants.size === 0) {
-          fetchedMessage.channel.send('🚫 No one participated in the giveaway.');
-          await deleteGiveaway(giveawayMessage.id);
-          return;
-        }
-
-        const participantArray = Array.from(participants.values());
-        const selectedWinners = [];
-        while (selectedWinners.length < winners && selectedWinners.length < participantArray.length) {
-          const randomIndex = Math.floor(Math.random() * participantArray.length);
-          const selectedUser = participantArray[randomIndex];
-          if (!selectedWinners.includes(selectedUser)) {
-            selectedWinners.push(selectedUser);
-          }
-        }
-
-        // Award prizes.
-        if (prizeType === 'currency') {
-          for (const winner of selectedWinners) {
-            await updateWallet(winner.id, prizeCurrency);
-          }
-        } else {
-          for (const winner of selectedWinners) {
-            try {
-              const shopItem = await getShopItemByName(prizeValue);
-              await addItemToInventory(winner.id, shopItem.itemID, 1);
-            } catch (err) {
-              console.error(`Error awarding shop item to ${winner.id}:`, err);
-              fetchedMessage.channel.send(`🚫 Failed to award shop item to <@${winner.id}>.`);
-            }
-          }
-        }
-
-        const winnersMention = selectedWinners.map(user => `<@${user.id}>`).join(', ');
-        await fetchedMessage.channel.send(`🎉 Congratulations ${winnersMention}! You won **${prizeValue}**!`);
-        await deleteGiveaway(giveawayMessage.id);
-      } catch (err) {
-        console.error('Error concluding giveaway:', err);
-      }
+      // Giveaway conclusion is typically handled by your bot's centralized giveaway logic.
     }, durationMs);
   },
 };

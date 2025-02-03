@@ -19,6 +19,7 @@ function initializeDatabase() {
   db.serialize(() => {
     console.log('Initializing database tables...');
 
+    // Economy table
     db.run(`
       CREATE TABLE IF NOT EXISTS economy (
         userID TEXT PRIMARY KEY,
@@ -27,6 +28,7 @@ function initializeDatabase() {
       )
     `);
 
+    // Items table
     db.run(`
       CREATE TABLE IF NOT EXISTS items (
         itemID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,6 +39,7 @@ function initializeDatabase() {
       )
     `);
 
+    // Inventory table
     db.run(`
       CREATE TABLE IF NOT EXISTS inventory (
         userID TEXT,
@@ -47,12 +50,14 @@ function initializeDatabase() {
       )
     `);
 
+    // Admins table
     db.run(`
       CREATE TABLE IF NOT EXISTS admins (
         userID TEXT PRIMARY KEY
       )
     `);
 
+    // Blackjack games table
     db.run(`
       CREATE TABLE IF NOT EXISTS blackjack_games (
         gameID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,6 +70,7 @@ function initializeDatabase() {
       )
     `);
 
+    // Joblist table
     db.run(`
       CREATE TABLE IF NOT EXISTS joblist (
         jobID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,6 +78,7 @@ function initializeDatabase() {
       )
     `);
 
+    // Giveaways table
     db.run(`
       CREATE TABLE IF NOT EXISTS giveaways (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,6 +90,17 @@ function initializeDatabase() {
       )
     `);
 
+    // Giveaway entries table (persistent state)
+    db.run(`
+      CREATE TABLE IF NOT EXISTS giveaway_entries (
+        giveaway_id INTEGER NOT NULL,
+        user_id TEXT NOT NULL,
+        PRIMARY KEY (giveaway_id, user_id),
+        FOREIGN KEY (giveaway_id) REFERENCES giveaways(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Job assignees table
     db.run(`
       CREATE TABLE IF NOT EXISTS job_assignees (
         jobID INTEGER,
@@ -91,17 +109,15 @@ function initializeDatabase() {
       )
     `);
 
-  
     console.log('Database initialization complete.');
   });
 }
-
 
 // =========================================================================
 // Giveaway Functions
 // =========================================================================
 
-// Save a new giveaway
+// Save a new giveaway and return its auto-generated id.
 async function saveGiveaway(messageId, channelId, endTime, prize, winners) {
   return new Promise((resolve, reject) => {
     db.run(
@@ -109,29 +125,103 @@ async function saveGiveaway(messageId, channelId, endTime, prize, winners) {
       [messageId, channelId, endTime, prize, winners],
       function (err) {
         if (err) reject(err);
-        resolve(this.lastID);
+        else resolve(this.lastID);
       }
     );
   });
 }
 
-// Get all active giveaways
+// Get all active giveaways.
 async function getActiveGiveaways() {
   return new Promise((resolve, reject) => {
-    db.all('SELECT * FROM giveaways WHERE end_time > ?', [Date.now()], (err, rows) => {
-      if (err) reject(err);
-      resolve(rows);
-    });
+    db.all(
+      'SELECT * FROM giveaways WHERE end_time > ?',
+      [Date.now()],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      }
+    );
   });
 }
 
-// Delete a giveaway after completion
+// Delete a giveaway by its message_id.
 async function deleteGiveaway(messageId) {
   return new Promise((resolve, reject) => {
     db.run('DELETE FROM giveaways WHERE message_id = ?', [messageId], function (err) {
       if (err) reject(err);
-      resolve();
+      else resolve();
     });
+  });
+}
+
+// Get a giveaway by its message_id.
+async function getGiveawayByMessageId(messageId) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      'SELECT * FROM giveaways WHERE message_id = ?',
+      [messageId],
+      (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      }
+    );
+  });
+}
+
+// Record a giveaway entry (i.e. when a user reacts).
+async function addGiveawayEntry(giveawayId, userId) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'INSERT OR IGNORE INTO giveaway_entries (giveaway_id, user_id) VALUES (?, ?)',
+      [giveawayId, userId],
+      function (err) {
+        if (err) reject(err);
+        else resolve(this.lastID);
+      }
+    );
+  });
+}
+
+// Get all giveaway entries (user IDs) for a specific giveaway.
+async function getGiveawayEntries(giveawayId) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      'SELECT user_id FROM giveaway_entries WHERE giveaway_id = ?',
+      [giveawayId],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows.map(row => row.user_id));
+      }
+    );
+  });
+}
+
+// Remove a giveaway entry when a reaction is removed.
+async function removeGiveawayEntry(giveawayId, userId) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'DELETE FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?',
+      [giveawayId, userId],
+      function (err) {
+        if (err) reject(err);
+        else resolve();
+      }
+    );
+  });
+}
+
+// Clear all giveaway entries for a given giveaway (used when syncing reactions).
+async function clearGiveawayEntries(giveawayId) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'DELETE FROM giveaway_entries WHERE giveaway_id = ?',
+      [giveawayId],
+      function (err) {
+        if (err) reject(err);
+        else resolve();
+      }
+    );
   });
 }
 
@@ -157,7 +247,7 @@ async function getBalances(userID) {
       [userID],
       (err, row) => {
         if (err) return reject('Balance check failed');
-        resolve(row || { wallet: 0, bank: 0 });
+        else resolve(row || { wallet: 0, bank: 0 });
       }
     );
   });
@@ -175,28 +265,19 @@ async function addAdmin(userID) {
 
 async function getAdmins() {
   return new Promise((resolve, reject) => {
-    db.all(
-      `SELECT userID FROM admins`,
-      [],
-      (err, rows) => {
-        if (err) return reject('Failed to retrieve admins.');
-        const adminIDs = rows.map((row) => row.userID);
-        resolve(adminIDs);
-      }
-    );
+    db.all(`SELECT userID FROM admins`, [], (err, rows) => {
+      if (err) return reject('Failed to retrieve admins.');
+      else resolve(rows.map((row) => row.userID));
+    });
   });
 }
 
 async function removeAdmin(userID) {
   return new Promise((resolve, reject) => {
-    db.run(
-      `DELETE FROM admins WHERE userID = ?`,
-      [userID],
-      function (err) {
-        if (err) return reject('Failed to remove admin.');
-        resolve({ changes: this.changes });
-      }
-    );
+    db.run(`DELETE FROM admins WHERE userID = ?`, [userID], function (err) {
+      if (err) return reject('Failed to remove admin.');
+      else resolve({ changes: this.changes });
+    });
   });
 }
 
@@ -208,7 +289,7 @@ async function updateWallet(userID, amount) {
       [amount, userID],
       function (err) {
         if (err) return reject('Failed to update wallet balance.');
-        resolve({ changes: this.changes });
+        else resolve({ changes: this.changes });
       }
     );
   });
@@ -220,40 +301,28 @@ async function transferFromWallet(fromUserID, toUserID, amount) {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
       db.run('BEGIN TRANSACTION');
-      db.get(
-        `SELECT wallet FROM economy WHERE userID = ?`,
-        [fromUserID],
-        (err, row) => {
-          if (err || !row || row.wallet < amount) {
-            db.run('ROLLBACK', () => reject('Insufficient funds or error occurred.'));
+      db.get(`SELECT wallet FROM economy WHERE userID = ?`, [fromUserID], (err, row) => {
+        if (err || !row || row.wallet < amount) {
+          db.run('ROLLBACK', () => reject('Insufficient funds or error occurred.'));
+          return;
+        }
+        db.run(`UPDATE economy SET wallet = wallet - ? WHERE userID = ?`, [amount, fromUserID], (err) => {
+          if (err) {
+            db.run('ROLLBACK', () => reject('Failed to deduct funds.'));
             return;
           }
-          db.run(
-            `UPDATE economy SET wallet = wallet - ? WHERE userID = ?`,
-            [amount, fromUserID],
-            (err) => {
-              if (err) {
-                db.run('ROLLBACK', () => reject('Failed to deduct funds.'));
-                return;
-              }
-              db.run(
-                `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
-                [amount, toUserID],
-                (err) => {
-                  if (err) {
-                    db.run('ROLLBACK', () => reject('Failed to add funds.'));
-                    return;
-                  }
-                  db.run('COMMIT', (err) => {
-                    if (err) reject('Transaction commit failed.');
-                    else resolve();
-                  });
-                }
-              );
+          db.run(`UPDATE economy SET wallet = wallet + ? WHERE userID = ?`, [amount, toUserID], (err) => {
+            if (err) {
+              db.run('ROLLBACK', () => reject('Failed to add funds.'));
+              return;
             }
-          );
-        }
-      );
+            db.run('COMMIT', (err) => {
+              if (err) reject('Transaction commit failed.');
+              else resolve();
+            });
+          });
+        });
+      });
     });
   });
 }
@@ -263,23 +332,15 @@ async function withdraw(userID, amount) {
   await initUserEconomy(userID);
   return new Promise((resolve, reject) => {
     db.serialize(() => {
-      db.get(
-        `SELECT bank FROM economy WHERE userID = ?`,
-        [userID],
-        (err, row) => {
-          if (err || !row || row.bank < amount) {
-            return reject('Insufficient funds in the bank or error occurred.');
-          }
-          db.run(
-            `UPDATE economy SET bank = bank - ?, wallet = wallet + ? WHERE userID = ?`,
-            [amount, amount, userID],
-            (err) => {
-              if (err) return reject('Failed to process withdrawal.');
-              resolve();
-            }
-          );
+      db.get(`SELECT bank FROM economy WHERE userID = ?`, [userID], (err, row) => {
+        if (err || !row || row.bank < amount) {
+          return reject('Insufficient funds in the bank or error occurred.');
         }
-      );
+        db.run(`UPDATE economy SET bank = bank - ?, wallet = wallet + ? WHERE userID = ?`, [amount, amount, userID], (err) => {
+          if (err) return reject('Failed to process withdrawal.');
+          resolve();
+        });
+      });
     });
   });
 }
@@ -289,23 +350,15 @@ async function deposit(userID, amount) {
   await initUserEconomy(userID);
   return new Promise((resolve, reject) => {
     db.serialize(() => {
-      db.get(
-        `SELECT wallet FROM economy WHERE userID = ?`,
-        [userID],
-        (err, row) => {
-          if (err || !row || row.wallet < amount) {
-            return reject('Insufficient funds in wallet.');
-          }
-          db.run(
-            `UPDATE economy SET wallet = wallet - ?, bank = bank + ? WHERE userID = ?`,
-            [amount, amount, userID],
-            (err) => {
-              if (err) return reject('Failed to deposit funds.');
-              resolve();
-            }
-          );
+      db.get(`SELECT wallet FROM economy WHERE userID = ?`, [userID], (err, row) => {
+        if (err || !row || row.wallet < amount) {
+          return reject('Insufficient funds in wallet.');
         }
-      );
+        db.run(`UPDATE economy SET wallet = wallet - ?, bank = bank + ? WHERE userID = ?`, [amount, amount, userID], (err) => {
+          if (err) return reject('Failed to deposit funds.');
+          resolve();
+        });
+      });
     });
   });
 }
@@ -315,82 +368,62 @@ async function robUser(robberId, targetId) {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
       db.run('BEGIN TRANSACTION');
-      db.get(
-        `SELECT wallet FROM economy WHERE userID = ?`,
-        [targetId],
-        (err, targetRow) => {
-          if (err || !targetRow) {
-            db.run('ROLLBACK');
-            return reject('Error retrieving target user wallet.');
-          }
-          const targetWallet = targetRow.wallet;
-          if (targetWallet <= 0) {
-            db.run('ROLLBACK');
-            return resolve({
-              success: false,
-              message: 'Target has no money to rob!',
-            });
-          }
-          const isSuccessful = Math.random() < 0.5;
-          const amountStolen = Math.min(targetWallet, 100);
-          const penalty = 50;
-          if (isSuccessful) {
-            db.run(
-              `UPDATE economy SET wallet = wallet - ? WHERE userID = ?`,
-              [amountStolen, targetId],
-              (err) => {
-                if (err) {
-                  db.run('ROLLBACK');
-                  return reject('Failed to deduct money from the target.');
-                }
-                db.run(
-                  `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
-                  [amountStolen, robberId],
-                  (err) => {
-                    if (err) {
-                      db.run('ROLLBACK');
-                      return reject('Failed to add money to the robber.');
-                    }
-                    db.run('COMMIT');
-                    return resolve({
-                      success: true,
-                      outcome: 'success',
-                      amountStolen,
-                    });
-                  }
-                );
-              }
-            );
-          } else {
-            db.run(
-              `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
-              [penalty, targetId],
-              (err) => {
-                if (err) {
-                  db.run('ROLLBACK');
-                  return reject('Failed to add penalty money to the target.');
-                }
-                db.run(
-                  `UPDATE economy SET wallet = wallet - ? WHERE userID = ?`,
-                  [penalty, robberId],
-                  (err) => {
-                    if (err) {
-                      db.run('ROLLBACK');
-                      return reject('Failed to deduct penalty money from the robber.');
-                    }
-                    db.run('COMMIT');
-                    return resolve({
-                      success: true,
-                      outcome: 'fail',
-                      penalty,
-                    });
-                  }
-                );
-              }
-            );
-          }
+      db.get(`SELECT wallet FROM economy WHERE userID = ?`, [targetId], (err, targetRow) => {
+        if (err || !targetRow) {
+          db.run('ROLLBACK');
+          return reject('Error retrieving target user wallet.');
         }
-      );
+        const targetWallet = targetRow.wallet;
+        if (targetWallet <= 0) {
+          db.run('ROLLBACK');
+          return resolve({
+            success: false,
+            message: 'Target has no money to rob!',
+          });
+        }
+        const isSuccessful = Math.random() < 0.5;
+        const amountStolen = Math.min(targetWallet, 100);
+        const penalty = 50;
+        if (isSuccessful) {
+          db.run(`UPDATE economy SET wallet = wallet - ? WHERE userID = ?`, [amountStolen, targetId], (err) => {
+            if (err) {
+              db.run('ROLLBACK');
+              return reject('Failed to deduct money from the target.');
+            }
+            db.run(`UPDATE economy SET wallet = wallet + ? WHERE userID = ?`, [amountStolen, robberId], (err) => {
+              if (err) {
+                db.run('ROLLBACK');
+                return reject('Failed to add money to the robber.');
+              }
+              db.run('COMMIT');
+              return resolve({
+                success: true,
+                outcome: 'success',
+                amountStolen,
+              });
+            });
+          });
+        } else {
+          db.run(`UPDATE economy SET wallet = wallet + ? WHERE userID = ?`, [penalty, targetId], (err) => {
+            if (err) {
+              db.run('ROLLBACK');
+              return reject('Failed to add penalty money to the target.');
+            }
+            db.run(`UPDATE economy SET wallet = wallet - ? WHERE userID = ?`, [penalty, robberId], (err) => {
+              if (err) {
+                db.run('ROLLBACK');
+                return reject('Failed to deduct penalty money from the robber.');
+              }
+              db.run('COMMIT');
+              return resolve({
+                success: true,
+                outcome: 'fail',
+                penalty,
+              });
+            });
+          });
+        }
+      });
     });
   });
 }
@@ -404,22 +437,17 @@ function addJob(description) {
     if (!description || typeof description !== 'string') {
       return reject('Invalid job description');
     }
-    db.run(
-      `INSERT INTO joblist (description) VALUES (?)`,
-      [description],
-      function (err) {
-        if (err) return reject('Failed to add job');
-        // Renumber job IDs after adding the job
-        renumberJobs()
-          .then(() =>
-            resolve({
-              jobID: this.lastID,
-              description,
-            })
-          )
-          .catch(reject);
-      }
-    );
+    db.run(`INSERT INTO joblist (description) VALUES (?)`, [description], function (err) {
+      if (err) return reject('Failed to add job');
+      renumberJobs()
+        .then(() =>
+          resolve({
+            jobID: this.lastID,
+            description,
+          })
+        )
+        .catch(reject);
+    });
   });
 }
 
@@ -454,53 +482,45 @@ function assignRandomJob(userID) {
     if (!userID) return reject('Invalid user ID');
     db.serialize(() => {
       db.run('BEGIN TRANSACTION');
-      db.get(
-        `SELECT COUNT(*) as count FROM job_assignees WHERE userID = ?`,
-        [userID],
-        (err) => {
-          if (err) {
-            db.run('ROLLBACK');
-            return reject('Failed to check existing assignments');
-          }
-          db.get(
-            `
-            SELECT j.jobID, j.description
-            FROM joblist j
-            WHERE j.jobID NOT IN (
-              SELECT jobID FROM job_assignees WHERE userID = ?
-            )
-            ORDER BY RANDOM() 
-            LIMIT 1
-            `,
-            [userID],
-            (err, job) => {
-              if (err) {
-                db.run('ROLLBACK');
-                return reject('Database error while finding job');
-              }
-              if (!job) {
-                db.run('ROLLBACK');
-                return reject('No available jobs found');
-              }
-              db.run(
-                `INSERT INTO job_assignees (jobID, userID) VALUES (?, ?)`,
-                [job.jobID, userID],
-                (err2) => {
-                  if (err2) {
-                    db.run('ROLLBACK');
-                    return reject('Failed to assign job');
-                  }
-                  db.run('COMMIT');
-                  resolve({
-                    jobID: job.jobID,
-                    description: job.description,
-                  });
-                }
-              );
-            }
-          );
+      db.get(`SELECT COUNT(*) as count FROM job_assignees WHERE userID = ?`, [userID], (err) => {
+        if (err) {
+          db.run('ROLLBACK');
+          return reject('Failed to check existing assignments');
         }
-      );
+        db.get(
+          `
+          SELECT j.jobID, j.description
+          FROM joblist j
+          WHERE j.jobID NOT IN (
+            SELECT jobID FROM job_assignees WHERE userID = ?
+          )
+          ORDER BY RANDOM() 
+          LIMIT 1
+          `,
+          [userID],
+          (err, job) => {
+            if (err) {
+              db.run('ROLLBACK');
+              return reject('Database error while finding job');
+            }
+            if (!job) {
+              db.run('ROLLBACK');
+              return reject('No available jobs found');
+            }
+            db.run(`INSERT INTO job_assignees (jobID, userID) VALUES (?, ?)`, [job.jobID, userID], (err2) => {
+              if (err2) {
+                db.run('ROLLBACK');
+                return reject('Failed to assign job');
+              }
+              db.run('COMMIT');
+              resolve({
+                jobID: job.jobID,
+                description: job.description,
+              });
+            });
+          }
+        );
+      });
     });
   });
 }
@@ -510,79 +530,57 @@ function completeJob(jobID, userID, reward) {
     if (!jobID || !userID || !reward) return reject('Missing required parameters');
     db.serialize(() => {
       db.run('BEGIN TRANSACTION');
-      db.get(
-        `SELECT 1 FROM job_assignees WHERE jobID = ? AND userID = ?`,
-        [jobID, userID],
-        (err, row) => {
-          if (err) {
-            db.run('ROLLBACK');
-            return reject('Database error while checking job assignment');
-          }
-          if (!row) {
-            db.run('ROLLBACK');
-            return resolve({ notAssigned: true });
-          }
-          db.run(
-            `DELETE FROM job_assignees WHERE jobID = ? AND userID = ?`,
-            [jobID, userID],
-            (err2) => {
-              if (err2) {
-                db.run('ROLLBACK');
-                return reject('Failed to remove job assignment');
-              }
-              db.run(
-                `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
-                [reward, userID],
-                (err3) => {
-                  if (err3) {
-                    db.run('ROLLBACK');
-                    return reject('Failed to add reward');
-                  }
-                  db.run('COMMIT');
-                  // Renumber job IDs after job completion
-                  renumberJobs()
-                    .then(() => resolve({ success: true }))
-                    .catch(reject);
-                }
-              );
-            }
-          );
+      db.get(`SELECT 1 FROM job_assignees WHERE jobID = ? AND userID = ?`, [jobID, userID], (err, row) => {
+        if (err) {
+          db.run('ROLLBACK');
+          return reject('Database error while checking job assignment');
         }
-      );
+        if (!row) {
+          db.run('ROLLBACK');
+          return resolve({ notAssigned: true });
+        }
+        db.run(`DELETE FROM job_assignees WHERE jobID = ? AND userID = ?`, [jobID, userID], (err2) => {
+          if (err2) {
+            db.run('ROLLBACK');
+            return reject('Failed to remove job assignment');
+          }
+          db.run(`UPDATE economy SET wallet = wallet + ? WHERE userID = ?`, [reward, userID], (err3) => {
+            if (err3) {
+              db.run('ROLLBACK');
+              return reject('Failed to add reward');
+            }
+            db.run('COMMIT');
+            renumberJobs()
+              .then(() => resolve({ success: true }))
+              .catch(reject);
+          });
+        });
+      });
     });
   });
 }
 
-// Renumber job IDs to ensure they are sequential
 function renumberJobs() {
   return new Promise((resolve, reject) => {
-    db.all(
-      `SELECT jobID FROM joblist ORDER BY jobID`,
-      [],
-      (err, rows) => {
-        if (err) return reject('Failed to retrieve jobs for renumbering');
-        const jobs = rows.map((row, index) => ({ oldID: row.jobID, newID: index + 1 }));
-        db.serialize(() => {
-          db.run('BEGIN TRANSACTION');
-          jobs.forEach(({ oldID, newID }) => {
-            db.run(
-              `UPDATE joblist SET jobID = ? WHERE jobID = ?`,
-              [newID, oldID],
-              (err2) => {
-                if (err2) {
-                  db.run('ROLLBACK');
-                  return reject('Failed to renumber job IDs');
-                }
-              }
-            );
-          });
-          db.run('COMMIT', (err3) => {
-            if (err3) return reject('Failed to commit renumbering');
-            resolve();
+    db.all(`SELECT jobID FROM joblist ORDER BY jobID`, [], (err, rows) => {
+      if (err) return reject('Failed to retrieve jobs for renumbering');
+      const jobs = rows.map((row, index) => ({ oldID: row.jobID, newID: index + 1 }));
+      db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
+        jobs.forEach(({ oldID, newID }) => {
+          db.run(`UPDATE joblist SET jobID = ? WHERE jobID = ?`, [newID, oldID], (err2) => {
+            if (err2) {
+              db.run('ROLLBACK');
+              return reject('Failed to renumber job IDs');
+            }
           });
         });
-      }
-    );
+        db.run('COMMIT', (err3) => {
+          if (err3) return reject('Failed to commit renumbering');
+          resolve();
+        });
+      });
+    });
   });
 }
 
@@ -592,52 +590,37 @@ function renumberJobs() {
 
 function getShopItems() {
   return new Promise((resolve, reject) => {
-    db.all(
-      `SELECT * FROM items WHERE isAvailable = 1`,
-      [],
-      (err, rows) => {
-        if (err) {
-          console.error('Error retrieving shop items:', err);
-          return reject('🚫 Shop is currently unavailable. Please try again later.');
-        }
-        resolve(rows || []);
+    db.all(`SELECT * FROM items WHERE isAvailable = 1`, [], (err, rows) => {
+      if (err) {
+        console.error('Error retrieving shop items:', err);
+        return reject('🚫 Shop is currently unavailable. Please try again later.');
       }
-    );
+      resolve(rows || []);
+    });
   });
 }
 
 function getAllJobs() {
   return new Promise((resolve, reject) => {
-    db.all(
-      `SELECT jobID, description FROM joblist ORDER BY jobID ASC`,
-      [],
-      (err, rows) => {
-        if (err) {
-          return reject('Failed to fetch jobs from the database');
-        }
-        resolve(rows); // Returns all job entries
-      }
-    );
+    db.all(`SELECT jobID, description FROM joblist ORDER BY jobID ASC`, [], (err, rows) => {
+      if (err) return reject('Failed to fetch jobs from the database');
+      resolve(rows);
+    });
   });
 }
 
-
 function getShopItemByName(name) {
   return new Promise((resolve, reject) => {
-    db.get(
-      `SELECT * FROM items WHERE name = ? AND isAvailable = 1`,
-      [name],
-      (err, row) => {
-        if (err) {
-          console.error(`Error looking up item "${name}":`, err);
-          return reject('🚫 Unable to retrieve item information. Please try again.');
-        } else if (!row) {
-          return reject(`🚫 The item "${name}" is not available in the shop.`);
-        } else {
-          resolve(row);
-        }
+    db.get(`SELECT * FROM items WHERE name = ? AND isAvailable = 1`, [name], (err, row) => {
+      if (err) {
+        console.error(`Error looking up item "${name}":`, err);
+        return reject('🚫 Unable to retrieve item information. Please try again.');
+      } else if (!row) {
+        return reject(`🚫 The item "${name}" is not available in the shop.`);
+      } else {
+        resolve(row);
       }
-    );
+    });
   });
 }
 
@@ -659,17 +642,13 @@ function addShopItem(price, name, description) {
 
 function removeShopItem(name) {
   return new Promise((resolve, reject) => {
-    db.run(
-      `UPDATE items SET isAvailable = 0 WHERE name = ?`,
-      [name],
-      (err) => {
-        if (err) {
-          console.error(`Error removing item "${name}" from the shop:`, err);
-          return reject('🚫 Failed to remove the item from the shop. Please try again.');
-        }
-        resolve();
+    db.run(`UPDATE items SET isAvailable = 0 WHERE name = ?`, [name], (err) => {
+      if (err) {
+        console.error(`Error removing item "${name}" from the shop:`, err);
+        return reject('🚫 Failed to remove the item from the shop. Please try again.');
       }
-    );
+      resolve();
+    });
   });
 }
 
@@ -692,48 +671,32 @@ function getInventory(userID) {
   });
 }
 
-/**
- * Add (or increment) an item in the user's inventory.
- * If no record exists, a new row is inserted.
- */
 function addItemToInventory(userID, itemID, quantity = 1) {
   return new Promise((resolve, reject) => {
-    db.get(
-      `SELECT quantity FROM inventory WHERE userID = ? AND itemID = ?`,
-      [userID, itemID],
-      (err, row) => {
-        if (err) {
-          console.error('Error finding existing inventory row:', err);
-          return reject(new Error('Failed to find existing inventory.'));
-        }
-        if (!row) {
-          db.run(
-            `INSERT INTO inventory (userID, itemID, quantity) VALUES (?, ?, ?)`,
-            [userID, itemID, quantity],
-            (insertErr) => {
-              if (insertErr) {
-                console.error('Error inserting new inventory row:', insertErr);
-                return reject(new Error('Failed to add item to inventory.'));
-              }
-              resolve();
-            }
-          );
-        } else {
-          const newQuantity = row.quantity + quantity;
-          db.run(
-            `UPDATE inventory SET quantity = ? WHERE userID = ? AND itemID = ?`,
-            [newQuantity, userID, itemID],
-            (updateErr) => {
-              if (updateErr) {
-                console.error('Error updating inventory quantity:', updateErr);
-                return reject(new Error('Failed to update inventory quantity.'));
-              }
-              resolve();
-            }
-          );
-        }
+    db.get(`SELECT quantity FROM inventory WHERE userID = ? AND itemID = ?`, [userID, itemID], (err, row) => {
+      if (err) {
+        console.error('Error finding existing inventory row:', err);
+        return reject(new Error('Failed to find existing inventory.'));
       }
-    );
+      if (!row) {
+        db.run(`INSERT INTO inventory (userID, itemID, quantity) VALUES (?, ?, ?)`, [userID, itemID, quantity], (insertErr) => {
+          if (insertErr) {
+            console.error('Error inserting new inventory row:', insertErr);
+            return reject(new Error('Failed to add item to inventory.'));
+          }
+          resolve();
+        });
+      } else {
+        const newQuantity = row.quantity + quantity;
+        db.run(`UPDATE inventory SET quantity = ? WHERE userID = ? AND itemID = ?`, [newQuantity, userID, itemID], (updateErr) => {
+          if (updateErr) {
+            console.error('Error updating inventory quantity:', updateErr);
+            return reject(new Error('Failed to update inventory quantity.'));
+          }
+          resolve();
+        });
+      }
+    });
   });
 }
 
@@ -793,7 +756,7 @@ async function getActiveGames(userID) {
       [userID],
       (err, rows) => {
         if (err) return reject('Failed to retrieve active games.');
-        resolve(rows || []);
+        else resolve(rows || []);
       }
     );
   });
@@ -802,41 +765,33 @@ async function getActiveGames(userID) {
 async function startBlackjackGame(userID, bet) {
   await initUserEconomy(userID);
   return new Promise((resolve, reject) => {
-    db.get(
-      `SELECT wallet FROM economy WHERE userID = ?`,
-      [userID],
-      (err, row) => {
-        if (err || !row || row.wallet < bet) {
-          return reject('Insufficient wallet balance to start the game.');
+    db.get(`SELECT wallet FROM economy WHERE userID = ?`, [userID], (err, row) => {
+      if (err || !row || row.wallet < bet) {
+        return reject('Insufficient wallet balance to start the game.');
+      }
+      const playerHand = JSON.stringify([drawCard(), drawCard()]);
+      const dealerHand = JSON.stringify([drawCard()]);
+      db.run(`UPDATE economy SET wallet = wallet - ? WHERE userID = ?`, [bet, userID], (updateErr) => {
+        if (updateErr) {
+          return reject('Failed to deduct bet from wallet.');
         }
-        const playerHand = JSON.stringify([drawCard(), drawCard()]);
-        const dealerHand = JSON.stringify([drawCard()]);
         db.run(
-          `UPDATE economy SET wallet = wallet - ? WHERE userID = ?`,
-          [bet, userID],
-          (updateErr) => {
-            if (updateErr) {
-              return reject('Failed to deduct bet from wallet.');
+          `INSERT INTO blackjack_games (userID, bet, playerHand, dealerHand) VALUES (?, ?, ?, ?)`,
+          [userID, bet, playerHand, dealerHand],
+          function (insertErr) {
+            if (insertErr) {
+              return reject('Failed to create new Blackjack game.');
             }
-            db.run(
-              `INSERT INTO blackjack_games (userID, bet, playerHand, dealerHand) VALUES (?, ?, ?, ?)`,
-              [userID, bet, playerHand, dealerHand],
-              function (insertErr) {
-                if (insertErr) {
-                  return reject('Failed to create new Blackjack game.');
-                }
-                resolve({
-                  gameID: this.lastID,
-                  bet,
-                  playerHand: JSON.parse(playerHand),
-                  dealerHand: JSON.parse(dealerHand),
-                });
-              }
-            );
+            resolve({
+              gameID: this.lastID,
+              bet,
+              playerHand: JSON.parse(playerHand),
+              dealerHand: JSON.parse(dealerHand),
+            });
           }
         );
-      }
-    );
+      });
+    });
   });
 }
 
@@ -1006,4 +961,9 @@ module.exports = {
   saveGiveaway,
   getActiveGiveaways,
   deleteGiveaway,
+  getGiveawayByMessageId,
+  addGiveawayEntry,
+  getGiveawayEntries,
+  removeGiveawayEntry,
+  clearGiveawayEntries,
 };

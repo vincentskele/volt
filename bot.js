@@ -1,36 +1,41 @@
 // bot.js
 require('dotenv').config();
-const { Client, GatewayIntentBits, Collection } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, Collection } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+
+// Import the required database functions.
 const {
   getActiveGiveaways,
   deleteGiveaway,
   updateWallet,
   getShopItemByName,
   addItemToInventory,
-  // Note: saveGiveaway is used by the command, but you may also export it here if needed.
-} = require('./db'); // Import your database functions
+  getGiveawayByMessageId,
+  addGiveawayEntry,
+  removeGiveawayEntry,
+  clearGiveawayEntries,
+} = require('./db');
 
-// Initialize the bot client
+// Initialize the bot client with necessary intents and partials.
+// The GuildMessageReactions intent and partials enable the bot to capture reaction events
+// even if the message wasn’t cached or reactions occurred while the bot was offline.
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMessageReactions,
   ],
+  partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
 
 const PREFIX = process.env.PREFIX || '$';
 client.commands = new Collection();
-
-// Command mapping for prefix-based commands
 const commandModules = {};
 
-// Directory to load commands from
+// Dynamically load commands from the "commands" folder.
 const commandsPath = path.join(__dirname, 'commands');
-
-// Load commands dynamically
 const loadCommands = (dir) => {
   console.log(`Scanning directory: ${dir}`);
   const entries = fs.readdirSync(dir);
@@ -47,8 +52,10 @@ const loadCommands = (dir) => {
       try {
         const command = require(fullPath);
         if ('data' in command && 'execute' in command) {
-          client.commands.set(command.data.name, command); // For slash command registration
-          commandModules[command.data.name] = command; // For prefix command registration
+          // For slash commands:
+          client.commands.set(command.data.name, command);
+          // For prefix commands:
+          commandModules[command.data.name] = command;
           console.log(`Loaded command: ${command.data.name}`);
         } else {
           console.warn(`⚠️ Skipped loading "${entry}" due to missing "data" or "execute".`);
@@ -60,14 +67,74 @@ const loadCommands = (dir) => {
   }
 };
 
-// Load all commands from the commands directory
 loadCommands(commandsPath);
 
 /**
- * Unified function to conclude a giveaway.
- * It fetches the giveaway message, collects valid (non‑bot) participants,
- * randomly picks winners, awards the prize (handling both currency and shop items),
- * sends an announcement, and deletes the giveaway from the database.
+ * Synchronize persistent giveaway entries for a given giveaway.
+ * This scans the giveaway message for current 🎉 reactions (ignoring bots) and then clears
+ * the existing persistent entries for that giveaway, re-adding the current list.
+ */
+async function syncGiveawayEntries(giveaway) {
+  try {
+    const channel = await client.channels.fetch(giveaway.channel_id);
+    if (!channel) return;
+    const message = await channel.messages.fetch(giveaway.message_id);
+    if (!message) return;
+    const reaction = message.reactions.cache.get('🎉');
+    let participantIDs = [];
+    if (reaction) {
+      const usersReacted = await reaction.users.fetch();
+      participantIDs = usersReacted.filter(u => !u.bot).map(u => u.id);
+    }
+    // Clear existing entries and re-add current ones.
+    await clearGiveawayEntries(giveaway.id);
+    for (const userId of participantIDs) {
+      await addGiveawayEntry(giveaway.id, userId);
+    }
+    console.log(`Synced persistent entries for giveaway ${giveaway.id}`);
+  } catch (error) {
+    console.error('Error syncing giveaway entries:', error);
+  }
+}
+
+/**
+ * Reaction listener for adding a giveaway entry.
+ * When a user reacts with 🎉, record their entry persistently.
+ */
+client.on('messageReactionAdd', async (reaction, user) => {
+  if (user.bot || reaction.emoji.name !== '🎉') return;
+  try {
+    if (reaction.partial) await reaction.fetch();
+    const giveaway = await getGiveawayByMessageId(reaction.message.id);
+    if (!giveaway) return; // Not a giveaway message.
+    await addGiveawayEntry(giveaway.id, user.id);
+    console.log(`Recorded giveaway entry for user ${user.id} in giveaway ${giveaway.id}`);
+  } catch (err) {
+    console.error('Error recording giveaway entry (add):', err);
+  }
+});
+
+/**
+ * Reaction listener for removing a giveaway entry.
+ * When a user removes their 🎉 reaction, remove their persistent entry.
+ */
+client.on('messageReactionRemove', async (reaction, user) => {
+  if (user.bot || reaction.emoji.name !== '🎉') return;
+  try {
+    if (reaction.partial) await reaction.fetch();
+    const giveaway = await getGiveawayByMessageId(reaction.message.id);
+    if (!giveaway) return;
+    await removeGiveawayEntry(giveaway.id, user.id);
+    console.log(`Removed giveaway entry for user ${user.id} from giveaway ${giveaway.id}`);
+  } catch (err) {
+    console.error('Error handling reaction remove:', err);
+  }
+});
+
+/**
+ * Conclude a giveaway by fetching its message, selecting winners,
+ * awarding prizes, sending an announcement, and deleting the giveaway.
+ * (Winner selection here uses live reactions from the message.)
  */
 async function concludeGiveaway(giveaway) {
   try {
@@ -108,16 +175,15 @@ async function concludeGiveaway(giveaway) {
       }
     }
 
-    // Award prizes
-    // Try to parse the prize as a number to determine if it's a currency giveaway.
+    // Determine if the prize is currency (if it parses as a number) or a shop item.
     const prizeCurrency = parseInt(giveaway.prize, 10);
     for (const winner of selectedWinners) {
       if (!isNaN(prizeCurrency)) {
-        // Currency giveaway
+        // Currency giveaway.
         await updateWallet(winner.id, prizeCurrency);
         console.log(`💰 Updated wallet for ${winner.id}: +${prizeCurrency}`);
       } else {
-        // Shop item giveaway
+        // Shop item giveaway.
         try {
           const shopItem = await getShopItemByName(giveaway.prize);
           await addItemToInventory(winner.id, shopItem.itemID, 1);
@@ -142,20 +208,20 @@ client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}!`);
   console.log(`Bot is ready to use commands with prefix "${PREFIX}".`);
 
-  // Restore active giveaways on bot restart
+  // Restore active giveaways on bot restart.
   const activeGiveaways = await getActiveGiveaways();
   console.log(`🔄 Restoring ${activeGiveaways.length} active giveaways...`);
 
   for (const giveaway of activeGiveaways) {
+    // Sync persistent entries from the live message (to capture reactions made while offline).
+    await syncGiveawayEntries(giveaway);
     const remainingTime = giveaway.end_time - Date.now();
     if (remainingTime > 0) {
-      // If the giveaway is still running, schedule its conclusion.
       setTimeout(async () => {
         await concludeGiveaway(giveaway);
       }, remainingTime);
       console.log(`Scheduled giveaway ${giveaway.message_id} to conclude in ${remainingTime}ms.`);
     } else {
-      // If the giveaway has already ended, conclude it immediately.
       await concludeGiveaway(giveaway);
     }
   }
@@ -185,7 +251,6 @@ client.on('interactionCreate', async (interaction) => {
   if (!interaction.isCommand()) return;
 
   const command = client.commands.get(interaction.commandName);
-
   if (!command) {
     console.error(`No command matching ${interaction.commandName} was found.`);
     return interaction.reply({ content: '🚫 Command not found. Try again or use /help.', ephemeral: true });
