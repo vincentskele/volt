@@ -359,10 +359,15 @@ function addJob(description) {
       [description],
       function (err) {
         if (err) return reject('Failed to add job');
-        resolve({
-          jobID: this.lastID,
-          description,
-        });
+        // Renumber job IDs after adding the job
+        renumberJobs()
+          .then(() =>
+            resolve({
+              jobID: this.lastID,
+              description,
+            })
+          )
+          .catch(reject);
       }
     );
   });
@@ -484,7 +489,10 @@ function completeJob(jobID, userID, reward) {
                     return reject('Failed to add reward');
                   }
                   db.run('COMMIT');
-                  resolve({ success: true });
+                  // Renumber job IDs after job completion
+                  renumberJobs()
+                    .then(() => resolve({ success: true }))
+                    .catch(reject);
                 }
               );
             }
@@ -492,6 +500,39 @@ function completeJob(jobID, userID, reward) {
         }
       );
     });
+  });
+}
+
+// Renumber job IDs to ensure they are sequential
+function renumberJobs() {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT jobID FROM joblist ORDER BY jobID`,
+      [],
+      (err, rows) => {
+        if (err) return reject('Failed to retrieve jobs for renumbering');
+        const jobs = rows.map((row, index) => ({ oldID: row.jobID, newID: index + 1 }));
+        db.serialize(() => {
+          db.run('BEGIN TRANSACTION');
+          jobs.forEach(({ oldID, newID }) => {
+            db.run(
+              `UPDATE joblist SET jobID = ? WHERE jobID = ?`,
+              [newID, oldID],
+              (err2) => {
+                if (err2) {
+                  db.run('ROLLBACK');
+                  return reject('Failed to renumber job IDs');
+                }
+              }
+            );
+          });
+          db.run('COMMIT', (err3) => {
+            if (err3) return reject('Failed to commit renumbering');
+            resolve();
+          });
+        });
+      }
+    );
   });
 }
 
@@ -514,6 +555,22 @@ function getShopItems() {
     );
   });
 }
+
+function getAllJobs() {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT jobID, description FROM joblist ORDER BY jobID ASC`,
+      [],
+      (err, rows) => {
+        if (err) {
+          return reject('Failed to fetch jobs from the database');
+        }
+        resolve(rows); // Returns all job entries
+      }
+    );
+  });
+}
+
 
 function getShopItemByName(name) {
   return new Promise((resolve, reject) => {
@@ -893,4 +950,5 @@ module.exports = {
   getJobList,
   assignRandomJob,
   completeJob,
+  getAllJobs,
 };
