@@ -1,7 +1,14 @@
+// commands/giveaway-create.js
 const { SlashCommandBuilder } = require('discord.js');
-const { updateWallet, getShopItemByName, addItemToInventory } = require('../../db');
+const {
+  updateWallet,
+  getShopItemByName,
+  addItemToInventory,
+  saveGiveaway,
+  deleteGiveaway,
+} = require('../../db');
+require('dotenv').config();
 
-// Load environment variables
 const CURRENCY_NAME = process.env.CURRENCY_NAME || 'Coins';
 const CURRENCY_SYMBOL = process.env.CURRENCY_SYMBOL || '';
 
@@ -35,117 +42,86 @@ module.exports = {
         .setRequired(true)
     ),
 
-  async execute(...args) {
-    let isPrefix = false;
-    let duration, timeUnit, winners, prizeInput;
-    let interaction;
+  async execute(interaction) {
+    const duration = interaction.options.getInteger('duration');
+    const timeUnit = interaction.options.getString('timeunit');
+    const winners = interaction.options.getInteger('winners');
+    const prizeInput = interaction.options.getString('prize');
 
-    if (args[0] === 'prefix') {
-      isPrefix = true;
-      interaction = args[1];
-      const commandArgs = args[2];
-
-      duration = parseInt(commandArgs[0], 10);
-      timeUnit = commandArgs[1].toLowerCase();
-      winners = parseInt(commandArgs[2], 10);
-      prizeInput = commandArgs.slice(3).join(' ');
-    } else {
-      interaction = args[0];
-      duration = interaction.options.getInteger('duration');
-      timeUnit = interaction.options.getString('timeunit');
-      winners = interaction.options.getInteger('winners');
-      prizeInput = interaction.options.getString('prize');
-    }
-
-    if (isNaN(duration) || duration <= 0) {
-      return interaction.reply({ content: '🚫 Please provide a valid duration.', ephemeral: true });
-    }
-    if (!['minutes', 'hours', 'days'].includes(timeUnit)) {
-      return interaction.reply({ content: '🚫 Invalid time unit. Use minutes, hours, or days.', ephemeral: true });
-    }
-    if (isNaN(winners) || winners <= 0) {
-      return interaction.reply({ content: '🚫 Please provide a valid number of winners.', ephemeral: true });
-    }
-
-    // Convert time to milliseconds
+    // Convert the duration into milliseconds.
     let durationMs;
     switch (timeUnit) {
-      case 'minutes':
-        durationMs = duration * 60 * 1000;
-        break;
-      case 'hours':
-        durationMs = duration * 60 * 60 * 1000;
-        break;
-      case 'days':
-        durationMs = duration * 24 * 60 * 60 * 1000;
-        break;
+      case 'minutes': durationMs = duration * 60 * 1000; break;
+      case 'hours': durationMs = duration * 60 * 60 * 1000; break;
+      case 'days': durationMs = duration * 24 * 60 * 60 * 1000; break;
+      default: durationMs = duration * 60 * 1000;
     }
 
+    // Determine whether the prize is a currency amount or a shop item.
     const prizeCurrency = parseInt(prizeInput, 10);
-    let prizeType, prizeValue;
-    if (!isNaN(prizeCurrency)) {
-      prizeType = 'currency';
-      prizeValue = prizeCurrency;
-    } else {
-      prizeType = 'item';
-      prizeValue = prizeInput.trim();
-    }
+    const prizeType = isNaN(prizeCurrency) ? 'item' : 'currency';
+    const prizeValue = prizeType === 'currency'
+      ? `${prizeCurrency} ${CURRENCY_SYMBOL}${CURRENCY_NAME}`
+      : prizeInput;
 
+    // Build and send the giveaway announcement.
     const giveawayAnnouncement = `🎉 **GIVEAWAY TIME!** 🎉
-
+    
 React with 🎉 to join!
 **Duration:** ${duration} ${timeUnit}
 **Winners:** ${winners}
-**Prize:** ${prizeType === 'currency' ? `${prizeValue} ${CURRENCY_SYMBOL}${CURRENCY_NAME}` : prizeValue}`;
+**Prize:** ${prizeValue}`;
 
-    let giveawayMessage;
-    try {
-      if (isPrefix) {
-        giveawayMessage = await interaction.channel.send(giveawayAnnouncement);
-      } else {
-        await interaction.reply(giveawayAnnouncement);
-        giveawayMessage = await interaction.fetchReply();
-      }
-    } catch (err) {
-      console.error('Error sending giveaway announcement:', err);
-      return;
-    }
+    const giveawayMessage = await interaction.channel.send(giveawayAnnouncement);
+    await giveawayMessage.react('🎉');
 
-    try {
-      await giveawayMessage.react('🎉');
-    } catch (err) {
-      console.error('Failed to add reaction:', err);
-    }
+    // Save the giveaway to the database with its scheduled end time.
+    await saveGiveaway(
+      giveawayMessage.id,
+      giveawayMessage.channel.id,
+      Date.now() + durationMs,
+      prizeValue,
+      winners
+    );
 
-    interaction.followUp({ content: `✅ Giveaway started! It will end in ${duration} ${timeUnit}.`, ephemeral: true });
+    await interaction.reply({ content: `✅ Giveaway started! It will end in ${duration} ${timeUnit}.`, ephemeral: true });
 
+    // Inline setTimeout to conclude the giveaway if the bot stays online.
     setTimeout(async () => {
       try {
         const fetchedMessage = await giveawayMessage.fetch();
         const reaction = fetchedMessage.reactions.cache.get('🎉');
-        if (!reaction) return fetchedMessage.channel.send('🚫 No one participated in the giveaway.');
+        if (!reaction) {
+          fetchedMessage.channel.send('🚫 No one participated in the giveaway.');
+          await deleteGiveaway(giveawayMessage.id);
+          return;
+        }
 
         const usersReacted = await reaction.users.fetch();
         const participants = usersReacted.filter(user => !user.bot);
-
         if (participants.size === 0) {
           fetchedMessage.channel.send('🚫 No one participated in the giveaway.');
+          await deleteGiveaway(giveawayMessage.id);
           return;
         }
 
         const participantArray = Array.from(participants.values());
-        const winnersCount = Math.min(winners, participantArray.length);
         const selectedWinners = [];
-        while (selectedWinners.length < winnersCount) {
+        while (selectedWinners.length < winners && selectedWinners.length < participantArray.length) {
           const randomIndex = Math.floor(Math.random() * participantArray.length);
           const selectedUser = participantArray[randomIndex];
-          if (!selectedWinners.includes(selectedUser)) selectedWinners.push(selectedUser);
+          if (!selectedWinners.includes(selectedUser)) {
+            selectedWinners.push(selectedUser);
+          }
         }
 
-        for (const winner of selectedWinners) {
-          if (prizeType === 'currency') {
-            await updateWallet(winner.id, prizeValue);
-          } else {
+        // Award prizes.
+        if (prizeType === 'currency') {
+          for (const winner of selectedWinners) {
+            await updateWallet(winner.id, prizeCurrency);
+          }
+        } else {
+          for (const winner of selectedWinners) {
             try {
               const shopItem = await getShopItemByName(prizeValue);
               await addItemToInventory(winner.id, shopItem.itemID, 1);
@@ -157,8 +133,8 @@ React with 🎉 to join!
         }
 
         const winnersMention = selectedWinners.map(user => `<@${user.id}>`).join(', ');
-        const prizeDisplay = prizeType === 'currency' ? `${prizeValue} ${CURRENCY_SYMBOL}${CURRENCY_NAME}` : prizeValue;
-        fetchedMessage.channel.send(`🎉 Congratulations ${winnersMention}! You won **${prizeDisplay}**!`);
+        await fetchedMessage.channel.send(`🎉 Congratulations ${winnersMention}! You won **${prizeValue}**!`);
+        await deleteGiveaway(giveawayMessage.id);
       } catch (err) {
         console.error('Error concluding giveaway:', err);
       }

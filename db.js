@@ -73,6 +73,17 @@ function initializeDatabase() {
     `);
 
     db.run(`
+      CREATE TABLE IF NOT EXISTS giveaways (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        end_time INTEGER NOT NULL,
+        prize TEXT NOT NULL,
+        winners INTEGER NOT NULL
+      )
+    `);
+
+    db.run(`
       CREATE TABLE IF NOT EXISTS job_assignees (
         jobID INTEGER,
         userID TEXT,
@@ -82,6 +93,45 @@ function initializeDatabase() {
 
   
     console.log('Database initialization complete.');
+  });
+}
+
+
+// =========================================================================
+// Giveaway Functions
+// =========================================================================
+
+// Save a new giveaway
+async function saveGiveaway(messageId, channelId, endTime, prize, winners) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'INSERT INTO giveaways (message_id, channel_id, end_time, prize, winners) VALUES (?, ?, ?, ?, ?)',
+      [messageId, channelId, endTime, prize, winners],
+      function (err) {
+        if (err) reject(err);
+        resolve(this.lastID);
+      }
+    );
+  });
+}
+
+// Get all active giveaways
+async function getActiveGiveaways() {
+  return new Promise((resolve, reject) => {
+    db.all('SELECT * FROM giveaways WHERE end_time > ?', [Date.now()], (err, rows) => {
+      if (err) reject(err);
+      resolve(rows);
+    });
+  });
+}
+
+// Delete a giveaway after completion
+async function deleteGiveaway(messageId) {
+  return new Promise((resolve, reject) => {
+    db.run('DELETE FROM giveaways WHERE message_id = ?', [messageId], function (err) {
+      if (err) reject(err);
+      resolve();
+    });
   });
 }
 
@@ -951,4 +1001,9 @@ module.exports = {
   assignRandomJob,
   completeJob,
   getAllJobs,
+
+  // Giveaway
+  saveGiveaway,
+  getActiveGiveaways,
+  deleteGiveaway,
 };
