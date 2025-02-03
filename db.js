@@ -80,21 +80,7 @@ function initializeDatabase() {
       )
     `);
 
-    db.run(`
-      CREATE TABLE IF NOT EXISTS pets (
-        petID INTEGER PRIMARY KEY AUTOINCREMENT,
-        userID TEXT,
-        name TEXT,
-        type TEXT,
-        level INTEGER DEFAULT 1,
-        exp INTEGER DEFAULT 0,
-        wins INTEGER DEFAULT 0,
-        losses INTEGER DEFAULT 0,
-        lastBattle DATETIME,
-        UNIQUE(userID, name)
-      )
-    `);
-
+  
     console.log('Database initialization complete.');
   });
 }
@@ -121,7 +107,7 @@ async function getBalances(userID) {
       [userID],
       (err, row) => {
         if (err) return reject('Balance check failed');
-        return resolve(row || { wallet: 0, bank: 0 });
+        resolve(row || { wallet: 0, bank: 0 });
       }
     );
   });
@@ -143,9 +129,7 @@ async function getAdmins() {
       `SELECT userID FROM admins`,
       [],
       (err, rows) => {
-        if (err) {
-          return reject('Failed to retrieve admins.');
-        }
+        if (err) return reject('Failed to retrieve admins.');
         const adminIDs = rows.map((row) => row.userID);
         resolve(adminIDs);
       }
@@ -159,9 +143,7 @@ async function removeAdmin(userID) {
       `DELETE FROM admins WHERE userID = ?`,
       [userID],
       function (err) {
-        if (err) {
-          return reject('Failed to remove admin.');
-        }
+        if (err) return reject('Failed to remove admin.');
         resolve({ changes: this.changes });
       }
     );
@@ -175,9 +157,7 @@ async function updateWallet(userID, amount) {
       `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
       [amount, userID],
       function (err) {
-        if (err) {
-          return reject('Failed to update wallet balance.');
-        }
+        if (err) return reject('Failed to update wallet balance.');
         resolve({ changes: this.changes });
       }
     );
@@ -195,9 +175,7 @@ async function transferFromWallet(fromUserID, toUserID, amount) {
         [fromUserID],
         (err, row) => {
           if (err || !row || row.wallet < amount) {
-            db.run('ROLLBACK', () =>
-              reject('Insufficient funds or error occurred.')
-            );
+            db.run('ROLLBACK', () => reject('Insufficient funds or error occurred.'));
             return;
           }
           db.run(
@@ -205,9 +183,7 @@ async function transferFromWallet(fromUserID, toUserID, amount) {
             [amount, fromUserID],
             (err) => {
               if (err) {
-                db.run('ROLLBACK', () =>
-                  reject('Failed to deduct funds.')
-                );
+                db.run('ROLLBACK', () => reject('Failed to deduct funds.'));
                 return;
               }
               db.run(
@@ -215,9 +191,7 @@ async function transferFromWallet(fromUserID, toUserID, amount) {
                 [amount, toUserID],
                 (err) => {
                   if (err) {
-                    db.run('ROLLBACK', () =>
-                      reject('Failed to add funds.')
-                    );
+                    db.run('ROLLBACK', () => reject('Failed to add funds.'));
                     return;
                   }
                   db.run('COMMIT', (err) => {
@@ -244,17 +218,13 @@ async function withdraw(userID, amount) {
         [userID],
         (err, row) => {
           if (err || !row || row.bank < amount) {
-            return reject(
-              'Insufficient funds in the bank or error occurred.'
-            );
+            return reject('Insufficient funds in the bank or error occurred.');
           }
           db.run(
             `UPDATE economy SET bank = bank - ?, wallet = wallet + ? WHERE userID = ?`,
             [amount, amount, userID],
             (err) => {
-              if (err) {
-                return reject('Failed to process withdrawal.');
-              }
+              if (err) return reject('Failed to process withdrawal.');
               resolve();
             }
           );
@@ -280,9 +250,7 @@ async function deposit(userID, amount) {
             `UPDATE economy SET wallet = wallet - ?, bank = bank + ? WHERE userID = ?`,
             [amount, amount, userID],
             (err) => {
-              if (err) {
-                return reject('Failed to deposit funds.');
-              }
+              if (err) return reject('Failed to deposit funds.');
               resolve();
             }
           );
@@ -313,8 +281,8 @@ async function robUser(robberId, targetId) {
               message: 'Target has no money to rob!',
             });
           }
-          const isSuccessful = Math.random() < 0.5; // 50% chance
-          const amountStolen = Math.min(targetWallet, 100); // max stolen
+          const isSuccessful = Math.random() < 0.5;
+          const amountStolen = Math.min(targetWallet, 100);
           const penalty = 50;
           if (isSuccessful) {
             db.run(
@@ -377,84 +345,6 @@ async function robUser(robberId, targetId) {
   });
 }
 
-// ==============================
-// Pets System
-// ==============================
-
-async function createPet(userID, name, type) {
-  return new Promise((resolve, reject) => {
-    const query = `
-      INSERT INTO pets (userID, name, type, level, exp, wins, losses)
-      VALUES (?, ?, ?, 1, 0, 0, 0)
-    `;
-    db.run(query, [userID, name, type], function (err) {
-      if (err) return reject(err);
-      resolve();
-    });
-  });
-}
-
-async function getUserPets(userID) {
-  return new Promise((resolve, reject) => {
-    const query = `SELECT * FROM pets WHERE userID = ?`;
-    db.all(query, [userID], (err, rows) => {
-      if (err) return reject(err);
-      resolve(rows);
-    });
-  });
-}
-
-async function getPet(userID, name) {
-  return new Promise((resolve, reject) => {
-    const query = `SELECT * FROM pets WHERE userID = ? AND name = ?`;
-    db.get(query, [userID, name], (err, row) => {
-      if (err) return reject(err);
-      resolve(row);
-    });
-  });
-}
-
-async function battlePets(pet1Id, pet2Id, bet) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const pet1 = await getPetById(pet1Id);
-      const pet2 = await getPetById(pet2Id);
-      const pet1Power = pet1.level * Math.random();
-      const pet2Power = pet2.level * Math.random();
-      const winner = pet1Power > pet2Power ? pet1 : pet2;
-      const loser = pet1Power > pet2Power ? pet2 : pet1;
-      db.serialize(() => {
-        db.run(
-          `UPDATE pets SET wins = wins + 1, exp = exp + 10 WHERE petID = ?`,
-          [winner.petID]
-        );
-        db.run(
-          `UPDATE pets SET losses = losses + 1 WHERE petID = ?`,
-          [loser.petID]
-        );
-      });
-      resolve({
-        winner,
-        loser,
-        winnerPower: Math.max(pet1Power, pet2Power),
-        loserPower: Math.min(pet1Power, pet2Power),
-      });
-    } catch (err) {
-      reject(err);
-    }
-  });
-}
-
-async function getPetById(petId) {
-  return new Promise((resolve, reject) => {
-    const query = `SELECT * FROM pets WHERE petID = ?`;
-    db.get(query, [petId], (err, row) => {
-      if (err) return reject(err);
-      resolve(row);
-    });
-  });
-}
-
 // =========================================================================
 // Job System
 // =========================================================================
@@ -468,9 +358,7 @@ function addJob(description) {
       `INSERT INTO joblist (description) VALUES (?)`,
       [description],
       function (err) {
-        if (err) {
-          return reject('Failed to add job');
-        }
+        if (err) return reject('Failed to add job');
         resolve({
           jobID: this.lastID,
           description,
@@ -494,9 +382,7 @@ function getJobList() {
       `,
       [],
       (err, rows) => {
-        if (err) {
-          return reject('Failed to retrieve job list');
-        }
+        if (err) return reject('Failed to retrieve job list');
         const jobs = rows.map((row) => ({
           jobID: row.jobID,
           description: row.description,
@@ -510,9 +396,7 @@ function getJobList() {
 
 function assignRandomJob(userID) {
   return new Promise((resolve, reject) => {
-    if (!userID) {
-      return reject('Invalid user ID');
-    }
+    if (!userID) return reject('Invalid user ID');
     db.serialize(() => {
       db.run('BEGIN TRANSACTION');
       db.get(
@@ -568,9 +452,7 @@ function assignRandomJob(userID) {
 
 function completeJob(jobID, userID, reward) {
   return new Promise((resolve, reject) => {
-    if (!jobID || !userID || !reward) {
-      return reject('Missing required parameters');
-    }
+    if (!jobID || !userID || !reward) return reject('Missing required parameters');
     db.serialize(() => {
       db.run('BEGIN TRANSACTION');
       db.get(
@@ -625,10 +507,9 @@ function getShopItems() {
       (err, rows) => {
         if (err) {
           console.error('Error retrieving shop items:', err);
-          reject('🚫 Shop is currently unavailable. Please try again later.');
-        } else {
-          resolve(rows || []);
+          return reject('🚫 Shop is currently unavailable. Please try again later.');
         }
+        resolve(rows || []);
       }
     );
   });
@@ -642,9 +523,9 @@ function getShopItemByName(name) {
       (err, row) => {
         if (err) {
           console.error(`Error looking up item "${name}":`, err);
-          reject('🚫 Unable to retrieve item information. Please try again.');
+          return reject('🚫 Unable to retrieve item information. Please try again.');
         } else if (!row) {
-          reject(`🚫 The item "${name}" is not available in the shop.`);
+          return reject(`🚫 The item "${name}" is not available in the shop.`);
         } else {
           resolve(row);
         }
@@ -661,10 +542,9 @@ function addShopItem(price, name, description) {
       (err) => {
         if (err) {
           console.error('Error adding new shop item:', err);
-          reject('🚫 Failed to add the item to the shop. Please try again.');
-        } else {
-          resolve();
+          return reject('🚫 Failed to add the item to the shop. Please try again.');
         }
+        resolve();
       }
     );
   });
@@ -678,10 +558,9 @@ function removeShopItem(name) {
       (err) => {
         if (err) {
           console.error(`Error removing item "${name}" from the shop:`, err);
-          reject('🚫 Failed to remove the item from the shop. Please try again.');
-        } else {
-          resolve();
+          return reject('🚫 Failed to remove the item from the shop. Please try again.');
         }
+        resolve();
       }
     );
   });
@@ -698,10 +577,9 @@ function getInventory(userID) {
       (err, rows) => {
         if (err) {
           console.error(`Error retrieving inventory for user ${userID}:`, err);
-          reject('🚫 Failed to retrieve inventory. Please try again later.');
-        } else {
-          resolve(rows || []);
+          return reject('🚫 Failed to retrieve inventory. Please try again later.');
         }
+        resolve(rows || []);
       }
     );
   });
@@ -783,11 +661,7 @@ function redeemItem(userID, itemName) {
             resolve(`✅ You have successfully used (and removed) your last "${itemName}".`);
           });
         } else {
-          const updateQuery = `
-            UPDATE inventory
-            SET quantity = quantity - 1
-            WHERE userID = ? AND itemID = ?
-          `;
+          const updateQuery = `UPDATE inventory SET quantity = quantity - 1 WHERE userID = ? AND itemID = ?`;
           db.run(updateQuery, [userID, itemID], (updateErr) => {
             if (updateErr) {
               console.error('Database error in redeemItem (inventory update):', updateErr);
@@ -811,9 +685,7 @@ async function getActiveGames(userID) {
       `SELECT * FROM blackjack_games WHERE userID = ? AND status = 'active'`,
       [userID],
       (err, rows) => {
-        if (err) {
-          return reject('Failed to retrieve active games.');
-        }
+        if (err) return reject('Failed to retrieve active games.');
         resolve(rows || []);
       }
     );
@@ -984,7 +856,7 @@ async function blackjackStand(gameID) {
 // Exports
 // =========================================================================
 module.exports = {
-  // The raw SQLite instance (if needed):
+  // Raw SQLite instance (if needed)
   db,
 
   // Admin / Economy
@@ -1007,19 +879,13 @@ module.exports = {
   drawCard,
   calculateHandTotal,
 
-  // Pets
-  createPet,
-  getUserPets,
-  getPet,
-  battlePets,
-
   // Shop
   getShopItems,
   getShopItemByName,
   addShopItem,
   removeShopItem,
   getInventory,
-  addItemToInventory, // <-- This function is now exported.
+  addItemToInventory,
   redeemItem,
 
   // Jobs
@@ -1028,4 +894,3 @@ module.exports = {
   assignRandomJob,
   completeJob,
 };
-
