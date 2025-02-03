@@ -1,6 +1,10 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { updateWallet, getShopItemByName, addItemToInventory } = require('../../db');
 
+// Load environment variables
+const CURRENCY_NAME = process.env.CURRENCY_NAME || 'Coins';
+const CURRENCY_SYMBOL = process.env.CURRENCY_SYMBOL || '';
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('giveaway-create')
@@ -21,57 +25,32 @@ module.exports = {
         .setRequired(true)
     ),
 
-  /**
-   * Executes the giveaway-create command.
-   * 
-   * For prefix commands, this function is called with three parameters:
-   *   - 'prefix'
-   *   - message object
-   *   - args array
-   *
-   * For slash commands, it is called with a single parameter (the interaction).
-   *
-   * @param  {...any} args
-   */
   async execute(...args) {
     let isPrefix = false;
     let duration, winners, prizeInput;
-    let interaction; // will hold either the message or the interaction object
+    let interaction;
 
-    // Check if the command is invoked as a prefix command.
     if (args[0] === 'prefix') {
       isPrefix = true;
-      // args[1] is the message and args[2] is the array of arguments.
       interaction = args[1];
       const commandArgs = args[2];
       duration = parseInt(commandArgs[0], 10);
       winners = parseInt(commandArgs[1], 10);
       prizeInput = commandArgs.slice(2).join(' ');
     } else {
-      // Slash command: the first argument is the interaction.
       interaction = args[0];
       duration = interaction.options.getInteger('duration');
       winners = interaction.options.getInteger('winners');
       prizeInput = interaction.options.getString('prize');
     }
 
-    // Validate parameters.
     if (isNaN(duration) || duration <= 0) {
-      const errorMsg = '🚫 Please provide a valid duration (in minutes).';
-      return isPrefix
-        ? interaction.reply(errorMsg)
-        : interaction.reply({ content: errorMsg, ephemeral: true });
+      return interaction.reply({ content: '🚫 Please provide a valid duration (in minutes).', ephemeral: true });
     }
     if (isNaN(winners) || winners <= 0) {
-      const errorMsg = '🚫 Please provide a valid number of winners.';
-      return isPrefix
-        ? interaction.reply(errorMsg)
-        : interaction.reply({ content: errorMsg, ephemeral: true });
+      return interaction.reply({ content: '🚫 Please provide a valid number of winners.', ephemeral: true });
     }
 
-    // Determine prize type:
-    // - If prizeInput converts to a valid integer, treat it as currency.
-    // - Otherwise, treat it as a shop item name.
     const prizeCurrency = parseInt(prizeInput, 10);
     let prizeType, prizeValue;
     if (!isNaN(prizeCurrency)) {
@@ -82,15 +61,13 @@ module.exports = {
       prizeValue = prizeInput.trim();
     }
 
-    // Build the giveaway announcement.
     const giveawayAnnouncement = `🎉 **GIVEAWAY TIME!** 🎉
 
 React with 🎉 to join!
 **Duration:** ${duration} minute(s)
 **Winners:** ${winners}
-**Prize:** ${prizeType === 'currency' ? `${prizeValue} coins` : prizeValue}`;
+**Prize:** ${prizeType === 'currency' ? `${prizeValue} ${CURRENCY_SYMBOL}${CURRENCY_NAME}` : prizeValue}`;
 
-    // Send the giveaway message.
     let giveawayMessage;
     try {
       if (isPrefix) {
@@ -104,33 +81,20 @@ React with 🎉 to join!
       return;
     }
 
-    // Add the 🎉 reaction so users know how to join.
     try {
       await giveawayMessage.react('🎉');
     } catch (err) {
       console.error('Failed to add reaction:', err);
     }
 
-    // Let the command issuer know that the giveaway has started.
-    const confirmationMsg = `✅ Giveaway started! It will end in ${duration} minute(s).`;
-    if (isPrefix) {
-      interaction.reply(confirmationMsg);
-    } else {
-      // Using ephemeral flag (note: if deprecated, you may need to update to use flags)
-      interaction.followUp({ content: confirmationMsg, ephemeral: true });
-    }
+    interaction.followUp({ content: `✅ Giveaway started! It will end in ${duration} minute(s).`, ephemeral: true });
 
-    // Set a timer to conclude the giveaway.
     setTimeout(async () => {
       try {
-        // Re-fetch the message to ensure we have the latest reactions.
         const fetchedMessage = await giveawayMessage.fetch();
         const reaction = fetchedMessage.reactions.cache.get('🎉');
-        if (!reaction) {
-          return fetchedMessage.channel.send('🚫 No one participated in the giveaway.');
-        }
+        if (!reaction) return fetchedMessage.channel.send('🚫 No one participated in the giveaway.');
 
-        // Fetch all users who reacted (filtering out bots).
         const usersReacted = await reaction.users.fetch();
         const participants = usersReacted.filter(user => !user.bot);
 
@@ -139,19 +103,15 @@ React with 🎉 to join!
           return;
         }
 
-        // Randomly select winners.
         const participantArray = Array.from(participants.values());
         const winnersCount = Math.min(winners, participantArray.length);
         const selectedWinners = [];
         while (selectedWinners.length < winnersCount) {
           const randomIndex = Math.floor(Math.random() * participantArray.length);
           const selectedUser = participantArray[randomIndex];
-          if (!selectedWinners.includes(selectedUser)) {
-            selectedWinners.push(selectedUser);
-          }
+          if (!selectedWinners.includes(selectedUser)) selectedWinners.push(selectedUser);
         }
 
-        // Award the prize to each winner.
         for (const winner of selectedWinners) {
           if (prizeType === 'currency') {
             await updateWallet(winner.id, prizeValue);
@@ -166,13 +126,12 @@ React with 🎉 to join!
           }
         }
 
-        // Announce the winners.
         const winnersMention = selectedWinners.map(user => `<@${user.id}>`).join(', ');
-        const prizeDisplay = prizeType === 'currency' ? `${prizeValue} coins` : prizeValue;
+        const prizeDisplay = prizeType === 'currency' ? `${prizeValue} ${CURRENCY_SYMBOL}${CURRENCY_NAME}` : prizeValue;
         fetchedMessage.channel.send(`🎉 Congratulations ${winnersMention}! You won **${prizeDisplay}**!`);
       } catch (err) {
         console.error('Error concluding giveaway:', err);
       }
-    }, duration * 60000); // Convert minutes to milliseconds.
+    }, duration * 60000);
   },
 };
