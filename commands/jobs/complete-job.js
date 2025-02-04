@@ -13,11 +13,6 @@ module.exports = {
         .setRequired(true)
     )
     .addIntegerOption(option =>
-      option.setName('jobid')
-        .setDescription('The ID of the job to complete')
-        .setRequired(true)
-    )
-    .addIntegerOption(option =>
       option.setName('reward')
         .setDescription('The amount of currency to reward')
         .setRequired(true)
@@ -32,25 +27,28 @@ module.exports = {
     }
 
     const targetUser = options.getUser('user');
-    const jobID = options.getInteger('jobid');
     const reward = options.getInteger('reward');
 
     // Validate input
-    if (!targetUser || !jobID || reward <= 0) {
-      return interaction.reply({ content: '🚫 All fields (user, job ID, reward) are required, and reward must be positive.', ephemeral: true });
+    if (!targetUser || reward <= 0) {
+      return interaction.reply({ content: '🚫 User and reward amount are required, and reward must be positive.', ephemeral: true });
     }
 
     try {
-      const result = await db.completeJob(jobID, targetUser.id, reward);
-      if (!result) {
-        return interaction.reply({ content: `🚫 Job ${jobID} does not exist.`, ephemeral: true });
+      // Get the user's active job (no need to input job ID manually)
+      const activeJob = await db.getActiveJob(targetUser.id);
+      if (!activeJob) {
+        return interaction.reply({ content: `🚫 <@${targetUser.id}> does not have an active job to complete.`, ephemeral: true });
       }
-      if (result.notAssigned) {
-        return interaction.reply({ content: `🚫 <@${targetUser.id}> is not assigned to job ${jobID}.`, ephemeral: true });
+
+      // Complete the job
+      const result = await db.completeJob(targetUser.id, reward);
+      if (!result.success) {
+        return interaction.reply({ content: `🚫 Failed to complete the job for <@${targetUser.id}>.`, ephemeral: true });
       }
 
       return interaction.reply(
-        `✅ Completed job ${jobID} for <@${targetUser.id}> with reward **${formatCurrency(reward)}**!`
+        `✅ Completed job for <@${targetUser.id}> with reward **${formatCurrency(reward)}**!`
       );
     } catch (err) {
       console.error('Complete Job Slash Error:', err);

@@ -432,6 +432,48 @@ async function robUser(robberId, targetId) {
 // Job System
 // =========================================================================
 
+function getActiveJob(userID) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT j.jobID, j.description 
+       FROM joblist j
+       JOIN job_assignees ja ON j.jobID = ja.jobID
+       WHERE ja.userID = ?`,
+      [userID],
+      (err, row) => {
+        if (err) {
+          reject('Failed to check active job.');
+        } else {
+          resolve(row || null); // Return job object if found, otherwise null
+        }
+      }
+    );
+  });
+}
+
+function getUserJob(userID) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT j.description 
+       FROM joblist j
+       JOIN job_assignees ja ON j.jobID = ja.jobID
+       WHERE ja.userID = ?`,
+      [userID],
+      (err, row) => {
+        if (err) {
+          reject('Failed to check current job.');
+        } else {
+          resolve(row ? row.description : null); // Return job description if found, otherwise null
+        }
+      }
+    );
+  });
+}
+
+// Add the function to exports
+module.exports.getUserJob = getUserJob;
+
+
 function addJob(description) {
   return new Promise((resolve, reject) => {
     if (!description || typeof description !== 'string') {
@@ -525,40 +567,41 @@ function assignRandomJob(userID) {
   });
 }
 
-function completeJob(jobID, userID, reward) {
+function completeJob(userID, reward) {
   return new Promise((resolve, reject) => {
-    if (!jobID || !userID || !reward) return reject('Missing required parameters');
     db.serialize(() => {
-      db.run('BEGIN TRANSACTION');
-      db.get(`SELECT 1 FROM job_assignees WHERE jobID = ? AND userID = ?`, [jobID, userID], (err, row) => {
-        if (err) {
-          db.run('ROLLBACK');
-          return reject('Database error while checking job assignment');
-        }
-        if (!row) {
-          db.run('ROLLBACK');
-          return resolve({ notAssigned: true });
-        }
-        db.run(`DELETE FROM job_assignees WHERE jobID = ? AND userID = ?`, [jobID, userID], (err2) => {
-          if (err2) {
-            db.run('ROLLBACK');
-            return reject('Failed to remove job assignment');
+      // Get the user's active job first
+      db.get(
+        `SELECT jobID FROM job_assignees WHERE userID = ?`,
+        [userID],
+        (err, row) => {
+          if (err) {
+            return reject('Database error while checking job assignment');
           }
-          db.run(`UPDATE economy SET wallet = wallet + ? WHERE userID = ?`, [reward, userID], (err3) => {
-            if (err3) {
-              db.run('ROLLBACK');
-              return reject('Failed to add reward');
+          if (!row) {
+            return resolve({ success: false, message: 'No active job found.' });
+          }
+
+          const jobID = row.jobID; // Extract jobID from the query
+
+          // Remove job assignment and reward user
+          db.run(`DELETE FROM job_assignees WHERE userID = ?`, [userID], (err2) => {
+            if (err2) {
+              return reject('Failed to remove job assignment');
             }
-            db.run('COMMIT');
-            renumberJobs()
-              .then(() => resolve({ success: true }))
-              .catch(reject);
+            db.run(`UPDATE economy SET wallet = wallet + ? WHERE userID = ?`, [reward, userID], (err3) => {
+              if (err3) {
+                return reject('Failed to add reward');
+              }
+              resolve({ success: true });
+            });
           });
-        });
-      });
+        }
+      );
     });
   });
 }
+
 
 function renumberJobs() {
   return new Promise((resolve, reject) => {
@@ -956,6 +999,8 @@ module.exports = {
   assignRandomJob,
   completeJob,
   getAllJobs,
+  getUserJob,
+  getActiveJob,
 
   // Giveaway
   saveGiveaway,
