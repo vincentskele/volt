@@ -22,7 +22,7 @@ module.exports = {
         .map((user, index) => {
           const totalBalance = formatCurrency(user.totalBalance);
           const banked = formatCurrency(user.bank);
-          return `**${index + 1}.** <@${user.userID}> - **${totalBalance}**  ({banked} banked)`;
+          return `**${index + 1}.** <@${user.userID}> - **${totalBalance}**  (${banked} banked)`;
         })
         .join('\n');
 
@@ -30,7 +30,7 @@ module.exports = {
       const embed = new EmbedBuilder()
         .setTitle('🏆 Leaderboard - Top Balances')
         .setDescription(leaderboard)
-        .setColor(0xFFD700)
+        .setColor(0xFFD700) // Gold color
         .setTimestamp();
 
       return interaction.reply({ embeds: [embed] });
