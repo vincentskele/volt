@@ -1,16 +1,16 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { EmbedBuilder } = require('discord.js');
+const { formatCurrency } = require('../../currency');
 const db = require('../../db');
-const { formatCurrency } = require('../../currency'); // Import currency formatter
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('leaderboard')
-    .setDescription('View the top users by wallet balance.'),
+    .setDescription('View the top users by total balance (wallet + bank).'),
 
   async execute(interaction) {
     try {
-      // Fetch top 10 users by wallet balance
+      // Fetch top users
       const topUsers = await db.getLeaderboard();
 
       if (!topUsers.length) {
@@ -19,20 +19,24 @@ module.exports = {
 
       // Format leaderboard
       const leaderboard = topUsers
-        .map((user, index) => `**${index + 1}.** <@${user.userID}> - **${formatCurrency(user.wallet)}**`)
+        .map((user, index) => {
+          const totalBalance = formatCurrency(user.totalBalance);
+          const banked = formatCurrency(user.bank);
+          return `**${index + 1}.** <@${user.userID}> - **${totalBalance}** ⚡ (${banked} banked)`;
+        })
         .join('\n');
 
       // Create embed
       const embed = new EmbedBuilder()
-        .setTitle('🏆 Leaderboard - Top Wallets')
+        .setTitle('🏆 Leaderboard - Top Balances')
         .setDescription(leaderboard)
         .setColor(0xFFD700)
         .setTimestamp();
 
       return interaction.reply({ embeds: [embed] });
     } catch (err) {
-      console.error('Leaderboard Slash Error:', err);
+      console.error(`Error in leaderboard command for user ${interaction.user.id}:`, err);
       return interaction.reply({ content: `🚫 Failed to fetch leaderboard: ${err.message || err}`, ephemeral: true });
     }
-  }
+  },
 };

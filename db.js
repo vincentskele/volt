@@ -267,7 +267,13 @@ async function initUserEconomy(userID) {
 function getLeaderboard(limit = 10) {
   return new Promise((resolve, reject) => {
     db.all(
-      `SELECT userID, wallet FROM economy ORDER BY wallet DESC LIMIT ?`,
+      `SELECT userID, 
+              IFNULL(wallet, 0) AS wallet, 
+              IFNULL(bank, 0) AS bank, 
+              (IFNULL(wallet, 0) + IFNULL(bank, 0)) AS totalBalance 
+       FROM economy 
+       ORDER BY totalBalance DESC 
+       LIMIT ?`,
       [limit],
       (err, rows) => {
         if (err) {
