@@ -21,7 +21,7 @@ module.exports = {
       const leaderboard = topUsers
         .map((user, index) => {
           const totalBalance = formatCurrency(user.totalBalance);
-          const banked = formatCurrency(user.bank);
+          const banked = user.bank; // Raw bank amount without formatting
           return `**${index + 1}.** <@${user.userID}> - **${totalBalance}**  (${banked} banked)`;
         })
         .join('\n');
