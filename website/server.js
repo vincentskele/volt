@@ -1,10 +1,13 @@
+const path = require('path'); // Import 'path' before using it
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') }); // Load .env variables from s-pizzabot/.env
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
-const path = require('path');
 
 const app = express();
-const PORT = 3003;
+
+// Use the port from .env or default to 3000
+const PORT = process.env.SERVER_PORT || 3000;
 
 // Enable CORS and JSON parsing
 app.use(cors());
