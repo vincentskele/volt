@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Economy Viewer</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header>
+    <h1>🏛️ Economy Viewer</h1>
+    <p>Track balances, shop inventory, jobs, and giveaways in real-time!</p>
+  </header>
+
+  <!-- Landing Page -->
+  <div id="landingPage" class="content">
+    <button id="showLeaderboardButton">Show Leaderboard</button>
+    <button id="showAdminListButton">Show Admin List</button>
+    <button id="showShopButton">View Shop</button>
+    <button id="showJobListButton">Job List</button>
+    <button id="showGiveawayListButton">Giveaway List</button>
+  </div>
+
+  <!-- Leaderboard Section -->
+  <div id="leaderboard" class="content" style="display: none;">
+    <h2>🏆 Leaderboard</h2>
+    <ul id="leaderboardList"></ul>
+    <button class="back-button">Back</button>
+  </div>
+
+  <!-- Admin List Section -->
+  <div id="adminList" class="content" style="display: none;">
+    <h2>🔧 Admin List</h2>
+    <ul id="adminListContent"></ul>
+    <button class="back-button">Back</button>
+  </div>
+
+  <!-- Shop Section -->
+  <div id="shop" class="content" style="display: none;">
+    <h2>🛒 Shop</h2>
+    <ul id="shopItems"></ul>
+    <button class="back-button">Back</button>
+  </div>
+
+  <!-- Job List Section -->
+  <div id="jobList" class="content" style="display: none;">
+    <h2>💼 Job List</h2>
+    <ul id="jobListContent"></ul>
+    <button class="back-button">Back</button>
+  </div>
+
+  <!-- Giveaway List Section -->
+  <div id="giveawayList" class="content" style="display: none;">
+    <h2>🎁 Giveaway List</h2>
+    <ul id="giveawayItems"></ul>
+    <button class="back-button">Back</button>
+  </div>
+
+  <footer>
+    <p>© 2025 Economy Viewer | Powered by RoboDAO.</p>
+  </footer>
+
+  <!-- JavaScript -->
+  <script src="js/script.js"></script>
+</body>
+</html>
