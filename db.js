@@ -37,7 +37,32 @@ function initializeDatabase() {
         price INTEGER,
         isAvailable BOOLEAN DEFAULT 1
       )
-    `);
+    `, (err) => {
+      if (err) {
+        console.error('Error creating items table:', err);
+      } else {
+        // Migration: Check if the "quantity" column exists, add it if missing
+        db.all("PRAGMA table_info(items)", (err, columns) => {
+          if (err) {
+            console.error("Error retrieving items table info:", err);
+          } else {
+            const hasQuantity = columns.some(column => column.name === "quantity");
+            if (!hasQuantity) {
+              db.run("ALTER TABLE items ADD COLUMN quantity INTEGER DEFAULT 1", (alterErr) => {
+                // If the column somehow got created in between checks, just ignore that specific error
+                if (alterErr && alterErr.message.includes("duplicate column name")) {
+                  console.log("Quantity column already exists, skipping migration.");
+                } else if (alterErr) {
+                  console.error("Error adding quantity column to items table:", alterErr);
+                } else {
+                  console.log("Quantity column added to items table.");
+                }
+              });
+            }
+          }
+        });
+      }
+    });
 
     // Inventory table
     db.run(`
@@ -444,7 +469,7 @@ function getActiveJob(userID) {
         if (err) {
           reject('Failed to check active job.');
         } else {
-          resolve(row || null); // Return job object if found, otherwise null
+          resolve(row || null);
         }
       }
     );
@@ -463,16 +488,12 @@ function getUserJob(userID) {
         if (err) {
           reject('Failed to check current job.');
         } else {
-          resolve(row ? row.description : null); // Return job description if found, otherwise null
+          resolve(row ? row.description : null);
         }
       }
     );
   });
 }
-
-// Add the function to exports
-module.exports.getUserJob = getUserJob;
-
 
 function addJob(description) {
   return new Promise((resolve, reject) => {
@@ -570,7 +591,6 @@ function assignRandomJob(userID) {
 function completeJob(userID, reward) {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
-      // Get the user's active job first
       db.get(
         `SELECT jobID FROM job_assignees WHERE userID = ?`,
         [userID],
@@ -582,9 +602,7 @@ function completeJob(userID, reward) {
             return resolve({ success: false, message: 'No active job found.' });
           }
 
-          const jobID = row.jobID; // Extract jobID from the query
-
-          // Remove job assignment and reward user
+          const jobID = row.jobID;
           db.run(`DELETE FROM job_assignees WHERE userID = ?`, [userID], (err2) => {
             if (err2) {
               return reject('Failed to remove job assignment');
@@ -601,7 +619,6 @@ function completeJob(userID, reward) {
     });
   });
 }
-
 
 function renumberJobs() {
   return new Promise((resolve, reject) => {
@@ -667,15 +684,15 @@ function getShopItemByName(name) {
   });
 }
 
-function addShopItem(price, name, description) {
+function addShopItem(price, name, description, quantity = 1) {
   return new Promise((resolve, reject) => {
     db.run(
-      `INSERT INTO items (price, name, description, isAvailable) VALUES (?, ?, ?, 1)`,
-      [price, name, description],
+      `INSERT INTO items (price, name, description, quantity, isAvailable) VALUES (?, ?, ?, ?, 1)`,
+      [price, name, description, quantity],
       (err) => {
         if (err) {
           console.error('Error adding new shop item:', err);
-          return reject('🚫 Failed to add the item to the shop. Please try again.');
+          return reject(new Error('🚫 Failed to add the item to the shop. Please try again.'));
         }
         resolve();
       }
@@ -909,11 +926,14 @@ async function blackjackStand(gameID) {
         let dealerHand = JSON.parse(row.dealerHand || '[]');
         const playerTotal = calculateHandTotal(playerHand);
         let dealerTotal = calculateHandTotal(dealerHand);
+
+        // Dealer draws until 17
         while (dealerTotal < 17) {
           const newCard = drawCard();
           dealerHand.push(newCard);
           dealerTotal = calculateHandTotal(dealerHand);
         }
+
         let status;
         let winnings = 0;
         if (playerTotal > 21) {
@@ -927,6 +947,7 @@ async function blackjackStand(gameID) {
           status = 'draw';
           winnings = bet;
         }
+
         db.serialize(() => {
           db.run(
             `UPDATE blackjack_games SET dealerHand = ?, status = ? WHERE gameID = ?`,

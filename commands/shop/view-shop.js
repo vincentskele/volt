@@ -23,7 +23,7 @@ module.exports = {
       items.forEach(item => {
         embed.addFields({
           name: `• ${item.name} — ${formatCurrency(item.price)}`,
-          value: `*${item.description}*`,
+          value: `*${item.description}*\n**Quantity Available:** ${item.quantity}`,
           inline: false,
         });
       });

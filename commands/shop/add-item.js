@@ -18,7 +18,11 @@ module.exports = {
     .addStringOption(option =>
       option.setName('description')
         .setDescription('A brief description of the item')
-        .setRequired(true)),
+        .setRequired(true))
+    .addIntegerOption(option =>
+      option.setName('quantity')
+        .setDescription('The quantity available in the shop (default: 1)')
+        .setRequired(false)),
 
   async execute(interaction) {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
@@ -28,23 +32,22 @@ module.exports = {
     const price = interaction.options.getInteger('price');
     const name = interaction.options.getString('name');
     const description = interaction.options.getString('description');
+    const quantity = interaction.options.getInteger('quantity') || 1;
 
     if (!price || price <= 0 || !name || !description) {
       return interaction.reply({ content: '🚫 Invalid input. Ensure all fields are filled.', ephemeral: true });
     }
 
     try {
-      await db.addShopItem(price, name.trim(), description.trim());
+      await db.addShopItem(price, name.trim(), description.trim(), quantity);
 
       const embed = new EmbedBuilder()
         .setTitle(`✅ Added ${name.trim()} to the Shop`)
-        .addFields({
-          name: 'Price',
-          value: `${formatCurrency(price)}`
-        }, {
-          name: 'Description',
-          value: `${description.trim()}`
-        })
+        .addFields(
+          { name: 'Price', value: `${formatCurrency(price)}` },
+          { name: 'Quantity', value: `${quantity}` },
+          { name: 'Description', value: `${description.trim()}` }
+        )
         .setColor(0x32CD32)
         .setTimestamp();
 
