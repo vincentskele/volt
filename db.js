@@ -264,6 +264,23 @@ async function initUserEconomy(userID) {
   });
 }
 
+function getLeaderboard(limit = 10) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT userID, wallet FROM economy ORDER BY wallet DESC LIMIT ?`,
+      [limit],
+      (err, rows) => {
+        if (err) {
+          reject('Failed to retrieve leaderboard.');
+        } else {
+          resolve(rows || []);
+        }
+      }
+    );
+  });
+}
+
+
 async function getBalances(userID) {
   await initUserEconomy(userID);
   return new Promise((resolve, reject) => {
@@ -996,6 +1013,7 @@ module.exports = {
   robUser,
   withdraw,
   deposit,
+  getLeaderboard,
 
   // Blackjack
   getActiveGames,
