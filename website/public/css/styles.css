@@ -236,6 +236,85 @@ button:hover {
   }
 }
 
+/* GIVEAWAY SECTION */
+#giveawayItems {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: Arial, sans-serif;
+  color: #fafafa;
+  margin-top: 20px;
+}
+
+/* Giveaway Item Styles */
+.giveaway-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* Spread content evenly */
+  padding: 10px;
+  background: #1a1a2e; /* Default dark background */
+  border-radius: 8px;
+  gap: 10px;
+  transition: all 0.3s ease; /* Smooth transition for hover effect */
+}
+
+.giveaway-item:hover {
+  background-color: #2b3e50; /* Darkish gray-blue */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3); /* Raised effect */
+  transform: translateY(-2px); /* Slight lift */
+}
+
+/* Giveaway Index */
+.giveaway-index {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #4e97d8;
+  width: 30px;
+  text-align: center;
+}
+
+/* Giveaway Details */
+.giveaway-details {
+  flex: 1;
+}
+
+/* Links in Giveaway Details */
+.giveaway-details a {
+  font-size: 1rem;
+  color: #4e97d8;
+  text-decoration: none;
+}
+
+.giveaway-details a:hover {
+  text-decoration: underline; /* Underline links on hover */
+}
+
+/* Refresh Button Styles */
+.refresh-button {
+  display: inline-block;
+  width: 150px; /* Set the button width */
+  height: 40px; /* Set the button height */
+  line-height: 40px; /* Align text vertically */
+  font-size: 1rem; /* Set font size */
+  font-weight: bold;
+  text-align: center;
+  background-color: #4e97d8;
+  color: #fafafa;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  padding: 0; /* Remove padding if using line-height */
+  text-decoration: none; /* Remove underline from text */
+  margin: 0 auto; /* Center the button horizontally */
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); /* Raised effect */
+  transition: all 0.3s ease; /* Smooth transition for hover effect */
+}
+
+.refresh-button:hover {
+  background-color: #3b81b6; /* Slightly darker shade on hover */
+  box-shadow: 0 6px 10px rgba(0, 0, 0, 0.4); /* More pronounced raised effect */
+  transform: translateY(-2px); /* Slight lift */
+}
 
 
 /* Footer styles */
