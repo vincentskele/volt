@@ -72,6 +72,55 @@ button:hover {
   background-color: #5a6268;
 }
 
+/* General Content Styling */
+.content {
+  background-color: #27393F; /* Dark blue */
+  color: #FAFAFA; /* Light text */
+  padding: 2rem;
+  border-radius: 8px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* Section Title */
+.section-title {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-bottom: 1rem;
+  border-bottom: 2px solid #FEDCA8; /* Orange */
+  padding-bottom: 0.5rem;
+  text-align: center;
+}
+
+/* Info List Styling */
+.info-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.info-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem; /* Space between star and text */
+  margin-bottom: 1.5rem;
+}
+
+.icon {
+  color: #E69349; /* Orange */
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+code {
+  background-color: #111;
+  color: #FAFAFA;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  font-family: 'Courier New', Courier, monospace;
+}
+
+
 /* Content sections */
 .content {
   text-align: center;
