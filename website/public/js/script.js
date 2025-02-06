@@ -140,7 +140,7 @@ if (showShopButton) {
   showShopButton.addEventListener('click', async () => {
     let shopItems = document.getElementById('shopItems');
 
-    // Ensure the shop items container has the correct class
+    // Ensure the shop items container exists and has the correct class
     if (!shopItems) {
       shopItems = document.createElement('div');
       shopItems.id = 'shopItems';
@@ -155,11 +155,19 @@ if (showShopButton) {
       // Clear existing content
       shopItems.innerHTML = '';
 
-      // Render shop items as buttons
+      // Render shop items as buttons with proper Markdown link parsing
       data.forEach(item => {
         const button = document.createElement('button');
         button.className = 'shop-item'; // Individual item styling
-        button.innerText = `[${item.id}] ${item.name} - ${item.price} | Qty: ${item.quantity} | Desc: ${item.description}`;
+
+        // Parse Markdown-style links into HTML
+        const description = item.description.replace(
+          /\[([^\]]+)\]\(([^)]+)\)/g,
+          '<a href="$2" target="_blank" class="link">$1</a>'
+        );
+
+        // Set the inner HTML with the formatted description
+        button.innerHTML = `[${item.id}] ${item.name} - ${item.price} | Qty: ${item.quantity} | Desc: ${description}`;
         shopItems.appendChild(button);
       });
 
@@ -179,14 +187,6 @@ function showSection(sectionId) {
   if (section) section.style.display = 'block';
 }
 
-// Helper function to show sections
-function showSection(sectionId) {
-  document.querySelectorAll('.content').forEach(section => {
-    section.style.display = 'none';
-  });
-  const section = document.getElementById(sectionId);
-  if (section) section.style.display = 'block';
-}
 
 
 // 4) Jobs
@@ -210,9 +210,17 @@ async function fetchJobs() {
 
       // Populate jobs
       jobs.forEach((job) => {
-        const jobItem = document.createElement('button');
-        jobItem.className = 'job-item';
-        jobItem.innerText = `[${job.jobID}] ${job.description}`;
+        const jobItem = document.createElement('div');
+        jobItem.className = 'job-item'; // Div instead of button for better layout
+
+        // Parse Markdown-style links into HTML
+        const description = job.description.replace(
+          /\[([^\]]+)\]\(([^)]+)\)/g,
+          '<a href="$2" target="_blank" class="link">$1</a>'
+        );
+
+        // Set the inner HTML with proper spacing and layout
+        jobItem.innerHTML = `<p><strong>[${job.jobID}]</strong> ${description}</p>`;
         jobList.appendChild(jobItem);
       });
 
@@ -224,6 +232,7 @@ async function fetchJobs() {
     jobListContent.innerHTML = '<p>Error loading jobs.</p>';
   }
 }
+
 
 if (showJobListButton) {
   showJobListButton.addEventListener('click', () => {
@@ -240,6 +249,7 @@ function showSection(sectionId) {
   const section = document.getElementById(sectionId);
   if (section) section.style.display = 'block';
 }
+
 
 
 
