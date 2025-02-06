@@ -24,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         shop: (item) => {
           // Server returns: { id, name, price, description, quantity }
-          let text = `[${item.id}] ${item.name} - $${item.price}`;
+          let text = `[${item.id}] ${item.name} - ${item.price}`;
           if (item.quantity !== undefined) {
             text += ` | Qty: ${item.quantity}`;
           }
