@@ -355,6 +355,45 @@ button:hover {
 }
 
 
+/* Job list container */
+.job-list {
+  display: flex;
+  flex-direction: column; /* Stack items vertically */
+  gap: 10px; /* Adds consistent spacing between buttons */
+  align-items: center; /* Centers the buttons horizontally */
+  width: 100%; /* Full width of the container */
+  max-width: 600px; /* Optional: Limit the container width */
+  margin: 0 auto; /* Centers the container on the page */
+  padding: 10px; /* Adds padding around the container */
+}
+
+/* Individual job items */
+.job-item {
+  display: flex; /* Use flexbox for centering */
+  align-items: center; /* Center content vertically */
+  justify-content: center; /* Center content horizontally */
+  background-color: #27393F; /* Dark navy background */
+  color: #fafafa; /* Light text color */
+  padding: 15px 20px; /* Adds padding for better readability */
+  border: none;
+  border-radius: 8px; /* Rounded corners */
+  text-align: center; /* Ensures text is centered */
+  cursor: pointer; /* Adds a pointer on hover */
+  font-size: 1rem; /* Standard font size */
+  transition: background-color 0.3s ease, transform 0.2s ease;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Adds a shadow for depth */
+  width: 100%; /* Makes all buttons the same width */
+  max-width: 500px; /* Ensures a consistent maximum width */
+  word-wrap: break-word; /* Break text if it overflows */
+}
+
+/* Hover effect for job items */
+.job-item:hover {
+  background-color: #405D67; /* Slightly brighter on hover */
+  transform: scale(1.02); /* Adds a subtle zoom effect on hover */
+}
+
+
 
 
 /* Footer styles */

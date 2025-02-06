@@ -189,46 +189,59 @@ function showSection(sectionId) {
 }
 
 
-  // 4) Jobs
-  const showJobListButton = document.getElementById('showJobListButton');
-  const jobListContent = document.getElementById('jobListContent');
+// 4) Jobs
+const showJobListButton = document.getElementById('showJobListButton');
+const jobListContent = document.getElementById('jobListContent');
 
-  async function fetchJobs() {
-    try {
-      const res = await fetch('/api/jobs');
-      const jobs = await res.json();
+async function fetchJobs() {
+  try {
+    const res = await fetch('/api/jobs');
+    const jobs = await res.json();
 
-      if (!jobs.length) {
-        jobListContent.innerHTML = '<p>No jobs available.</p>';
-      } else {
-        let html = `
-          <button id="refreshJobs" class="refresh-button">🔄 Refresh</button>
-          <ul>
-        `;
+    if (!jobs.length) {
+      jobListContent.innerHTML = '<p>No jobs available.</p>';
+    } else {
+      // Clear existing content
+      jobListContent.innerHTML = '';
 
-        jobs.forEach((job) => {
-          html += `<li>[${job.jobID}] ${job.description}</li>`;
-        });
+      // Create the job list container
+      const jobList = document.createElement('div');
+      jobList.className = 'job-list';
 
-        html += `</ul>`;
+      // Populate jobs
+      jobs.forEach((job) => {
+        const jobItem = document.createElement('button');
+        jobItem.className = 'job-item';
+        jobItem.innerText = `[${job.jobID}] ${job.description}`;
+        jobList.appendChild(jobItem);
+      });
 
-        jobListContent.innerHTML = html;
-
-        // Attach event listener to the new Refresh button
-        document.getElementById('refreshJobs').addEventListener('click', fetchJobs);
-      }
-    } catch (error) {
-      console.error('Error fetching jobs:', error);
-      jobListContent.innerHTML = '<p>Error loading jobs.</p>';
+      // Append the job list to the content container
+      jobListContent.appendChild(jobList);
     }
+  } catch (error) {
+    console.error('Error fetching jobs:', error);
+    jobListContent.innerHTML = '<p>Error loading jobs.</p>';
   }
+}
 
-  if (showJobListButton) {
-    showJobListButton.addEventListener('click', () => {
-      fetchJobs();
-      showSection('jobList');
-    });
-  }
+if (showJobListButton) {
+  showJobListButton.addEventListener('click', () => {
+    fetchJobs();
+    showSection('jobList'); // Ensure this displays the job list section
+  });
+}
+
+// Helper function to toggle sections
+function showSection(sectionId) {
+  document.querySelectorAll('.content').forEach((section) => {
+    section.style.display = 'none';
+  });
+  const section = document.getElementById(sectionId);
+  if (section) section.style.display = 'block';
+}
+
+
 
   // 5) Giveaways
   const showGiveawayListButton = document.getElementById('showGiveawayListButton');
