@@ -56,7 +56,8 @@ module.exports = {
     const timeUnit = interaction.options.getString('timeunit');
     const winners = interaction.options.getInteger('winners');
     const prizeInput = interaction.options.getString('prize').trim();
-    const repeat = interaction.options.getInteger('repeat') || 0; // Default to 0 (no repeats)
+    // "repeat" represents the number of additional giveaways after the first one.
+    const repeat = interaction.options.getInteger('repeat') || 0;
 
     console.log(`[INFO] Starting giveaway: "${giveawayName}" | Prize: "${prizeInput}" | Repeats: ${repeat}`);
 
@@ -76,11 +77,11 @@ module.exports = {
         durationMs = duration * 60 * 1000;
     }
 
-    // Helper function to start the giveaway.
+    // Helper function to start a giveaway instance.
     const startGiveaway = async (repeatCount) => {
       console.log(`[INFO] Giveaway "${giveawayName}" started! Remaining repeats: ${repeatCount}`);
 
-      // Announce the giveaway
+      // Announce the giveaway.
       const announcement = `🎉 **GIVEAWAY: ${giveawayName}** 🎉\n\n` +
         `React with 🎉 to participate!\n` +
         `**Duration:** ${duration} ${timeUnit}\n` +
@@ -92,7 +93,7 @@ module.exports = {
 
       const endTime = Date.now() + durationMs;
 
-      // Save the giveaway info to DB (for reference or future expansions)
+      // Save giveaway info to the DB.
       await saveGiveaway(
         giveawayMessage.id,
         giveawayMessage.channel.id,
@@ -102,100 +103,89 @@ module.exports = {
         giveawayName
       );
 
-      // Timer to end giveaway
+      // Timer to end the giveaway.
       setTimeout(async () => {
         try {
-          // Fetch the giveaway message
+          // Fetch the giveaway message.
           const fetchedMessage = await interaction.channel.messages.fetch(giveawayMessage.id);
           const reaction = fetchedMessage.reactions.cache.get('🎉');
-          
-          // If no one reacted
+
           if (!reaction) {
             await interaction.channel.send(`Giveaway "${giveawayName}" ended with no participants.`);
-            return;
-          }
-
-          // Filter out bots
-          const users = await reaction.users.fetch();
-          const participants = users.filter(user => !user.bot);
-
-          if (participants.size === 0) {
-            await interaction.channel.send(`Giveaway "${giveawayName}" ended with no valid participants.`);
-            return;
-          }
-
-          // Calculate number of winners if participants are fewer than desired
-          const winnerCount = Math.min(winners, participants.size);
-          const participantsArray = Array.from(participants.values());
-          const winnersList = [];
-
-          while (winnersList.length < winnerCount) {
-            const randomIndex = Math.floor(Math.random() * participantsArray.length);
-            const winner = participantsArray.splice(randomIndex, 1)[0];
-            winnersList.push(winner);
-          }
-
-          console.log(`[INFO] Winners selected: ${winnersList.map(w => w.username).join(', ')}`);
-
-          // If prize is numeric -> currency
-          if (!isNaN(prizeInput)) {
-            const prizeAmount = parseInt(prizeInput, 10);
-
-            for (const winner of winnersList) {
-              // Announce winner
-              await interaction.channel.send(
-                `Congrats <@${winner.id}>! You won **${giveawayName}** and have been given (**${prizeAmount}${CURRENCY_SYMBOL}**).`
-              );
-              // Update the winner's wallet
-              await updateWallet(winner.id, prizeAmount);
-              console.log(`[SUCCESS] ${winner.username} (${winner.id}) received ${prizeAmount}${CURRENCY_SYMBOL} ${CURRENCY_NAME}`);
-            }
-
           } else {
-            // Prize is a shop item
-            const shopItems = await getShopItems();
-            const shopItem = shopItems.find(item => item.name.toLowerCase() === prizeInput.toLowerCase());
+            // Get all users who reacted and filter out bots.
+            const users = await reaction.users.fetch();
+            const participants = users.filter(user => !user.bot);
 
-            if (!shopItem || !shopItem.itemID) {
-              console.error(`[ERROR] Shop item not found or missing itemID: "${prizeInput}"`);
-              await interaction.channel.send(
-                `Error: Shop item "**${prizeInput}**" not found or missing itemID. Prize distribution failed.`
-              );
-              return;
-            }
+            if (participants.size === 0) {
+              await interaction.channel.send(`Giveaway "${giveawayName}" ended with no valid participants.`);
+            } else {
+              // Determine how many winners to pick.
+              const winnerCount = Math.min(winners, participants.size);
+              const participantsArray = Array.from(participants.values());
+              const winnersList = [];
 
-            for (const winner of winnersList) {
-              // Announce winner
-              await interaction.channel.send(
-                `Congrats <@${winner.id}>! You won **${giveawayName}** and have been given (**${shopItem.name}**).`
-              );
+              while (winnersList.length < winnerCount) {
+                const randomIndex = Math.floor(Math.random() * participantsArray.length);
+                const winner = participantsArray.splice(randomIndex, 1)[0];
+                winnersList.push(winner);
+              }
 
-              // Attempt to add item to their inventory
-              // Make sure addItemToInventory returns true on success!
-              const delivered = await addItemToInventory(winner.id, shopItem.itemID);
-              if (delivered) {
-                console.log(`[SUCCESS] Added "${shopItem.name}" to ${winner.username} (${winner.id})`);
+              console.log(`[INFO] Winners selected: ${winnersList.map(w => w.username).join(', ')}`);
+
+              // Award prizes based on the prize type.
+              if (!isNaN(prizeInput)) {
+                // Prize is a currency amount.
+                const prizeAmount = parseInt(prizeInput, 10);
+
+                for (const winner of winnersList) {
+                  await interaction.channel.send(
+                    `Congrats <@${winner.id}>! You won **${giveawayName}** and have been given (**${prizeAmount}${CURRENCY_SYMBOL}**).`
+                  );
+                  await updateWallet(winner.id, prizeAmount);
+                  console.log(`[SUCCESS] ${winner.username} (${winner.id}) received ${prizeAmount}${CURRENCY_SYMBOL} ${CURRENCY_NAME}`);
+                }
               } else {
-                console.warn(`[WARN] Possibly failed to add "${shopItem.name}" to ${winner.username} (${winner.id})`);
+                // Prize is assumed to be a shop item.
+                const shopItems = await getShopItems();
+                const shopItem = shopItems.find(item => item.name.toLowerCase() === prizeInput.toLowerCase());
+
+                if (!shopItem || !shopItem.itemID) {
+                  console.error(`[ERROR] Shop item not found or missing itemID: "${prizeInput}"`);
+                  await interaction.channel.send(
+                    `Error: Shop item "**${prizeInput}**" not found or missing itemID. Prize distribution failed.`
+                  );
+                } else {
+                  for (const winner of winnersList) {
+                    await interaction.channel.send(
+                      `Congrats <@${winner.id}>! You won **${giveawayName}** and have been given (**${shopItem.name}**).`
+                    );
+                    const delivered = await addItemToInventory(winner.id, shopItem.itemID);
+                    if (delivered) {
+                      console.log(`[SUCCESS] Added "${shopItem.name}" to ${winner.username} (${winner.id})`);
+                    } else {
+                      console.warn(`[WARN] Possibly failed to add "${shopItem.name}" to ${winner.username} (${winner.id})`);
+                    }
+                  }
+                }
               }
             }
           }
-
-          // If we have more repeats, start the next one
+        } catch (error) {
+          console.error(`[ERROR] Error concluding giveaway "${giveawayName}": ${error}`);
+        } finally {
+          // Always check if we have repeats left and start the next giveaway.
           if (repeatCount > 0) {
             startGiveaway(repeatCount - 1);
           }
-
-        } catch (error) {
-          console.error(`[ERROR] Error concluding giveaway "${giveawayName}": ${error}`);
         }
       }, durationMs);
     };
 
-    // Start the first giveaway
+    // Start the first giveaway.
     startGiveaway(repeat);
 
-    // Confirm to the command user
+    // Confirm the giveaway creation to the command user.
     await interaction.reply({
       content: `✅ Giveaway "${giveawayName}" started! It will end in ${duration} ${timeUnit}. ${repeat > 0 ? `It will repeat ${repeat} time(s).` : ''}`,
       ephemeral: true
