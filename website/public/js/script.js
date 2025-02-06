@@ -109,7 +109,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   
 // 5) Giveaways
-const showGiveawayListButton = document.getElementById('showGiveawayListButton');
 if (showGiveawayListButton) {
   showGiveawayListButton.addEventListener('click', async () => {
     const giveawayItems = document.getElementById('giveawayItems');
@@ -123,7 +122,8 @@ if (showGiveawayListButton) {
       } else {
         let html = '<h2>Active Giveaways</h2>';
 
-        giveaways.forEach((g) => {
+        // Reverse the order of giveaways so newest appears first
+        giveaways.reverse().forEach((g) => {
           const endTime = new Date(parseInt(g.end_time)).toLocaleString();
           const giveawayLink = `https://discord.com/channels/${SERVER_ID}/${g.channel_id}/${g.message_id}`;
 
