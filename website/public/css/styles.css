@@ -248,14 +248,22 @@ button:hover {
 
 /* Giveaway Item Styles */
 .giveaway-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between; /* Spread content evenly */
-  padding: 10px;
+  display: flex; /* Use flexbox for centering */
+  align-items: center; /* Center content vertically */
+  justify-content: center; /* Center content horizontally */
   background-color: #27393F; /* Dark navy background */
-  border-radius: 8px;
-  gap: 10px;
-  transition: all 0.3s ease; /* Smooth transition for hover effect */
+  color: #fafafa; /* Light text color */
+  padding: 15px 20px; /* Adds padding for better readability */
+  border: none;
+  border-radius: 8px; /* Rounded corners */
+  text-align: center; /* Ensures text is centered */
+  cursor: pointer; /* Adds a pointer on hover */
+  font-size: 1rem; /* Standard font size */
+  transition: background-color 0.3s ease, transform 0.2s ease;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Adds a shadow for depth */
+  width: 100%; /* Makes all buttons the same width */
+  max-width: 500px; /* Ensures a consistent maximum width */
+  word-wrap: break-word; /* Break text if it overflows */
 }
 
 .giveaway-item:hover {
