@@ -8,7 +8,7 @@ const sqlite3 = require('sqlite3').verbose();
 
 // Import your Discord bot client so we can fetch usernames
 // Make sure ../bot exports something like: module.exports = { client }
-const { client } = require('../bot'); 
+const { client } = require('../info-bot'); 
 
 const app = express();
 const PORT = process.env.SERVER_PORT || 3000;
