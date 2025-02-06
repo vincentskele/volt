@@ -167,7 +167,7 @@ if (showShopButton) {
         );
 
         // Set the inner HTML with the formatted description
-        button.innerHTML = `[${item.id}] ${item.name} - ${item.price} | Qty: ${item.quantity} | Desc: ${description}`;
+        button.innerHTML = `${item.name} - ⚡${item.price} | Qty: ${item.quantity} | ${description}`;
         shopItems.appendChild(button);
       });
 
