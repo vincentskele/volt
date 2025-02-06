@@ -138,6 +138,55 @@ button:hover {
   color: #66d9ff; /* Brighter hover link */
 }
 
+/* Leaderboard container */
+#leaderboardList {
+  padding: 20px;
+  background-color: rgba(43, 47, 71, 0.8);
+  border-radius: 15px;
+  box-shadow: 0 8px 12px rgba(0, 0, 0, 0.2);
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+/* Individual leaderboard items */
+.leaderboard-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 10px 0;
+  padding: 10px 15px;
+  background-color: rgba(43, 47, 71, 1);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: background 0.3s ease, transform 0.2s ease;
+}
+
+.leaderboard-item:hover {
+  background-color: rgba(55, 60, 80, 1);
+  transform: scale(1.02);
+}
+
+/* User link styling */
+.leaderboard-item a {
+  color: #4caff0;
+  font-weight: bold;
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+.leaderboard-item a:hover {
+  color: #66d9ff;
+  text-decoration: underline;
+}
+
+/* Information details */
+.leaderboard-item span {
+  font-size: 0.9rem;
+  color: #f4f4f9;
+  margin-left: 10px;
+}
+
+
 /* Footer styles */
 footer {
   margin-top: 40px; /* Increased spacing above footer */

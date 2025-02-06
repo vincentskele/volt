@@ -47,15 +47,46 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // 1) Leaderboard
-  const showLeaderboardButton = document.getElementById('showLeaderboardButton');
-  if (showLeaderboardButton) {
-    showLeaderboardButton.addEventListener('click', () => {
-      const leaderboardList = document.getElementById('leaderboardList');
-      fetchData('/api/leaderboard', leaderboardList, 'leaderboard');
-      showSection('leaderboard');
-    });
-  }
+// Leaderboard
+const showLeaderboardButton = document.getElementById('showLeaderboardButton');
+if (showLeaderboardButton) {
+  showLeaderboardButton.addEventListener('click', () => {
+    const leaderboardList = document.getElementById('leaderboardList');
+
+    fetch('/api/leaderboard')
+      .then((response) => response.json())
+      .then((leaderboard) => {
+        leaderboardList.innerHTML = ''; // Clear existing content
+
+        leaderboard.forEach((entry, index) => {
+          const item = document.createElement('div');
+          item.className = 'leaderboard-item';
+
+          const userLink = document.createElement('a');
+          userLink.href = `https://discord.com/users/${entry.userID}`;
+          userLink.target = '_blank';
+          userLink.textContent = `${index + 1}. ${entry.userTag}`; // Add ranking number
+
+          const details = document.createElement('span');
+          details.innerHTML = `
+            Wallet: ${entry.wallet} | Bank: ${entry.bank} | Total: ${entry.total}
+          `;
+
+          item.appendChild(userLink);
+          item.appendChild(details);
+          leaderboardList.appendChild(item);
+        });
+      })
+      .catch((error) => {
+        console.error('Error fetching leaderboard:', error);
+        leaderboardList.textContent = 'Failed to load leaderboard.';
+      });
+
+    showSection('leaderboard');
+  });
+}
+
+
 
 // Admin List
 const showAdminListButton = document.getElementById('showAdminListButton');
