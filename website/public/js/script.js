@@ -112,18 +112,47 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
   
-    // 5) Giveaways
     const showGiveawayListButton = document.getElementById('showGiveawayListButton');
     if (showGiveawayListButton) {
-      showGiveawayListButton.addEventListener('click', () => {
+      showGiveawayListButton.addEventListener('click', async () => {
         const giveawayItems = document.getElementById('giveawayItems');
-        // If you want *all* giveaways, use '/api/giveaways'.
-        // If only active, use '/api/giveaways/active'.
-        fetchData('/api/giveaways/active', giveawayItems, 'giveaways');
-        showSection('giveawayList');
+        try {
+          // Fetch active giveaways:
+          const res = await fetch('/api/giveaways/active'); // Adjust API route if needed
+          const giveaways = await res.json();
+    
+          if (!giveaways.length) {
+            giveawayItems.innerHTML = '<p>No active giveaways at the moment.</p>';
+          } else {
+            let html = '<h2>Active Giveaways</h2>';
+    
+            giveaways.forEach((g) => {
+              // Convert end_time to readable format
+              const endTime = new Date(parseInt(g.end_time)).toLocaleString();
+    
+              // Build giveaway item HTML
+              html += `
+                <div class="giveaway-item">
+                  <p><strong>Message Link:</strong> <a href="https://discord.com/channels/CHANNEL_ID/${g.message_id}" target="_blank">${g.message_id}</a></p>
+                  <p><strong>End Time:</strong> ${endTime}</p>
+                  <p><strong>Prize:</strong> ${g.prize}</p>
+                </div>
+              `;
+            });
+    
+            giveawayItems.innerHTML = html;
+          }
+    
+          // Reveal the giveaway list section
+          showSection('giveawayList');
+        } catch (error) {
+          console.error('Error fetching giveaways:', error);
+          giveawayItems.innerHTML = '<p>Error loading giveaways.</p>';
+        }
       });
     }
-  
+    
+
     // Back buttons → Return to landing page
     document.querySelectorAll('.back-button').forEach((backButton) => {
       backButton.addEventListener('click', () => {
