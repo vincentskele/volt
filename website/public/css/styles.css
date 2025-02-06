@@ -1,98 +1,117 @@
 /* General styles for the page */
 body {
-    font-family: Arial, sans-serif;
-    margin: 0;
-    padding: 0;
-    background-color: #1A1D2F; /* Dark navy background color */
-    color: #f4f4f9; /* Light text for better contrast */
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-start;
-    min-height: 100vh;
-  }
-  
-  /* Header styles */
-  header {
-    text-align: center;
-    margin: 20px 0;
-  }
-  
-  header h1 {
-    font-size: 2.5rem;
-    color: #007bff; /* Blue color for the title */
-    margin-bottom: 10px;
-  }
-  
-  header p {
-    font-size: 1rem;
-    color: #cfcfcf; /* Softer gray for the description */
-  }
-  
-  /* Buttons */
-  button {
-    padding: 10px 20px;
-    font-size: 1rem;
-    border-radius: 5px;
-    cursor: pointer;
-    border: none;
-    margin: 5px;
-    background-color: #007bff; /* Consistent blue color for all buttons */
-    color: white;
-    transition: background-color 0.3s ease, transform 0.2s ease;
-  }
-  
-  button:hover {
-    background-color: #0056b3; /* Darker blue on hover */
-    transform: translateY(-2px);
-  }
-  
-  .back-button {
-    background-color: #6c757d;
-    color: white;
-  }
-  
-  .back-button:hover {
-    background-color: #5a6268;
-  }
-  
-  /* Content sections */
-  .content {
-    text-align: center;
-    margin: 20px;
-    padding: 20px;
-    background-color: #2b2f47; /* Slightly lighter background for sections */
-    border-radius: 10px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    display: none; /* Hidden by default */
-  }
-  
-  #landingPage {
-    display: block; /* Ensure the landing page with buttons is visible */
-  }
-  
-  .content h2 {
-    font-size: 1.8rem;
-    margin-bottom: 15px;
-    color: #f4f4f9; /* Light color for headings */
-  }
-  
-  .content ul {
-    list-style-type: none;
-    padding: 0;
-  }
-  
-  .content ul li {
-    margin: 5px 0;
-    font-size: 1rem;
-    color: #cfcfcf; /* Softer gray for list items */
-  }
-  
-  /* Footer styles */
-  footer {
-    margin-top: 20px;
-    font-size: 0.8rem;
-    text-align: center;
-    color: #cfcfcf;
-  }
-  
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: #1A1D2F; /* Dark navy background color */
+  color: #f4f4f9; /* Light text for better contrast */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 100vh;
+}
+
+/* Header styles */
+header {
+  text-align: center;
+  margin: 20px 0;
+}
+
+header h1 {
+  font-size: 2.5rem;
+  color: #007bff; /* Blue color for the title */
+  margin-bottom: 10px;
+}
+
+header p {
+  font-size: 1rem;
+  color: #cfcfcf; /* Softer gray for the description */
+}
+
+/* Link styles (apply globally) */
+a {
+  color: #007bff; /* Blue color for all links */
+  text-decoration: none; /* Remove underline */
+  transition: color 0.3s ease;
+}
+
+a:visited {
+  color: #007bff; /* Same color for visited links */
+}
+
+a:hover {
+  color: #3399ff; /* Slightly lighter blue on hover */
+  text-decoration: underline; /* Optional: Add underline on hover */
+}
+
+a:active {
+  color: #0056b3; /* Darker blue when clicked */
+}
+
+/* Buttons */
+button {
+  padding: 10px 20px;
+  font-size: 1rem;
+  border-radius: 5px;
+  cursor: pointer;
+  border: none;
+  margin: 5px;
+  background-color: #007bff; /* Consistent blue color for all buttons */
+  color: white;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+button:hover {
+  background-color: #0056b3; /* Darker blue on hover */
+  transform: translateY(-2px);
+}
+
+.back-button {
+  background-color: #6c757d;
+  color: white;
+}
+
+.back-button:hover {
+  background-color: #5a6268;
+}
+
+/* Content sections */
+.content {
+  text-align: center;
+  margin: 20px;
+  padding: 20px;
+  background-color: #2b2f47; /* Slightly lighter background for sections */
+  border-radius: 10px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  display: none; /* Hidden by default */
+}
+
+#landingPage {
+  display: block; /* Ensure the landing page with buttons is visible */
+}
+
+.content h2 {
+  font-size: 1.8rem;
+  margin-bottom: 15px;
+  color: #f4f4f9; /* Light color for headings */
+}
+
+.content ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+.content ul li {
+  margin: 5px 0;
+  font-size: 1rem;
+  color: #cfcfcf; /* Softer gray for list items */
+}
+
+/* Footer styles */
+footer {
+  margin-top: 20px;
+  font-size: 0.8rem;
+  text-align: center;
+  color: #cfcfcf;
+}
