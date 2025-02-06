@@ -7,8 +7,8 @@ PizzaBot is a Discord bot designed to provide a fun and interactive economy syst
 - **Admin Tools**: Grant money or items, create or remove items, and manage users and jobs.
 - **Shop System**: Buy, sell, and redeem items.
 - **Jobs**: Assign jobs to users for rewards.
-- **Pets**: Create, view, and battle pets.
 - **Games**: Play blackjack and other interactive games.
+- **Web UI**: Dashboard page.
 
 ## Prerequisites
 Ensure your environment meets the following requirements before setting up PizzaBot:
@@ -73,10 +73,6 @@ Follow these steps to set up PizzaBot on your server:
 - **`$work`**: Assign yourself a random job.
 - **`$complete-job @user <jobID> <reward>`**: Mark a job as complete (Admin).
 
-### Pet System
-- **`$create-pet <name> <type>`**: Create a pet.
-- **`$pets`**: View your or another user’s pets.
-- **`$battle <your pet> @user <their pet> <bet>`**: Battle pets for rewards.
 
 ### Games
 - **`$blackjack <bet>`**: Start a blackjack game.
