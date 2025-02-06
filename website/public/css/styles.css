@@ -12,6 +12,18 @@ body {
   min-height: 100vh;
 }
 
+/* Global link styles */
+a {
+  color: #3399ff; /* Link color matches brighter blue */
+  text-decoration: none; /* Remove underline */
+  transition: color 0.3s ease;
+}
+
+a:hover {
+  color: #63baff; /* Slightly lighter blue on hover */
+  text-decoration: underline; /* Add underline on hover */
+}
+
 /* Header styles */
 header {
   text-align: center;
@@ -19,9 +31,10 @@ header {
 }
 
 header h1 {
-  font-size: 2.5rem;
-  color: #007bff; /* Bright blue title */
-  margin-bottom: 10px;
+  font-size: 3rem; /* Larger and bolder title */
+  color: #3399ff; /* Brighter blue for title */
+  margin-bottom: 15px;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5); /* Subtle shadow for depth */
 }
 
 header p {
@@ -31,24 +44,27 @@ header p {
 
 /* Buttons */
 button {
-  padding: 10px 20px;
-  font-size: 1rem;
-  border-radius: 5px;
+  padding: 12px 24px; /* Slightly larger buttons */
+  font-size: 1.1rem; /* Bigger font for buttons */
+  border-radius: 8px; /* More rounded corners */
   cursor: pointer;
   border: none;
-  margin: 5px;
+  margin: 8px; /* Increased spacing */
   background-color: #007bff; /* Consistent blue buttons */
   color: white;
-  transition: background-color 0.3s ease, transform 0.2s ease;
+  font-weight: bold; /* Bold text for buttons */
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Shadow for depth */
+  transition: background-color 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease;
 }
 
 button:hover {
   background-color: #0056b3; /* Darker blue on hover */
-  transform: translateY(-2px);
+  transform: translateY(-3px); /* More pronounced hover lift */
+  box-shadow: 0 6px 8px rgba(0, 0, 0, 0.3); /* Enhanced shadow on hover */
 }
 
 .back-button {
-  background-color: #6c757d;
+  background-color: #6c757d; /* Neutral gray for back buttons */
   color: white;
 }
 
@@ -60,10 +76,10 @@ button:hover {
 .content {
   text-align: center;
   margin: 20px;
-  padding: 20px;
+  padding: 30px; /* Increased padding */
   background-color: #2b2f47; /* Slightly lighter background */
-  border-radius: 10px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  border-radius: 15px; /* More rounded corners */
+  box-shadow: 0 8px 12px rgba(0, 0, 0, 0.2); /* Deeper shadow for cards */
   display: none; /* Hidden by default */
 }
 
@@ -72,9 +88,10 @@ button:hover {
 }
 
 .content h2 {
-  font-size: 1.8rem;
-  margin-bottom: 15px;
+  font-size: 2rem; /* Larger headings */
+  margin-bottom: 20px;
   color: #f4f4f9; /* Light text for headings */
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5); /* Subtle shadow for text */
 }
 
 .content ul {
@@ -83,25 +100,26 @@ button:hover {
 }
 
 .content ul li {
-  margin: 5px 0;
-  font-size: 1rem;
-  color: #cfcfcf; /* Softer gray for list items */
+  margin: 10px 0; /* Increased spacing */
+  font-size: 1.1rem; /* Slightly larger text */
+  color: #d1d5db; /* Softer gray for list items */
 }
 
 /* Giveaway item styles */
 .giveaway-item {
   border: 2px solid #6c7cb1; /* Softer slate blue */
-  padding: 15px;
-  margin: 10px 0;
-  border-radius: 8px;
+  padding: 20px; /* Increased padding */
+  margin: 15px 0;
+  border-radius: 12px; /* More rounded corners */
   background-color: #2b2f47; /* Slightly lighter background */
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Subtle shadow for depth */
-  transition: transform 0.2s ease, border-color 0.3s ease;
+  box-shadow: 0 6px 10px rgba(0, 0, 0, 0.3); /* Stronger shadow for depth */
+  transition: transform 0.2s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .giveaway-item:hover {
   border-color: #8a9edc; /* Brighter blue border on hover */
-  transform: scale(1.02); /* Slight zoom effect */
+  transform: scale(1.03); /* Slightly larger zoom effect */
+  box-shadow: 0 8px 12px rgba(0, 0, 0, 0.4); /* More prominent shadow on hover */
 }
 
 .giveaway-item p {
@@ -110,21 +128,10 @@ button:hover {
   color: #f4f4f9; /* Keep consistent light color for text */
 }
 
-.giveaway-item a {
-  color: #007bff; /* Link color matches the title */
-  text-decoration: none; /* Remove underline */
-  transition: color 0.3s ease;
-}
-
-.giveaway-item a:hover {
-  color: #3399ff; /* Slightly lighter blue on hover */
-  text-decoration: underline; /* Add underline on hover */
-}
-
 /* Footer styles */
 footer {
-  margin-top: 20px;
-  font-size: 0.8rem;
+  margin-top: 40px; /* Increased spacing above footer */
+  font-size: 0.9rem; /* Slightly larger font */
   text-align: center;
   color: #cfcfcf;
 }

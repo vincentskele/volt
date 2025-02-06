@@ -129,7 +129,7 @@ if (showGiveawayListButton) {
 
           html += `
             <div class="giveaway-item">
-              <p><a href="${giveawayLink}" target="_blank">Click here to enter giveaway!</a></p>
+              <p><a href="${giveawayLink}" target="_blank">Click here and react to enter giveaway!</a></p>
               <p><strong>End Time:</strong> ${endTime}</p>
               <p><strong>Prize:</strong> ${g.prize}</p>
             </div>
