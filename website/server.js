@@ -143,15 +143,42 @@ app.get('/api/shop', (req, res) => {
 
 /**
  * GET /api/jobs
+ * Return a list of jobs with user mappings resolved.
  */
-app.get('/api/jobs', (req, res) => {
-  db.all(`SELECT jobID, description FROM joblist`, [], (err, rows) => {
-    if (err) {
-      console.error('Error fetching jobs:', err);
-      return res.status(500).json({ error: 'Failed to fetch jobs.' });
-    }
-    res.json(rows);
-  });
+app.get('/api/jobs', async (req, res) => {
+  try {
+    db.all(`SELECT jobID, description FROM joblist`, [], async (err, rows) => {
+      if (err) {
+        console.error('Error fetching jobs:', err);
+        return res.status(500).json({ error: 'Failed to fetch jobs.' });
+      }
+
+      const jobs = await Promise.all(
+        rows.map(async (job) => {
+          // Find all user IDs in the job description
+          const userIdMatches = job.description.match(/<@(\d+)>/g) || [];
+          const userIds = [...new Set(userIdMatches.map((match) => match.slice(2, -1)))];
+
+          // Resolve user IDs to usernames
+          const userMappings = {};
+          for (const userId of userIds) {
+            const userTag = await resolveUsername(userId); // Assume resolveUsername is defined
+            userMappings[userId] = userTag || 'UnknownUser';
+          }
+
+          return {
+            ...job,
+            userMappings,
+          };
+        })
+      );
+
+      res.json(jobs);
+    });
+  } catch (err) {
+    console.error('Error in /api/jobs route:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 /**

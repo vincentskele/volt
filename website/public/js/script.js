@@ -195,51 +195,60 @@ const jobListContent = document.getElementById('jobListContent');
 
 async function fetchJobs() {
   try {
+    jobListContent.innerHTML = '<p>Loading jobs...</p>'; // Show loading state
     const res = await fetch('/api/jobs');
     const jobs = await res.json();
 
     if (!jobs.length) {
-      jobListContent.innerHTML = '<p>No jobs available.</p>';
-    } else {
-      // Clear existing content
-      jobListContent.innerHTML = '';
-
-      // Create the job list container
-      const jobList = document.createElement('div');
-      jobList.className = 'job-list';
-
-      // Populate jobs
-      jobs.forEach((job) => {
-        const description = job.description
-          // Replace channel IDs with links
-          .replace(
-            /<#(\d+)>/g,
-            '<a href="https://discord.com/channels/$1" target="_blank" class="link">#$1</a>'
-          )
-          // Replace user IDs with links
-          .replace(
-            /<@(\d+)>/g,
-            '<a href="https://discord.com/users/$1" target="_blank" class="link">@$1</a>'
-          )
-          // Replace Markdown-style links with HTML
-          .replace(
-            /\[([^\]]+)\]\(([^)]+)\)/g,
-            '<a href="$2" target="_blank" class="link">$1</a>'
-          );
-
-        // Create job item and set the inner HTML
-        const jobItem = document.createElement('div');
-        jobItem.className = 'job-item';
-        jobItem.innerHTML = `<p><strong></strong> ${description}</p>`;
-        jobList.appendChild(jobItem);
-      });
-
-      // Append the job list to the content container
-      jobListContent.appendChild(jobList);
+      jobListContent.innerHTML = '<p class="no-jobs-message">No jobs available at the moment. Please check back later.</p>';
+      return;
     }
+
+    // Clear existing content
+    jobListContent.innerHTML = '';
+
+    // Create the job list container
+    const jobList = document.createElement('div');
+    jobList.className = 'job-list';
+
+    for (const job of jobs) {
+      let description = job.description;
+
+      // Replace user IDs with names and links
+      if (job.userMappings) {
+        for (const userId in job.userMappings) {
+          const userName = job.userMappings[userId];
+          description = description.replace(
+            new RegExp(`<@${userId}>`, 'g'),
+            `<a href="https://discord.com/users/${userId}" target="_blank" class="link">@${userName}</a>`
+          );
+        }
+      }
+
+      // Replace channel IDs with links
+      description = description.replace(
+        /<#(\d+)>/g,
+        '<a href="https://discord.com/channels/$1" target="_blank" class="link">#$1</a>'
+      );
+
+      // Replace Markdown-style links with HTML
+      description = description.replace(
+        /\[([^\]]+)\]\(([^)]+)\)/g,
+        '<a href="$2" target="_blank" class="link">$1</a>'
+      );
+
+      // Create job item and set the inner HTML
+      const jobItem = document.createElement('div');
+      jobItem.className = 'job-item';
+      jobItem.innerHTML = `<p><strong>Job:</strong> ${description}</p>`;
+      jobList.appendChild(jobItem);
+    }
+
+    // Append the job list to the content container
+    jobListContent.appendChild(jobList);
   } catch (error) {
-    console.error('Error fetching jobs:', error);
-    jobListContent.innerHTML = '<p>Error loading jobs.</p>';
+    console.error('Error fetching jobs:', error.message, error.stack);
+    jobListContent.innerHTML = '<p>Error loading jobs. Please try again later.</p>';
   }
 }
 
