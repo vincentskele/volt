@@ -54,37 +54,51 @@ if (showLeaderboardButton) {
     const leaderboardList = document.getElementById('leaderboardList');
 
     fetch('/api/leaderboard')
-    .then((response) => response.json())
-    .then((leaderboard) => {
-      leaderboardList.innerHTML = ''; // Clear existing content
-  
-      leaderboard.forEach((entry, index) => {
-        const item = document.createElement('div');
-        item.className = 'leaderboard-item';
-  
-        const userLink = document.createElement('a');
-        userLink.href = `https://discord.com/users/${entry.userID}`;
-        userLink.target = '_blank';
-        userLink.textContent = `${index + 1}. ${entry.userTag}`;
-  
-        const total = entry.wallet + entry.bank;
-        const details = document.createElement('span');
-        details.innerHTML = `Wallet: ${entry.wallet} | Bank: ${entry.bank} | Total: ${total || 0}`;
-  
-        item.appendChild(userLink);
-        item.appendChild(details);
-        leaderboardList.appendChild(item);
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then((leaderboard) => {
+        // Clear existing content
+        leaderboardList.innerHTML = '';
+
+        leaderboard.forEach((entry, index) => {
+          // Create leaderboard item
+          const item = document.createElement('div');
+          item.className = 'leaderboard-item';
+
+          // Create user link
+          const userLink = document.createElement('a');
+          userLink.href = `https://discord.com/users/${entry.userID}`;
+          userLink.target = '_blank';
+          userLink.textContent = `${index + 1}. ${entry.userTag}`;
+          userLink.className = 'user-link'; // Add class for styling if needed
+
+          // Create details span
+          const total = entry.wallet + entry.bank;
+          const details = document.createElement('span');
+          details.innerHTML = `Wallet: ${entry.wallet} | Bank: ${entry.bank} | Total: ${total || 0}`;
+          details.className = 'details'; // Add class for styling if needed
+
+          // Append link and details to the item
+          item.appendChild(userLink);
+          item.appendChild(details);
+
+          // Append item to the leaderboard list
+          leaderboardList.appendChild(item);
+        });
+      })
+      .catch((error) => {
+        console.error('Error fetching leaderboard:', error);
+        leaderboardList.textContent = 'Failed to load leaderboard.';
       });
-    })
-    .catch((error) => {
-      console.error('Error fetching leaderboard:', error);
-      leaderboardList.textContent = 'Failed to load leaderboard.';
-    });
-  
 
     showSection('leaderboard');
   });
 }
+
 
 
 // Admin List

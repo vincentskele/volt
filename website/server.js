@@ -50,7 +50,7 @@ async function resolveUsername(userId) {
  */
 app.get('/api/leaderboard', async (req, res) => {
   try {
-    // Example: select top 10 from 'economy'
+    // Query database for top 10 users by total balance
     db.all(
       `SELECT userID, wallet, bank, (wallet + bank) AS totalBalance
        FROM economy
@@ -63,19 +63,27 @@ app.get('/api/leaderboard', async (req, res) => {
           return res.status(500).json({ error: 'Failed to fetch leaderboard' });
         }
 
-        // For each user, fetch Discord tag
-        const withTags = await Promise.all(
-          rows.map(async (row) => {
-            const userTag = await resolveUsername(row.userID);
-            return {
-              userTag,
-              wallet: row.wallet,
-              bank: row.bank,
-              totalBalance: row.totalBalance,
-            };
-          })
-        );
-        res.json(withTags);
+        try {
+          // Resolve Discord tags for each user
+          const withTags = await Promise.all(
+            rows.map(async (row) => {
+              const userTag = await resolveUsername(row.userID);
+              return {
+                userID: row.userID, // Include userID for link generation
+                userTag,
+                wallet: row.wallet,
+                bank: row.bank,
+                totalBalance: row.totalBalance,
+              };
+            })
+          );
+
+          // Send leaderboard data as response
+          res.json(withTags);
+        } catch (tagError) {
+          console.error('Error resolving usernames:', tagError);
+          res.status(500).json({ error: 'Failed to resolve usernames' });
+        }
       }
     );
   } catch (err) {
@@ -83,6 +91,7 @@ app.get('/api/leaderboard', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
 
 /**
  * GET /api/admins
