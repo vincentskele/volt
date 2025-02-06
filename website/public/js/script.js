@@ -57,15 +57,38 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 2) Admin List
-  const showAdminListButton = document.getElementById('showAdminListButton');
-  if (showAdminListButton) {
-    showAdminListButton.addEventListener('click', () => {
-      const adminListContent = document.getElementById('adminListContent');
-      fetchData('/api/admins', adminListContent, 'admins');
-      showSection('adminList');
-    });
-  }
+// Admin List
+const showAdminListButton = document.getElementById('showAdminListButton');
+if (showAdminListButton) {
+  showAdminListButton.addEventListener('click', () => {
+    const adminListContent = document.getElementById('adminListContent');
+
+    fetch('/api/admins')
+      .then((response) => response.json())
+      .then((admins) => {
+        adminListContent.innerHTML = ''; // Clear existing content
+        admins.forEach((admin) => {
+          const adminLink = document.createElement('a');
+          adminLink.href = `https://discord.com/users/${admin.userID}`;
+          adminLink.target = '_blank'; // Open in a new tab
+          adminLink.textContent = admin.userTag;
+
+          const listItem = document.createElement('div');
+          listItem.className = 'admin-item'; // Add the new class
+          listItem.innerHTML = `<span>Admin:</span> `;
+          listItem.appendChild(adminLink);
+          adminListContent.appendChild(listItem);
+        });
+      })
+      .catch((error) => {
+        console.error('Error fetching admin list:', error);
+        adminListContent.textContent = 'Failed to load admin list.';
+      });
+
+    showSection('adminList');
+  });
+}
+
 
   // 3) Shop
   const showShopButton = document.getElementById('showShopButton');

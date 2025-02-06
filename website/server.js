@@ -86,7 +86,7 @@ app.get('/api/leaderboard', async (req, res) => {
 
 /**
  * GET /api/admins
- * Return a list of admins from 'admins' table, but with userTag resolved.
+ * Return a list of admins from 'admins' table, with userID and userTag resolved.
  */
 app.get('/api/admins', async (req, res) => {
   try {
@@ -95,11 +95,10 @@ app.get('/api/admins', async (req, res) => {
         console.error('Error fetching admins:', err);
         return res.status(500).json({ error: 'Failed to fetch admins' });
       }
-      // rows = [{ userID: '1234' }, { userID: '5678' }, ...]
       const adminData = await Promise.all(
         rows.map(async (row) => {
           const userTag = await resolveUsername(row.userID);
-          return { userTag };
+          return { userID: row.userID, userTag };
         })
       );
       res.json(adminData);
@@ -109,6 +108,7 @@ app.get('/api/admins', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
 
 /**
  * GET /api/shop

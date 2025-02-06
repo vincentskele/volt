@@ -105,27 +105,37 @@ button:hover {
   color: #d1d5db; /* Softer gray for list items */
 }
 
-/* Giveaway item styles */
-.giveaway-item {
-  border: 2px solid #6c7cb1; /* Softer slate blue */
-  padding: 20px; /* Increased padding */
-  margin: 15px 0;
-  border-radius: 12px; /* More rounded corners */
-  background-color: #2b2f47; /* Slightly lighter background */
-  box-shadow: 0 6px 10px rgba(0, 0, 0, 0.3); /* Stronger shadow for depth */
-  transition: transform 0.2s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+/* Admin item styles */
+.admin-item {
+  display: flex;
+  align-items: center;
+  margin: 10px 0;
+  padding: 10px 15px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background-color: rgba(43, 47, 71, 0.8); /* Slightly lighter background */
+  border-radius: 10px;
+  transition: background 0.3s ease, transform 0.2s ease;
 }
 
-.giveaway-item:hover {
-  border-color: #8a9edc; /* Brighter blue border on hover */
-  transform: scale(1.03); /* Slightly larger zoom effect */
-  box-shadow: 0 8px 12px rgba(0, 0, 0, 0.4); /* More prominent shadow on hover */
+.admin-item:hover {
+  background-color: rgba(43, 47, 71, 1); /* Slightly brighter on hover */
+  transform: scale(1.02); /* Subtle zoom effect */
 }
 
-.giveaway-item p {
-  margin: 5px 0;
-  font-size: 1rem;
-  color: #f4f4f9; /* Keep consistent light color for text */
+.admin-item span {
+  margin-right: 8px;
+  font-weight: bold;
+  color: #63baff; /* Highlight for labels */
+}
+
+.admin-item a {
+  color: #4caff0;
+  font-weight: bold;
+  transition: color 0.3s ease;
+}
+
+.admin-item a:hover {
+  color: #66d9ff; /* Brighter hover link */
 }
 
 /* Footer styles */
