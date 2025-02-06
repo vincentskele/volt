@@ -14,31 +14,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Format data depending on the endpoint type
   function getFormatter(type) {
     const formatters = {
-      leaderboard: (item) => {
-        return `User: ${item.userTag} | Wallet: ${item.wallet} | Bank: ${item.bank} | Total: ${item.totalBalance}`;
-      },
-      admins: (item) => {
-        return `Admin: ${item.userTag}`;
-      },
-      shop: (item) => {
-        let text = `[${item.id}] ${item.name} - ${item.price}`;
-        if (item.quantity !== undefined) {
-          text += ` | Qty: ${item.quantity}`;
-        }
-        if (item.description) {
-          text += ` | Desc: ${item.description}`;
-        }
-        return text;
-      },
-      jobs: (job) => {
-        return `[${job.jobID}] ${job.description}`;
-      },
-      giveaways: (item) => {
-        const endTime = item.end_time
-          ? new Date(item.end_time).toLocaleString()
-          : 'N/A';
-        return `Giveaway #${item.id} — Prize: "${item.prize}" — Ends: ${endTime}`;
-      },
+      leaderboard: (item) => `User: ${item.userTag} | Wallet: ${item.wallet} | Bank: ${item.bank} | Total: ${item.totalBalance}`,
+      admins: (item) => `Admin: ${item.userTag}`,
+      shop: (item) => `[${item.id}] ${item.name} - ${item.price} | Qty: ${item.quantity ?? 'N/A'} | Desc: ${item.description ?? ''}`,
+      jobs: (job) => `[${job.jobID}] ${job.description}`,
+      giveaways: (item) => `Giveaway #${item.id} — Prize: "${item.prize}" — Ends: ${item.end_time ? new Date(item.end_time).toLocaleString() : 'N/A'}`,
     };
     return formatters[type] || ((obj) => JSON.stringify(obj));
   }
@@ -99,19 +79,51 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 4) Jobs
   const showJobListButton = document.getElementById('showJobListButton');
+  const jobListContent = document.getElementById('jobListContent');
+
+  async function fetchJobs() {
+    try {
+      const res = await fetch('/api/jobs');
+      const jobs = await res.json();
+
+      if (!jobs.length) {
+        jobListContent.innerHTML = '<p>No jobs available.</p>';
+      } else {
+        let html = `
+          <h2>Available Jobs</h2>
+          <button id="refreshJobs" class="refresh-button">🔄 Refresh</button>
+          <ul>
+        `;
+
+        jobs.forEach((job) => {
+          html += `<li>[${job.jobID}] ${job.description}</li>`;
+        });
+
+        html += `</ul>`;
+
+        jobListContent.innerHTML = html;
+
+        // Attach event listener to the new Refresh button
+        document.getElementById('refreshJobs').addEventListener('click', fetchJobs);
+      }
+    } catch (error) {
+      console.error('Error fetching jobs:', error);
+      jobListContent.innerHTML = '<p>Error loading jobs.</p>';
+    }
+  }
+
   if (showJobListButton) {
     showJobListButton.addEventListener('click', () => {
-      const jobListContent = document.getElementById('jobListContent');
-      fetchData('/api/jobs', jobListContent, 'jobs');
+      fetchJobs();
       showSection('jobList');
     });
   }
 
-  
-// 5) Giveaways
-if (showGiveawayListButton) {
-  showGiveawayListButton.addEventListener('click', async () => {
-    const giveawayItems = document.getElementById('giveawayItems');
+  // 5) Giveaways
+  const showGiveawayListButton = document.getElementById('showGiveawayListButton');
+  const giveawayItems = document.getElementById('giveawayItems');
+
+  async function fetchGiveaways() {
     try {
       // Fetch active giveaways
       const res = await fetch('/api/giveaways/active');
@@ -120,9 +132,12 @@ if (showGiveawayListButton) {
       if (!giveaways.length) {
         giveawayItems.innerHTML = '<p>No active giveaways at the moment.</p>';
       } else {
-        let html = '<h2>Active Giveaways</h2>';
+        let html = `
+          <h2>Active Giveaways</h2>
+          <button id="refreshGiveaways" class="refresh-button">🔄 Refresh</button>
+        `;
 
-        // Reverse the order of giveaways so newest appears first
+        // Reverse the order to show the newest first
         giveaways.reverse().forEach((g) => {
           const endTime = new Date(parseInt(g.end_time)).toLocaleString();
           const giveawayLink = `https://discord.com/channels/${SERVER_ID}/${g.channel_id}/${g.message_id}`;
@@ -137,16 +152,22 @@ if (showGiveawayListButton) {
         });
 
         giveawayItems.innerHTML = html;
-      }
 
-      showSection('giveawayList');
+        // Attach event listener to the new Refresh button
+        document.getElementById('refreshGiveaways').addEventListener('click', fetchGiveaways);
+      }
     } catch (error) {
       console.error('Error fetching giveaways:', error);
       giveawayItems.innerHTML = '<p>Error loading giveaways.</p>';
     }
-  });
-}
+  }
 
+  if (showGiveawayListButton) {
+    showGiveawayListButton.addEventListener('click', () => {
+      fetchGiveaways();
+      showSection('giveawayList');
+    });
+  }
 
   // Back buttons → Return to landing page
   document.querySelectorAll('.back-button').forEach((backButton) => {
