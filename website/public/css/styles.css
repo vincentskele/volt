@@ -141,7 +141,7 @@ button:hover {
 /* Leaderboard container */
 #leaderboardList {
   padding: 20px;
-  background-color: rgba(43, 47, 71, 0.8);
+  background-color: rgba(43, 47, 71, 0.8); /* Dark navy background */
   border-radius: 15px;
   box-shadow: 0 8px 12px rgba(0, 0, 0, 0.2);
   max-width: 500px;
@@ -154,37 +154,88 @@ button:hover {
   justify-content: space-between;
   align-items: center;
   margin: 10px 0;
-  padding: 10px 15px;
-  background-color: rgba(43, 47, 71, 1);
+  padding: 15px 20px;
+  background-color: rgba(43, 47, 71, 1); /* Default background for items */
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   transition: background 0.3s ease, transform 0.2s ease;
 }
 
 .leaderboard-item:hover {
-  background-color: rgba(55, 60, 80, 1);
-  transform: scale(1.02);
+  background-color: rgba(55, 60, 80, 1); /* Slightly lighter hover background */
+  transform: scale(1.02); /* Subtle zoom effect on hover */
 }
 
 /* User link styling */
 .leaderboard-item a {
-  color: #4caff0;
+  color: #4caff0; /* Bright blue for username links */
   font-weight: bold;
   text-decoration: none;
   transition: color 0.3s ease;
 }
 
 .leaderboard-item a:hover {
-  color: #66d9ff;
+  color: #66d9ff; /* Lighter blue on hover */
   text-decoration: underline;
 }
 
 /* Information details */
 .leaderboard-item span {
   font-size: 0.9rem;
-  color: #f4f4f9;
+  color: #f4f4f9; /* Light text for details */
   margin-left: 10px;
 }
+
+/* Highlight top 3 ranks with improved contrast */
+.leaderboard-item:nth-child(1) {
+  background-color: #ffd700; /* Gold for 1st place */
+  color: #000; /* Black text for contrast */
+  font-weight: bold;
+}
+
+.leaderboard-item:nth-child(1) span {
+  color: #333; /* Dark gray for wallet, bank, and total details */
+}
+
+.leaderboard-item:nth-child(2) {
+  background-color: #c0c0c0; /* Silver for 2nd place */
+  color: #000; /* Black text for contrast */
+  font-weight: bold;
+}
+
+.leaderboard-item:nth-child(2) span {
+  color: #333; /* Dark gray for wallet, bank, and total details */
+}
+
+.leaderboard-item:nth-child(3) {
+  background-color: #cd7f32; /* Bronze for 3rd place */
+  color: #000; /* Black text for contrast */
+  font-weight: bold;
+}
+
+.leaderboard-item:nth-child(3) span {
+  color: #333; /* Dark gray for wallet, bank, and total details */
+}
+
+/* Default text for lower ranks */
+.leaderboard-item:not(:nth-child(-n+3)) span {
+  color: #d1d5db; /* Softer gray for details on dark backgrounds */
+}
+
+/* Responsive design */
+@media (max-width: 600px) {
+  .leaderboard-item {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 10px 15px;
+  }
+
+  .leaderboard-item span {
+    margin-left: 0;
+    margin-top: 5px;
+  }
+}
+
 
 
 /* Footer styles */
