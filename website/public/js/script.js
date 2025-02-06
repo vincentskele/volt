@@ -134,15 +134,60 @@ if (showAdminListButton) {
 }
 
 
-  // 3) Shop
-  const showShopButton = document.getElementById('showShopButton');
-  if (showShopButton) {
-    showShopButton.addEventListener('click', () => {
-      const shopItems = document.getElementById('shopItems');
-      fetchData('/api/shop', shopItems, 'shop');
-      showSection('shop');
-    });
-  }
+// 3) Shop
+const showShopButton = document.getElementById('showShopButton');
+if (showShopButton) {
+  showShopButton.addEventListener('click', async () => {
+    let shopItems = document.getElementById('shopItems');
+
+    // Ensure the shop items container has the correct class
+    if (!shopItems) {
+      shopItems = document.createElement('div');
+      shopItems.id = 'shopItems';
+      shopItems.className = 'shop-list'; // Assign the correct class for styling
+      document.body.appendChild(shopItems); // Append to body or the correct parent
+    }
+
+    try {
+      const response = await fetch('/api/shop');
+      const data = await response.json();
+
+      // Clear existing content
+      shopItems.innerHTML = '';
+
+      // Render shop items as buttons
+      data.forEach(item => {
+        const button = document.createElement('button');
+        button.className = 'shop-item'; // Individual item styling
+        button.innerText = `[${item.id}] ${item.name} - ${item.price} | Qty: ${item.quantity} | Desc: ${item.description}`;
+        shopItems.appendChild(button);
+      });
+
+      showSection('shop'); // Ensure the shop section is displayed
+    } catch (error) {
+      console.error('Error fetching shop data:', error);
+    }
+  });
+}
+
+// Helper function to toggle sections
+function showSection(sectionId) {
+  document.querySelectorAll('.content').forEach(section => {
+    section.style.display = 'none';
+  });
+  const section = document.getElementById(sectionId);
+  if (section) section.style.display = 'block';
+}
+
+// Helper function to show sections
+function showSection(sectionId) {
+  document.querySelectorAll('.content').forEach(section => {
+    section.style.display = 'none';
+  });
+  const section = document.getElementById(sectionId);
+  if (section) section.style.display = 'block';
+}
+
 
   // 4) Jobs
   const showJobListButton = document.getElementById('showJobListButton');
@@ -157,7 +202,6 @@ if (showAdminListButton) {
         jobListContent.innerHTML = '<p>No jobs available.</p>';
       } else {
         let html = `
-          <h2>Available Jobs</h2>
           <button id="refreshJobs" class="refresh-button">🔄 Refresh</button>
           <ul>
         `;
@@ -200,7 +244,6 @@ if (showAdminListButton) {
         giveawayItems.innerHTML = '<p>No active giveaways at the moment.</p>';
       } else {
         let html = `
-          <h2>Active Giveaways</h2>
           <button id="refreshGiveaways" class="refresh-button">🔄 Refresh</button>
         `;
 
