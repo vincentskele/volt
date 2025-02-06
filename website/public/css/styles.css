@@ -3,8 +3,8 @@ body {
   font-family: Arial, sans-serif;
   margin: 0;
   padding: 0;
-  background-color: #1A1D2F; /* Dark navy background color */
-  color: #f4f4f9; /* Light text for better contrast */
+  background-color: #1A1D2F; /* Dark navy background */
+  color: #f4f4f9; /* Light text for contrast */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -20,33 +20,13 @@ header {
 
 header h1 {
   font-size: 2.5rem;
-  color: #007bff; /* Blue color for the title */
+  color: #007bff; /* Bright blue title */
   margin-bottom: 10px;
 }
 
 header p {
   font-size: 1rem;
-  color: #cfcfcf; /* Softer gray for the description */
-}
-
-/* Link styles (apply globally) */
-a {
-  color: #007bff; /* Blue color for all links */
-  text-decoration: none; /* Remove underline */
-  transition: color 0.3s ease;
-}
-
-a:visited {
-  color: #007bff; /* Same color for visited links */
-}
-
-a:hover {
-  color: #3399ff; /* Slightly lighter blue on hover */
-  text-decoration: underline; /* Optional: Add underline on hover */
-}
-
-a:active {
-  color: #0056b3; /* Darker blue when clicked */
+  color: #cfcfcf; /* Softer gray for description */
 }
 
 /* Buttons */
@@ -57,7 +37,7 @@ button {
   cursor: pointer;
   border: none;
   margin: 5px;
-  background-color: #007bff; /* Consistent blue color for all buttons */
+  background-color: #007bff; /* Consistent blue buttons */
   color: white;
   transition: background-color 0.3s ease, transform 0.2s ease;
 }
@@ -81,20 +61,20 @@ button:hover {
   text-align: center;
   margin: 20px;
   padding: 20px;
-  background-color: #2b2f47; /* Slightly lighter background for sections */
+  background-color: #2b2f47; /* Slightly lighter background */
   border-radius: 10px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   display: none; /* Hidden by default */
 }
 
 #landingPage {
-  display: block; /* Ensure the landing page with buttons is visible */
+  display: block; /* Ensure landing page is visible */
 }
 
 .content h2 {
   font-size: 1.8rem;
   margin-bottom: 15px;
-  color: #f4f4f9; /* Light color for headings */
+  color: #f4f4f9; /* Light text for headings */
 }
 
 .content ul {
@@ -106,6 +86,39 @@ button:hover {
   margin: 5px 0;
   font-size: 1rem;
   color: #cfcfcf; /* Softer gray for list items */
+}
+
+/* Giveaway item styles */
+.giveaway-item {
+  border: 2px solid #6c7cb1; /* Softer slate blue */
+  padding: 15px;
+  margin: 10px 0;
+  border-radius: 8px;
+  background-color: #2b2f47; /* Slightly lighter background */
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Subtle shadow for depth */
+  transition: transform 0.2s ease, border-color 0.3s ease;
+}
+
+.giveaway-item:hover {
+  border-color: #8a9edc; /* Brighter blue border on hover */
+  transform: scale(1.02); /* Slight zoom effect */
+}
+
+.giveaway-item p {
+  margin: 5px 0;
+  font-size: 1rem;
+  color: #f4f4f9; /* Keep consistent light color for text */
+}
+
+.giveaway-item a {
+  color: #007bff; /* Link color matches the title */
+  text-decoration: none; /* Remove underline */
+  transition: color 0.3s ease;
+}
+
+.giveaway-item a:hover {
+  color: #3399ff; /* Slightly lighter blue on hover */
+  text-decoration: underline; /* Add underline on hover */
 }
 
 /* Footer styles */

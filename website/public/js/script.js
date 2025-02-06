@@ -107,44 +107,46 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 5) Giveaways
-  const showGiveawayListButton = document.getElementById('showGiveawayListButton');
-  if (showGiveawayListButton) {
-    showGiveawayListButton.addEventListener('click', async () => {
-      const giveawayItems = document.getElementById('giveawayItems');
-      try {
-        // Fetch active giveaways
-        const res = await fetch('/api/giveaways/active');
-        const giveaways = await res.json();
+  
+// 5) Giveaways
+const showGiveawayListButton = document.getElementById('showGiveawayListButton');
+if (showGiveawayListButton) {
+  showGiveawayListButton.addEventListener('click', async () => {
+    const giveawayItems = document.getElementById('giveawayItems');
+    try {
+      // Fetch active giveaways
+      const res = await fetch('/api/giveaways/active');
+      const giveaways = await res.json();
 
-        if (!giveaways.length) {
-          giveawayItems.innerHTML = '<p>No active giveaways at the moment.</p>';
-        } else {
-          let html = '<h2>Active Giveaways</h2>';
+      if (!giveaways.length) {
+        giveawayItems.innerHTML = '<p>No active giveaways at the moment.</p>';
+      } else {
+        let html = '<h2>Active Giveaways</h2>';
 
-          giveaways.forEach((g) => {
-            const endTime = new Date(parseInt(g.end_time)).toLocaleString();
-            const giveawayLink = `https://discord.com/channels/${SERVER_ID}/${g.channel_id}/${g.message_id}`;
+        giveaways.forEach((g) => {
+          const endTime = new Date(parseInt(g.end_time)).toLocaleString();
+          const giveawayLink = `https://discord.com/channels/${SERVER_ID}/${g.channel_id}/${g.message_id}`;
 
-            html += `
-              <div class="giveaway-item">
-                <p><a href="${giveawayLink}" target="_blank">Click here to enter giveaway!</a></p>
-                <p><strong>End Time:</strong> ${endTime}</p>
-                <p><strong>Prize:</strong> ${g.prize}</p>
-              </div>
-            `;
-          });
+          html += `
+            <div class="giveaway-item">
+              <p><a href="${giveawayLink}" target="_blank">Click here to enter giveaway!</a></p>
+              <p><strong>End Time:</strong> ${endTime}</p>
+              <p><strong>Prize:</strong> ${g.prize}</p>
+            </div>
+          `;
+        });
 
-          giveawayItems.innerHTML = html;
-        }
-
-        showSection('giveawayList');
-      } catch (error) {
-        console.error('Error fetching giveaways:', error);
-        giveawayItems.innerHTML = '<p>Error loading giveaways.</p>';
+        giveawayItems.innerHTML = html;
       }
-    });
-  }
+
+      showSection('giveawayList');
+    } catch (error) {
+      console.error('Error fetching giveaways:', error);
+      giveawayItems.innerHTML = '<p>Error loading giveaways.</p>';
+    }
+  });
+}
+
 
   // Back buttons → Return to landing page
   document.querySelectorAll('.back-button').forEach((backButton) => {
