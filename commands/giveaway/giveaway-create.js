@@ -1,11 +1,10 @@
-// commands/giveaway-create.js
 const { SlashCommandBuilder } = require('discord.js');
 const {
   saveGiveaway,
   updateWallet,
-  getShopItemByName,
+  getShopItems,
   addItemToInventory
-} = require('../../db');
+} = require('../../db'); // Ensure the path to your db methods is correct
 require('dotenv').config();
 
 const CURRENCY_NAME = process.env.CURRENCY_NAME || 'Coins';
@@ -44,6 +43,11 @@ module.exports = {
       option.setName('prize')
         .setDescription('Prize: either a currency amount (number) or a shop item name (text)')
         .setRequired(true)
+    )
+    .addIntegerOption(option =>
+      option.setName('repeat')
+        .setDescription('Number of times to repeat the giveaway (optional)')
+        .setRequired(false)
     ),
 
   async execute(interaction) {
@@ -51,43 +55,150 @@ module.exports = {
     const duration = interaction.options.getInteger('duration');
     const timeUnit = interaction.options.getString('timeunit');
     const winners = interaction.options.getInteger('winners');
-    const prizeInput = interaction.options.getString('prize');
+    const prizeInput = interaction.options.getString('prize').trim();
+    const repeat = interaction.options.getInteger('repeat') || 0; // Default to 0 (no repeats)
+
+    console.log(`[INFO] Starting giveaway: "${giveawayName}" | Prize: "${prizeInput}" | Repeats: ${repeat}`);
 
     // Convert duration into milliseconds.
     let durationMs;
     switch (timeUnit) {
-      case 'minutes': durationMs = duration * 60 * 1000; break;
-      case 'hours': durationMs = duration * 60 * 60 * 1000; break;
-      case 'days': durationMs = duration * 24 * 60 * 60 * 1000; break;
-      default: durationMs = duration * 60 * 1000;
+      case 'minutes':
+        durationMs = duration * 60 * 1000;
+        break;
+      case 'hours':
+        durationMs = duration * 60 * 60 * 1000;
+        break;
+      case 'days':
+        durationMs = duration * 24 * 60 * 60 * 1000;
+        break;
+      default:
+        durationMs = duration * 60 * 1000;
     }
 
-    // Determine if the prize is currency or a shop item.
-    const prizeCurrency = parseInt(prizeInput, 10);
-    const prizeValue = isNaN(prizeCurrency)
-      ? prizeInput
-      : `${prizeCurrency} ${CURRENCY_SYMBOL}${CURRENCY_NAME}`;
+    // Helper function to start the giveaway.
+    const startGiveaway = async (repeatCount) => {
+      console.log(`[INFO] Giveaway "${giveawayName}" started! Remaining repeats: ${repeatCount}`);
 
-    // Build and send the giveaway announcement.
-    const announcement = `🎉 **GIVEAWAY: ${giveawayName}** 🎉
+      // Announce the giveaway
+      const announcement = `🎉 **GIVEAWAY: ${giveawayName}** 🎉\n\n` +
+        `React with 🎉 to participate!\n` +
+        `**Duration:** ${duration} ${timeUnit}\n` +
+        `**Winners:** ${winners}\n` +
+        `**Prize:** ${prizeInput}`;
 
-React with 🎉 to join!
-**Duration:** ${duration} ${timeUnit}
-**Winners:** ${winners}
-**Prize:** ${prizeValue}`;
+      const giveawayMessage = await interaction.channel.send(announcement);
+      await giveawayMessage.react('🎉');
 
-    const giveawayMessage = await interaction.channel.send(announcement);
-    await giveawayMessage.react('🎉');
+      const endTime = Date.now() + durationMs;
 
-    // Save the giveaway to the database.
-    const endTime = Date.now() + durationMs;
-    await saveGiveaway(giveawayMessage.id, giveawayMessage.channel.id, endTime, prizeValue, winners, giveawayName);
+      // Save the giveaway info to DB (for reference or future expansions)
+      await saveGiveaway(
+        giveawayMessage.id,
+        giveawayMessage.channel.id,
+        endTime,
+        prizeInput,
+        winners,
+        giveawayName
+      );
 
-    await interaction.reply({ content: `✅ Giveaway "${giveawayName}" started! It will end in ${duration} ${timeUnit}.`, ephemeral: true });
+      // Timer to end giveaway
+      setTimeout(async () => {
+        try {
+          // Fetch the giveaway message
+          const fetchedMessage = await interaction.channel.messages.fetch(giveawayMessage.id);
+          const reaction = fetchedMessage.reactions.cache.get('🎉');
+          
+          // If no one reacted
+          if (!reaction) {
+            await interaction.channel.send(`Giveaway "${giveawayName}" ended with no participants.`);
+            return;
+          }
 
-    // (Optional) You might schedule the conclusion here if not handled centrally.
-    setTimeout(async () => {
-      // Giveaway conclusion is typically handled by your bot's centralized giveaway logic.
-    }, durationMs);
-  },
+          // Filter out bots
+          const users = await reaction.users.fetch();
+          const participants = users.filter(user => !user.bot);
+
+          if (participants.size === 0) {
+            await interaction.channel.send(`Giveaway "${giveawayName}" ended with no valid participants.`);
+            return;
+          }
+
+          // Calculate number of winners if participants are fewer than desired
+          const winnerCount = Math.min(winners, participants.size);
+          const participantsArray = Array.from(participants.values());
+          const winnersList = [];
+
+          while (winnersList.length < winnerCount) {
+            const randomIndex = Math.floor(Math.random() * participantsArray.length);
+            const winner = participantsArray.splice(randomIndex, 1)[0];
+            winnersList.push(winner);
+          }
+
+          console.log(`[INFO] Winners selected: ${winnersList.map(w => w.username).join(', ')}`);
+
+          // If prize is numeric -> currency
+          if (!isNaN(prizeInput)) {
+            const prizeAmount = parseInt(prizeInput, 10);
+
+            for (const winner of winnersList) {
+              // Announce winner
+              await interaction.channel.send(
+                `Congrats <@${winner.id}>! You won **${giveawayName}** and have been given (**${prizeAmount}${CURRENCY_SYMBOL}**).`
+              );
+              // Update the winner's wallet
+              await updateWallet(winner.id, prizeAmount);
+              console.log(`[SUCCESS] ${winner.username} (${winner.id}) received ${prizeAmount}${CURRENCY_SYMBOL} ${CURRENCY_NAME}`);
+            }
+
+          } else {
+            // Prize is a shop item
+            const shopItems = await getShopItems();
+            const shopItem = shopItems.find(item => item.name.toLowerCase() === prizeInput.toLowerCase());
+
+            if (!shopItem || !shopItem.itemID) {
+              console.error(`[ERROR] Shop item not found or missing itemID: "${prizeInput}"`);
+              await interaction.channel.send(
+                `Error: Shop item "**${prizeInput}**" not found or missing itemID. Prize distribution failed.`
+              );
+              return;
+            }
+
+            for (const winner of winnersList) {
+              // Announce winner
+              await interaction.channel.send(
+                `Congrats <@${winner.id}>! You won **${giveawayName}** and have been given (**${shopItem.name}**).`
+              );
+
+              // Attempt to add item to their inventory
+              // Make sure addItemToInventory returns true on success!
+              const delivered = await addItemToInventory(winner.id, shopItem.itemID);
+              if (delivered) {
+                console.log(`[SUCCESS] Added "${shopItem.name}" to ${winner.username} (${winner.id})`);
+              } else {
+                console.warn(`[WARN] Possibly failed to add "${shopItem.name}" to ${winner.username} (${winner.id})`);
+              }
+            }
+          }
+
+          // If we have more repeats, start the next one
+          if (repeatCount > 0) {
+            startGiveaway(repeatCount - 1);
+          }
+
+        } catch (error) {
+          console.error(`[ERROR] Error concluding giveaway "${giveawayName}": ${error}`);
+        }
+      }, durationMs);
+    };
+
+    // Start the first giveaway
+    startGiveaway(repeat);
+
+    // Confirm to the command user
+    await interaction.reply({
+      content: `✅ Giveaway "${giveawayName}" started! It will end in ${duration} ${timeUnit}. ${repeat > 0 ? `It will repeat ${repeat} time(s).` : ''}`,
+      ephemeral: true
+    });
+  }
 };
