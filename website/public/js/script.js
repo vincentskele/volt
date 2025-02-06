@@ -210,17 +210,27 @@ async function fetchJobs() {
 
       // Populate jobs
       jobs.forEach((job) => {
+        const description = job.description
+          // Replace channel IDs with links
+          .replace(
+            /<#(\d+)>/g,
+            '<a href="https://discord.com/channels/$1" target="_blank" class="link">#$1</a>'
+          )
+          // Replace user IDs with links
+          .replace(
+            /<@(\d+)>/g,
+            '<a href="https://discord.com/users/$1" target="_blank" class="link">@$1</a>'
+          )
+          // Replace Markdown-style links with HTML
+          .replace(
+            /\[([^\]]+)\]\(([^)]+)\)/g,
+            '<a href="$2" target="_blank" class="link">$1</a>'
+          );
+
+        // Create job item and set the inner HTML
         const jobItem = document.createElement('div');
-        jobItem.className = 'job-item'; // Div instead of button for better layout
-
-        // Parse Markdown-style links into HTML
-        const description = job.description.replace(
-          /\[([^\]]+)\]\(([^)]+)\)/g,
-          '<a href="$2" target="_blank" class="link">$1</a>'
-        );
-
-        // Set the inner HTML with proper spacing and layout
-        jobItem.innerHTML = `<p><strong>[${job.jobID}]</strong> ${description}</p>`;
+        jobItem.className = 'job-item';
+        jobItem.innerHTML = `<p><strong></strong> ${description}</p>`;
         jobList.appendChild(jobItem);
       });
 
@@ -232,7 +242,6 @@ async function fetchJobs() {
     jobListContent.innerHTML = '<p>Error loading jobs.</p>';
   }
 }
-
 
 if (showJobListButton) {
   showJobListButton.addEventListener('click', () => {
@@ -249,6 +258,7 @@ function showSection(sectionId) {
   const section = document.getElementById(sectionId);
   if (section) section.style.display = 'block';
 }
+
 
 
 
