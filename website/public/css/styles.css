@@ -14,13 +14,13 @@ body {
 
 /* Global link styles */
 a {
-  color: #3399ff; /* Link color matches brighter blue */
+  color: #FEDCA8; /* Link color matches brighter blue */
   text-decoration: none; /* Remove underline */
   transition: color 0.3s ease;
 }
 
 a:hover {
-  color: #63baff; /* Slightly lighter blue on hover */
+  color: #E69349;; /* Slightly lighter blue on hover */
   text-decoration: underline; /* Add underline on hover */
 }
 
@@ -177,15 +177,7 @@ code {
   color: #63baff; /* Highlight for labels */
 }
 
-.admin-item a {
-  color: #4caff0;
-  font-weight: bold;
-  transition: color 0.3s ease;
-}
 
-.admin-item a:hover {
-  color: #66d9ff; /* Brighter hover link */
-}
 
 /* Leaderboard container */
 #leaderboardList {
@@ -450,15 +442,6 @@ code {
   transform: scale(1.02); /* Adds a subtle zoom effect on hover */
 }
 
-/* Highlight links inside job items */
-.job-item a {
-  color: #FEDCA8; /* Light contrasting color for links */
-  text-decoration: underline; /* Underline links for emphasis */
-}
-
-.job-item a:hover {
-  color: #E69349; /* Highlighted link color on hover */
-}
 
 
 
