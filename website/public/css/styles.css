@@ -277,7 +277,7 @@ code {
   }
 }
 
-/* GIVEAWAY SECTION */
+/* GIVEAWAY SECTION
 #giveawayItems {
   display: flex;
   flex-direction: column;
@@ -287,32 +287,32 @@ code {
   margin-top: 20px;
 }
 
-/* Giveaway Item Styles */
+/* Giveaway Item Styles 
 .giveaway-item {
-  display: flex; /* Use flexbox for centering */
-  align-items: center; /* Center content vertically */
-  justify-content: center; /* Center content horizontally */
-  background-color: #27393F; /* Dark navy background */
-  color: #fafafa; /* Light text color */
-  padding: 15px 20px; /* Adds padding for better readability */
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  background-color: #27393F; 
+  color: #fafafa; 
+  padding: 15px 20px; 
   border: none;
-  border-radius: 8px; /* Rounded corners */
-  text-align: center; /* Ensures text is centered */
-  cursor: pointer; /* Adds a pointer on hover */
-  font-size: 1rem; /* Standard font size */
+  border-radius: 8px; 
+  text-align: center; 
+  cursor: pointer; 
+  font-size: 1rem; 
   transition: background-color 0.3s ease, transform 0.2s ease;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Adds a shadow for depth */
-  width: 100%; /* Makes all buttons the same width */
-  max-width: 500px; /* Ensures a consistent maximum width */
-  word-wrap: break-word; /* Break text if it overflows */
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Adds a shadow for depth 
+  width: 100%; 
+  max-width: 500px; 
+  word-wrap: break-word; 
 }
 
 .giveaway-item:hover {
-  background-color: #405D67; /* Slightly brighter on hover */
-  transform: scale(1.02); /* Adds a subtle zoom effect on hover */
+  background-color: #405D67;
+  transform: scale(1.02); 
 }
 
-/* Giveaway Index */
+/* Giveaway Index 
 .giveaway-index {
   font-size: 1.5rem;
   font-weight: bold;
@@ -321,12 +321,12 @@ code {
   text-align: center;
 }
 
-/* Giveaway Details */
+/* Giveaway Details 
 .giveaway-details {
   flex: 1;
 }
 
-/* Links in Giveaway Details */
+/* Links in Giveaway Details 
 .giveaway-details a {
   font-size: 1rem;
   color: #4e97d8;
@@ -334,8 +334,8 @@ code {
 }
 
 .giveaway-details a:hover {
-  text-decoration: underline; /* Underline links on hover */
-}
+  text-decoration: underline; /* Underline links on hover 
+}*/
 
 /* Refresh Button Styles */
 .refresh-button {
@@ -354,6 +354,7 @@ code {
   padding: 0; /* Remove padding if using line-height */
   text-decoration: none; /* Remove underline from text */
   margin: 0 auto; /* Center the button horizontally */
+  margin-bottom: 15px; /* Add space below the button */
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); /* Raised effect */
   transition: all 0.3s ease; /* Smooth transition for hover effect */
 }
@@ -364,79 +365,46 @@ code {
   transform: translateY(-2px); /* Slight lift */
 }
 
-/* Shop list container */
-.shop-list {
-  display: flex;
-  flex-direction: column; /* Stack items vertically */
-  gap: 10px; /* Adds spacing between items */
-  align-items: center; /* Centers the buttons horizontally */
-  width: 100%; /* Full width of the container */
-  max-width: 600px; /* Optional: Limit the container width */
-  margin: 0 auto; /* Centers the container on the page */
-  padding: 10px; /* Adds padding around the container */
-}
-
-
-/* Individual shop items */
-.shop-item {
-  display: flex; /* Use flexbox for centering */
-  align-items: center; /* Center content vertically */
-  justify-content: center; /* Center content horizontally */
-  background-color: #27393F; /* Dark navy background */
-  color: #fafafa; /* Light text color */
-  padding: 15px 20px; /* Adds padding for better readability */
-  border: none;
-  border-radius: 8px; /* Rounded corners */
-  text-align: center; /* Ensures text is centered */
-  cursor: pointer;
-  font-size: 1rem; /* Standard font size */
-  transition: background-color 0.3s ease, transform 0.2s ease;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Adds a shadow for depth */
-  width: 100%; /* Makes all buttons the same width */
-  max-width: 500px; /* Ensures a consistent maximum width */
-  word-wrap: break-word; /* Break text if it overflows */
-}
-
-/* Hover effect for shop items */
-.shop-item:hover {
-  background-color: #405D67; /* Slightly brighter on hover */
-  transform: scale(1.02); /* Adds a subtle zoom effect on hover */
-}
-
-/* Job list container */
+/* Shop, Job list, and Giveaway containers (identical styles) */
+.giveaway-list,
+.shop-list,
 .job-list {
   display: flex;
   flex-direction: column; /* Stack items vertically */
-  gap: 20px; /* Increased spacing between items for better clarity */
-  align-items: center; /* Centers the items horizontally */
-  width: 100%; /* Full width of the container */
+  gap: 15px; /* Consistent spacing */
+  align-items: center; /* Centers items horizontally */
+  width: 100%; /* Full width */
   max-width: 600px; /* Limit the container width */
   margin: 0 auto; /* Centers the container on the page */
-  padding: 20px; /* Adds padding around the container */
+  padding: 15px; /* Uniform padding */
   box-sizing: border-box; /* Ensures padding is included in width */
 }
 
-/* Individual job items */
+/* Shop & Job individual items (identical styles) */
+.shop-item,
+.giveaway-item,
 .job-item {
   display: flex; /* Use flexbox for layout */
   align-items: center; /* Center content vertically */
   justify-content: center; /* Center content horizontally */
   background-color: #27393F; /* Dark navy background */
   color: #fafafa; /* Light text color */
-  padding: 20px; /* Increased padding for better readability */
+  padding: 15px 20px; /* Uniform padding */
   border: none;
   border-radius: 8px; /* Rounded corners */
   text-align: center; /* Ensures text is centered */
   font-size: 1rem; /* Standard font size */
   transition: background-color 0.3s ease, transform 0.2s ease;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Adds a shadow for depth */
+  width: 100%; /* Makes all buttons the same width */
   max-width: 500px; /* Ensures a consistent maximum width */
-  margin: 0 auto; /* Centers the items horizontally */
   word-break: break-word; /* Ensures text wraps properly */
   cursor: pointer; /* Adds a pointer cursor on hover */
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Adds a shadow for depth */
 }
 
-/* Hover effect for job items */
+/* Hover effect for both shop & job items */
+.giveaway-item:hover,
+.shop-item:hover,
 .job-item:hover {
   background-color: #405D67; /* Slightly brighter on hover */
   transform: scale(1.02); /* Adds a subtle zoom effect on hover */
