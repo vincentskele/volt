@@ -154,23 +154,7 @@ code {
   color: #d1d5db; /* Softer gray for list items */
 }
 
-/* Admin item styles 
-.admin-item {
-  display: flex;
-  align-items: center;
-  margin: 10px 0;
-  padding: 10px 15px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background-color: rgba(43, 47, 71, 0.8);
-  border-radius: 10px;
-  transition: background 0.3s ease, transform 0.2s ease;
-}
-
-.admin-item:hover {
-  background-color: rgba(43, 47, 71, 1); 
-  transform: scale(1.02); 
-}
-*/
+/* Admin item styles */
 .admin-item span {
   margin-right: 8px;
   font-weight: bold;
@@ -277,65 +261,6 @@ code {
   }
 }
 
-/* GIVEAWAY SECTION
-#giveawayItems {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  font-family: Arial, sans-serif;
-  color: #fafafa;
-  margin-top: 20px;
-}
-
-/* Giveaway Item Styles 
-.giveaway-item {
-  display: flex; 
-  align-items: center; 
-  justify-content: center; 
-  background-color: #27393F; 
-  color: #fafafa; 
-  padding: 15px 20px; 
-  border: none;
-  border-radius: 8px; 
-  text-align: center; 
-  cursor: pointer; 
-  font-size: 1rem; 
-  transition: background-color 0.3s ease, transform 0.2s ease;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Adds a shadow for depth 
-  width: 100%; 
-  max-width: 500px; 
-  word-wrap: break-word; 
-}
-
-.giveaway-item:hover {
-  background-color: #405D67;
-  transform: scale(1.02); 
-}
-
-/* Giveaway Index 
-.giveaway-index {
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: #4e97d8;
-  width: 30px;
-  text-align: center;
-}
-
-/* Giveaway Details 
-.giveaway-details {
-  flex: 1;
-}
-
-/* Links in Giveaway Details 
-.giveaway-details a {
-  font-size: 1rem;
-  color: #4e97d8;
-  text-decoration: none;
-}
-
-.giveaway-details a:hover {
-  text-decoration: underline; /* Underline links on hover 
-}*/
 
 /* Refresh Button Styles */
 .refresh-button {
