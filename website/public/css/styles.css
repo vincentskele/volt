@@ -154,27 +154,27 @@ code {
   color: #d1d5db; /* Softer gray for list items */
 }
 
-/* Admin item styles */
+/* Admin item styles 
 .admin-item {
   display: flex;
   align-items: center;
   margin: 10px 0;
   padding: 10px 15px;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  background-color: rgba(43, 47, 71, 0.8); /* Slightly lighter background */
+  background-color: rgba(43, 47, 71, 0.8);
   border-radius: 10px;
   transition: background 0.3s ease, transform 0.2s ease;
 }
 
 .admin-item:hover {
-  background-color: rgba(43, 47, 71, 1); /* Slightly brighter on hover */
-  transform: scale(1.02); /* Subtle zoom effect */
+  background-color: rgba(43, 47, 71, 1); 
+  transform: scale(1.02); 
 }
-
+*/
 .admin-item span {
   margin-right: 8px;
   font-weight: bold;
-  color: #63baff; /* Highlight for labels */
+  color: #63baff; 
 }
 
 
@@ -366,6 +366,7 @@ code {
 }
 
 /* Shop, Job list, and Giveaway containers (identical styles) */
+.admin-list,
 .giveaway-list,
 .shop-list,
 .job-list {
@@ -381,6 +382,7 @@ code {
 }
 
 /* Shop & Job individual items (identical styles) */
+.admin-item,
 .shop-item,
 .giveaway-item,
 .job-item {
@@ -403,6 +405,7 @@ code {
 }
 
 /* Hover effect for both shop & job items */
+.admin-item:hover,
 .giveaway-item:hover,
 .shop-item:hover,
 .job-item:hover {
