@@ -321,6 +321,16 @@ function showSection(sectionId) {
     });
   }
 
+  // Daily Tasks Section
+const showDailyTasksButton = document.getElementById('showDailyTasksButton');
+if (showDailyTasksButton) {
+  showDailyTasksButton.addEventListener('click', () => {
+    // Optionally add any initialization logic for daily tasks here
+    showSection('dailyTasksPage');
+  });
+}
+
+
   // Back buttons → Return to landing page
   document.querySelectorAll('.back-button').forEach((backButton) => {
     backButton.addEventListener('click', () => {

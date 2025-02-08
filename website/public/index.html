@@ -22,6 +22,8 @@
     <button id="showShopButton" class="btn">View Shop</button>
     <button id="showJobListButton" class="btn">Job List</button>
     <button id="showGiveawayListButton" class="btn">Giveaway List</button>
+    <button id="showDailyTasksButton" class="btn">Daily Tasks</button>
+
   </div>
   <p>
     This page works seamlessly with our Discord bot and 
@@ -123,6 +125,28 @@
     <ul id="giveawayItems" class="giveaway-list"></ul>
     <button class="back-button">Back</button>
   </div>
+
+<!-- Daily Tasks Section -->
+<div id="dailyTasksPage" class="content" style="display: none;">
+  <h2>📋 Daily Tasks</h2>
+  <p>Complete your daily tasks before the reset!</p>
+  
+  <!-- Countdown Timer -->
+  <div class="countdown-container">
+    <h3>⏳ Next Reset In:</h3>
+    <p id="countdownTimer" class="countdown-timer"></p>
+  </div>
+
+  <ul id="dailyTasksList">
+    <li>✅ Complete a job using <code>/work</code></li>
+    <li>💬 Send 8 messages in Discord to earn Volts</li>
+    <li>⭐ React to a message in the playground channel</li>
+    <li>🎁 Check the <a href="#" id="showGiveawayListLink">giveaways</a> for prizes</li>
+  </ul>
+
+  <button class="back-button">Back</button>
+</div>
+
 
   <footer>
     <p>© 2025 Economy Viewer | Powered by RoboDAO.</p>
