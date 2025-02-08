@@ -72,6 +72,26 @@ button:hover {
   background-color: #5a6268;
 }
 
+/* Mobile Responsiveness */
+@media (max-width: 600px) {
+  .button-container {
+    display: flex;
+    flex-direction: column; /* Stack buttons vertically */
+    align-items: center;
+    padding: 0 5px; /* Minimal padding to maximize screen space */
+  }
+
+  button {
+    font-size: 0.8rem; /* Smaller font size for tight layouts */
+    margin: 5px 0; /* Minimal vertical spacing */
+    padding: 6px 10px; /* Compact padding */
+    width: 85%; /* Slightly smaller width for a clean look */
+    max-width: 250px; /* Smaller max width for compact screens */
+  }
+}
+
+
+
 /* General Content Styling */
 .content {
   background-color: #27393F; /* Dark blue */
