@@ -304,14 +304,46 @@ const allowedChannels = process.env.MESSAGE_REWARD_CHANNELS
   ? process.env.MESSAGE_REWARD_CHANNELS.split(',').map(id => id.trim())
   : [];
 
+const REACTION_REWARD_CHANNEL = process.env.REACTION_REWARD_CHANNEL || "";
 const MESSAGE_REWARD_AMOUNT = parseInt(process.env.MESSAGE_REWARD_AMOUNT, 10) || 10;
 const MESSAGE_REWARD_LIMIT = parseInt(process.env.MESSAGE_REWARD_LIMIT, 10) || 8;
+const REACTION_REWARD_AMOUNT = parseInt(process.env.REACTION_REWARD_AMOUNT, 10) || 20;
 
 // Function to save message counts to file
 function saveMessageCounts() {
   fs.writeFileSync(userMessageCountsPath, JSON.stringify([...userMessageCounts]), 'utf8');
 }
 
+// ==========================
+// ⏳ SCHEDULE MIDNIGHT EST RESET
+// ==========================
+function scheduleMidnightReset() {
+  const now = new Date();
+  const estOffset = -5 * 60 * 60 * 1000; // EST offset in milliseconds
+  const estMidnight = new Date(now.toISOString().split('T')[0] + 'T05:00:00.000Z'); // Midnight EST
+
+  let timeUntilMidnight = estMidnight.getTime() - now.getTime();
+  if (timeUntilMidnight < 0) {
+    // If past midnight EST, schedule for the next day
+    timeUntilMidnight += 24 * 60 * 60 * 1000;
+  }
+
+  console.log(`⏳ Scheduling daily rewards reset in ${timeUntilMidnight / 1000 / 60} minutes.`);
+
+  setTimeout(() => {
+    userMessageCounts.clear();
+    saveMessageCounts();
+    console.log("🔄 Daily rewards counter reset at midnight EST!");
+    scheduleMidnightReset(); // Schedule next reset
+  }, timeUntilMidnight);
+}
+
+// Start the reset scheduler
+scheduleMidnightReset();
+
+// ==========================
+// 📩 MESSAGE-BASED REWARDS
+// ==========================
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
@@ -323,16 +355,10 @@ client.on('messageCreate', async (message) => {
 
   // Get or initialize user message data
   if (!userMessageCounts.has(userId)) {
-    userMessageCounts.set(userId, { date: today, count: 0 });
+    userMessageCounts.set(userId, { date: today, count: 0, reacted: false });
   }
 
   const userData = userMessageCounts.get(userId);
-
-  // Reset count if it's a new day
-  if (userData.date !== today) {
-    userData.date = today;
-    userData.count = 0;
-  }
 
   // Reward if user hasn't reached limit
   if (userData.count < MESSAGE_REWARD_LIMIT) {
@@ -345,6 +371,49 @@ client.on('messageCreate', async (message) => {
     console.log(`💰 Given ${MESSAGE_REWARD_AMOUNT} to ${message.author.username} for message #${userData.count} today`);
   }
 });
+
+// ==========================
+// ⭐ REACTION-BASED REWARDS (Once Per 24 Hours Once Per Message)
+// ==========================
+client.on('messageReactionAdd', async (reaction, user) => {
+  if (user.bot) return; // Ignore bot reactions
+
+  // Ensure reaction happened in the defined reward channel
+  if (reaction.message.channel.id !== REACTION_REWARD_CHANNEL) return;
+
+  const userId = user.id;
+  const today = new Date().toISOString().split('T')[0];
+
+  // Get or initialize user data
+  if (!userMessageCounts.has(userId)) {
+    userMessageCounts.set(userId, { date: today, count: 0, reacted: false });
+  }
+
+  const userData = userMessageCounts.get(userId);
+
+  // Reset reaction reward eligibility if it's a new day
+  if (userData.date !== today) {
+    userData.date = today;
+    userData.count = 0;
+    userData.reacted = false; // Reset daily reaction eligibility
+  }
+
+  // If the user has already received a reaction reward today, deny it
+  if (userData.reacted) {
+    console.log(`⚠️ User ${user.username} already received a reaction reward today.`);
+    return;
+  }
+
+  // Grant reward for first reaction of the day
+  userData.reacted = true; // Mark that they have received today's reaction reward
+  userMessageCounts.set(userId, userData);
+  saveMessageCounts(); // Save progress
+
+  // Grant money (assuming updateWallet is your function for adding currency)
+  await updateWallet(userId, REACTION_REWARD_AMOUNT);
+  console.log(`🌟 Given ${REACTION_REWARD_AMOUNT} to ${user.username} for reacting in the reward channel.`);
+});
+
 
 
 
