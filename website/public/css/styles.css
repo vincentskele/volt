@@ -336,7 +336,54 @@ code {
   transform: scale(1.02); /* Adds a subtle zoom effect on hover */
 }
 
+/*timer*/
+.countdown-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: #27393F; /* Dark theme for the background */
+  padding: 0.8rem;
+  border-radius: 6px; /* Rounded corners */
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2); /* Light shadow for depth */
+  color: #fafafa;
+  width: 80%; /* Compact width */
+  margin: 0 auto; /* Center alignment */
+}
 
+.countdown-container h3 {
+  font-family: 'Poppins', sans-serif; /* Consistent font family */
+  font-size: 1.2rem; /* Slightly smaller heading size */
+  margin: 0;
+  color: #E69349; /* Accent color */
+  text-align: center;
+}
+
+.countdown-timer {
+  font-family: 'Poppins', sans-serif;
+  font-size: 1.6rem; /* Compact and readable */
+  font-weight: bold;
+  color:  #27393F;
+  background: linear-gradient(90deg, #FEDCA8, #E69349); /* Gradient effect */
+  padding: 0.4rem 0.8rem; /* Compact padding */
+  border-radius: 4px;
+  text-align: center;
+  box-shadow: 0 0 10px rgba(239, 163, 70, 0.8); /* Glow effect */
+}
+
+.countdown-container h3, .countdown-timer {
+  margin: 0.2rem 0; /* Reduce spacing between elements */
+}
+
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(239, 163, 70, 0.8);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(239, 163, 70, 1);
+  }
+}
 
 
 
