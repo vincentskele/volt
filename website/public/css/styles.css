@@ -163,29 +163,29 @@ code {
 
 
 
-/* Leaderboard container */
+/* Leaderboard container 
 #leaderboardList {
   padding: 20px;
-  background-color: rgba(43, 47, 71, 0.8); /* Dark navy background */
+  background-color: rgba(43, 47, 71, 0.8);
   border-radius: 15px;
   box-shadow: 0 8px 12px rgba(0, 0, 0, 0.2);
   max-width: 500px;
   margin: 0 auto;
 }
-
-/* Individual leaderboard items */
+*/
+/* Individual leaderboard items 
 .leaderboard-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin: 10px 0;
   padding: 15px 20px;
-  background-color: rgba(43, 47, 71, 1); /* Default background for items */
+  background-color: rgba(43, 47, 71, 1);
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   transition: background 0.3s ease, transform 0.2s ease;
 }
-
+*/
 .leaderboard-item:hover {
   background-color: rgba(55, 60, 80, 1); /* Slightly lighter hover background */
   transform: scale(1.02); /* Subtle zoom effect on hover */
@@ -291,6 +291,7 @@ code {
 }
 
 /* Shop, Job list, and Giveaway containers (identical styles) */
+#leaderboardList,
 .admin-list,
 .giveaway-list,
 .shop-list,
@@ -306,7 +307,7 @@ code {
   box-sizing: border-box; /* Ensures padding is included in width */
 }
 
-/* Shop & Job individual items (identical styles) */
+.leaderboard-item,
 .admin-item,
 .shop-item,
 .giveaway-item,
@@ -329,7 +330,6 @@ code {
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Adds a shadow for depth */
 }
 
-/* Hover effect for both shop & job items */
 .admin-item:hover,
 .giveaway-item:hover,
 .shop-item:hover,
