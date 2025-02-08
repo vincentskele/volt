@@ -1,6 +1,6 @@
 # Volt
 
-Volt is an open source Discord bot and Web Dashboard designed by RoboDAO for RoboDAO to provide a fun and interactive Discord economy system paired with a basic UI. Users can earn, spend, and manage virtual currency while enjoying features like jobs and games.
+Volt is an open source Discord bot and Web Dashboard designed by RoboDAO for RoboDAO to provide a fun and interactive Discord token system paired with a basic UI. Users can earn, spend, and manage virtual tokens while enjoying features like jobs and games.
 
 ## Features
 - **Basic Economy**: Manage wallets and banks with commands to deposit, withdraw, and transfer funds.
