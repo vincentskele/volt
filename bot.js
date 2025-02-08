@@ -281,6 +281,74 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
+// ==========================
+// 🎁 DAILY REWARDS SYSTEM 🎁
+// ==========================
+
+const userMessageCountsPath = path.join(__dirname, 'userMessageCounts.json');
+
+// Load previous message counts from file
+let userMessageCounts = new Map();
+try {
+  if (fs.existsSync(userMessageCountsPath)) {
+    const rawData = fs.readFileSync(userMessageCountsPath);
+    userMessageCounts = new Map(JSON.parse(rawData));
+    console.log("✅ Loaded message counts from file.");
+  }
+} catch (error) {
+  console.error("⚠️ Error loading message counts:", error);
+}
+
+// Load values from .env
+const allowedChannels = process.env.MESSAGE_REWARD_CHANNELS
+  ? process.env.MESSAGE_REWARD_CHANNELS.split(',').map(id => id.trim())
+  : [];
+
+const MESSAGE_REWARD_AMOUNT = parseInt(process.env.MESSAGE_REWARD_AMOUNT, 10) || 10;
+const MESSAGE_REWARD_LIMIT = parseInt(process.env.MESSAGE_REWARD_LIMIT, 10) || 8;
+
+// Function to save message counts to file
+function saveMessageCounts() {
+  fs.writeFileSync(userMessageCountsPath, JSON.stringify([...userMessageCounts]), 'utf8');
+}
+
+client.on('messageCreate', async (message) => {
+  if (message.author.bot) return;
+
+  // Check if message is in an allowed channel
+  if (!allowedChannels.includes(message.channel.id)) return;
+
+  const userId = message.author.id;
+  const today = new Date().toISOString().split('T')[0];
+
+  // Get or initialize user message data
+  if (!userMessageCounts.has(userId)) {
+    userMessageCounts.set(userId, { date: today, count: 0 });
+  }
+
+  const userData = userMessageCounts.get(userId);
+
+  // Reset count if it's a new day
+  if (userData.date !== today) {
+    userData.date = today;
+    userData.count = 0;
+  }
+
+  // Reward if user hasn't reached limit
+  if (userData.count < MESSAGE_REWARD_LIMIT) {
+    userData.count += 1;
+    userMessageCounts.set(userId, userData);
+    saveMessageCounts(); // Save progress
+
+    // Grant money (assuming updateWallet is your function for adding currency)
+    await updateWallet(userId, MESSAGE_REWARD_AMOUNT);
+    console.log(`💰 Given ${MESSAGE_REWARD_AMOUNT} to ${message.author.username} for message #${userData.count} today`);
+  }
+});
+
+
+
+
 // Export the client so server.js can do `client.users.fetch(...)`
 module.exports = { client };
 

@@ -23,7 +23,7 @@ Thumbs.db
 *.tmp
 dist/
 build/
-
+userMessageCounts.json
 # Database files (if needed)
 /*.sqlite
 /*.db
