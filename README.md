@@ -1,13 +1,13 @@
-# PizzaBot
+# Volt
 
-PizzaBot is a Discord bot designed to provide a fun and interactive economy system for your server. Users can earn, spend, and manage virtual currency while enjoying features like jobs, pets, and games.
+Volt is an open source Discord bot and Web Dashboard designed by RoboDAO for RoboDAO to provide a fun and interactive Discord economy system paired with a basic UI. Users can earn, spend, and manage virtual currency while enjoying features like jobs and games.
 
 ## Features
 - **Basic Economy**: Manage wallets and banks with commands to deposit, withdraw, and transfer funds.
 - **Admin Tools**: Grant money or items, create or remove items, and manage users and jobs.
 - **Shop System**: Buy, sell, and redeem items.
 - **Jobs**: Assign jobs to users for rewards.
-- **Games**: Play blackjack and other interactive games.
+- **Games**: Play blackjack.
 - **Web UI**: Dashboard page.
 
 ## Prerequisites
@@ -49,41 +49,41 @@ Follow these steps to set up PizzaBot on your server:
 ## Commands Overview
 
 ### Basic Economy
-- **`$balance`**: Check wallet and bank balances.
-- **`$deposit <amount>`**: Move money from wallet to bank.
-- **`$withdraw <amount>`**: Move money from bank to wallet.
-- **`$rob @user`**: Attempt to rob another user.
+- **`balance`**: Check wallet and bank balances.
+- **`deposit <amount>`**: Move money from wallet to bank.
+- **`withdraw <amount>`**: Move money from bank to wallet.
+- **`rob @user`**: Attempt to rob another user.
 
 ### Admin Commands
-- **`$bake`**: Add 6969 currency to your wallet.
-- **`$give-money @user <amount>`**: Transfer money to another user.
-- **`$give-item @user <item>`**: Send an item to another user.
-- **`$redeem <item>`**: Redeem an item from your inventory.
+- **`bake`**: Add 6969 currency to your wallet.
+- **`give-money @user <amount>`**: Transfer money to another user.
+- **`give-item @user <item>`**: Send an item to another user.
+- **`redeem <item>`**: Redeem an item from your inventory.
 
 ### Shop & Inventory
-- **`$shop`**: View items available for sale.
-- **`$buy <item>`**: Purchase an item.
-- **`$inventory`**: Check your or another user’s inventory.
-- **`$add-item <price> <name> - <desc>`**: Add an item (Admin).
-- **`$remove-item <name>`**: Remove an item (Admin).
+- **`shop`**: View items available for sale.
+- **`buy <item>`**: Purchase an item.
+- **`inventory`**: Check your or another user’s inventory.
+- **`add-item <price> <name> - <desc>`**: Add an item (Admin).
+- **`remove-item <name>`**: Remove an item (Admin).
 
 ### Jobs
-- **`$add-job <desc>`**: Create a job (Admin).
-- **`$joblist`**: View all jobs.
-- **`$work`**: Assign yourself a random job.
-- **`$complete-job @user <jobID> <reward>`**: Mark a job as complete (Admin).
+- **`add-job <desc>`**: Create a job (Admin).
+- **`joblist`**: View all jobs.
+- **`work`**: Assign yourself a random job.
+- **`complete-job @user <jobID> <reward>`**: Mark a job as complete (Admin).
 
 
 ### Games
-- **`$blackjack <bet>`**: Start a blackjack game.
-- **`$hit`**: Draw another card in blackjack.
-- **`$stand`**: Stay with your current hand.
+- **`blackjack <bet>`**: Start a blackjack game.
+- **`hit`**: Draw another card in blackjack.
+- **`stand`**: Stay with your current hand.
 
 ## License
 This project is open-source and available under the MIT License.
 
 ## Contribution
-Feel free to contribute to PizzaBot! Submit pull requests or create issues for any bugs or feature suggestions.
+Feel free to contribute to Volt! Submit pull requests or create issues for any bugs or feature suggestions.
 
 ---
 Happy botting!
