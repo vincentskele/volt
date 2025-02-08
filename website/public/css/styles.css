@@ -388,10 +388,18 @@ code {
 
 
 
-/* Footer styles */
 footer {
-  margin-top: 40px; /* Increased spacing above footer */
-  font-size: 0.9rem; /* Slightly larger font */
+  background-color: #27393F;
+  color: #fafafa;
   text-align: center;
-  color: #cfcfcf;
+  padding: 1rem 0;
+  font-size: 0.9rem;
+}
+
+footer p {
+  margin: 0.5rem 0;
+}
+
+footer p strong {
+  color: #E69349; /* Accent color for the "Disclaimer" text */
 }
