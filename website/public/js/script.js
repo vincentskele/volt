@@ -321,14 +321,57 @@ function showSection(sectionId) {
     });
   }
 
-  // Daily Tasks Section
+// Daily Tasks Section with Countdown Timer (resets at midnight EST)
+function getNextMidnightEST() {
+  const now = new Date();
+  // Convert current time to EST using the America/New_York timezone
+  const nowEST = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+  // Create a new Date object for the next midnight in EST
+  const nextMidnightEST = new Date(nowEST);
+  nextMidnightEST.setDate(nowEST.getDate() + 1);
+  nextMidnightEST.setHours(0, 0, 0, 0);
+  return nextMidnightEST;
+}
+
+function updateCountdown() {
+  const countdownElem = document.getElementById("countdownTimer");
+  if (!countdownElem) return;
+  
+  const now = new Date();
+  const nextMidnight = getNextMidnightEST();
+  const diff = nextMidnight - now;
+  
+  // Calculate hours, minutes, and seconds remaining
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+  
+  // Update the countdown element with a leading-zero formatted time
+  countdownElem.innerText = `${hours.toString().padStart(2, '0')}:` +
+                            `${minutes.toString().padStart(2, '0')}:` +
+                            `${seconds.toString().padStart(2, '0')}`;
+}
+
+let countdownInterval;
+
+function startCountdownTimer() {
+  // Immediately update the timer
+  updateCountdown();
+  // Clear any previous interval if it exists
+  if (countdownInterval) clearInterval(countdownInterval);
+  // Set the timer to update every second
+  countdownInterval = setInterval(updateCountdown, 1000);
+}
+
+// When the Daily Tasks button is clicked, show the page and start the countdown
 const showDailyTasksButton = document.getElementById('showDailyTasksButton');
 if (showDailyTasksButton) {
   showDailyTasksButton.addEventListener('click', () => {
-    // Optionally add any initialization logic for daily tasks here
     showSection('dailyTasksPage');
+    startCountdownTimer();
   });
 }
+
 
 
   // Back buttons → Return to landing page
