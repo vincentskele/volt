@@ -193,15 +193,18 @@ code {
 
 /* User link styling */
 .leaderboard-item a {
-  color: #4caff0; /* Bright blue for username links */
-  font-weight: bold;
-  text-decoration: none;
-  transition: color 0.3s ease;
+  color: #E0E0E0; /* Light gray for visibility */
+  font-weight: 600; /* Bold enough to stand out */
+  text-decoration: none; /* No underline for a clean look */
+  font-size: 1rem; /* Legible font size */
+  text-shadow: 3px 3px 7px rgba(0, 0, 0, 0.9); /* Stronger shadow for better contrast */
+  transition: color 0.3s ease, text-shadow 0.3s ease; /* Smooth hover effect */
 }
 
+/* Hover effect to enhance interaction */
 .leaderboard-item a:hover {
-  color: #66d9ff; /* Lighter blue on hover */
-  text-decoration: underline;
+  color: #FFD700; /* Bright gold on hover */
+  text-shadow: 7px 7px 11px rgba(0, 0, 0, 1); /* Even stronger shadow on hover */
 }
 
 /* Information details */
@@ -213,7 +216,7 @@ code {
 
 /* Highlight top 3 ranks with improved contrast */
 .leaderboard-item:nth-child(1) {
-  background-color: #ffd700; /* Gold for 1st place */
+  background-color: #ddbc00; /* Gold for 1st place */
   color: #000; /* Black text for contrast */
   font-weight: bold;
 }
