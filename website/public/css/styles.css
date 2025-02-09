@@ -336,6 +336,11 @@ code {
   transform: scale(1.02); /* Adds a subtle zoom effect on hover */
 }
 
+.giveaway-info {
+  padding-top: 20px; 
+}
+
+
 /*timer*/
 .countdown-container {
   display: flex;
