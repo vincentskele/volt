@@ -47,7 +47,7 @@ module.exports = {
             value:
               `💼 **work**: Get assigned a random task from the joblist.\n` +
               `💼 **joblist**: Show the current list of jobs with asignees.\n` +
-              `🛍️ View the list of giveaways and see which ones youre entered in.`,
+              `🛍️ **giveaway** View the list of giveaways and see which ones youre entered in.`,
             inline: false,
           },
           {
