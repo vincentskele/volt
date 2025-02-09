@@ -14,7 +14,7 @@ module.exports = {
       return interaction.reply({ content: '🚫 No active giveaways at the moment.', ephemeral: true });
     }
 
-    let giveawayList = '**Active Giveaways:**\n\n';
+    let giveawayList = '**Active Giveaways: Click to go to message and then react to enter.**\n\n';
 
     for (const [index, giveaway] of activeGiveaways.entries()) {
       // Use the correct property name (end_time) from the DB.
@@ -46,7 +46,7 @@ module.exports = {
         console.error(`Error checking giveaway entries: ${err.message}`);
       }
 
-      giveawayList += `**${index + 1}.** 🎉 **Giveaway Details**\n` +
+      giveawayList += `**${index + 1}.** [🎉 **Click Here**](https://discord.com/channels/${interaction.guildId}/${giveaway.channel_id}/${giveaway.message_id})\n` +
         `> **Prize:** ${giveaway.prize || 'Unknown'}\n` +
         `> **Winners:** ${giveaway.winners || 'Unknown'}\n` +
         `> **Time Remaining:** ${timeDisplay}\n` +
