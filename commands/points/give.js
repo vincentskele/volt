@@ -4,11 +4,11 @@ const db = require('../../db');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('give-money')
-    .setDescription('Transfer money to another user.')
+    .setName('give')
+    .setDescription('Transfer points to another user.')
     .addUserOption(option =>
       option.setName('user')
-        .setDescription('The user to give money to')
+        .setDescription('The user to give points to')
         .setRequired(true))
     .addIntegerOption(option =>
       option.setName('amount')
@@ -24,7 +24,7 @@ module.exports = {
     }
 
     if (interaction.user.id === targetUser.id) {
-      return interaction.reply({ content: '🚫 You cannot give money to yourself.', ephemeral: true });
+      return interaction.reply({ content: '🚫 You cannot give points to yourself.', ephemeral: true });
     }
 
     try {

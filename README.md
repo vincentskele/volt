@@ -1,14 +1,14 @@
 # Volt
 
-Volt is an open source Discord bot and Web Dashboard designed by RoboDAO for RoboDAO to provide a fun and interactive Discord token system paired with a basic UI. Users can earn, spend, and manage virtual tokens while enjoying features like jobs and games.
+Volt is an open source Discord bot and Web Dashboard designed by RoboDAO for RoboDAO to provide a fun and interactive Discord token system paired with a basic UI. Users can earn, spend, and manage virtual points while enjoying features like jobs and games.
 
 ## Features
-- **Basic Economy**: Manage wallets and banks with commands to deposit, withdraw, and transfer funds.
-- **Admin Tools**: Grant money or items, create or remove items, and manage users and jobs.
+- **Points System**: Manage points with commands like deposit, withdraw, and transfer.
+- **Admin Tools**: Grant points or items, create or remove items, and manage users and jobs.
 - **Shop System**: Buy, sell, and redeem items.
 - **Jobs**: Assign jobs to users for rewards.
 - **Games**: Play blackjack.
-- **Web UI**: Dashboard page.
+- **Web UI**: Dynamic dashboard page.
 
 ## Prerequisites
 Ensure your environment meets the following requirements before setting up PizzaBot:
@@ -48,36 +48,37 @@ Follow these steps to set up PizzaBot on your server:
 
 ## Commands Overview
 
-### Basic Economy
-- **`balance`**: Check wallet and bank balances.
-- **`deposit <amount>`**: Move money from wallet to bank.
-- **`withdraw <amount>`**: Move money from bank to wallet.
+### Point system
+- **`balance`**: Check point balances.
+- **`deposit <amount>`**: Move points from wallet to bank.
+- **`withdraw <amount>`**: Move points from bank to wallet.
 - **`rob @user`**: Attempt to rob another user.
-
-### Admin Commands
-- **`bake`**: Add 6969 currency to your wallet.
-- **`give-money @user <amount>`**: Transfer money to another user.
-- **`give-item @user <item>`**: Send an item to another user.
-- **`redeem <item>`**: Redeem an item from your inventory.
+- **`give @user <amount>`**: Transfer points to another user.
+- **`leaderboard`**: Shows top 10 total balances.
 
 ### Shop & Inventory
 - **`shop`**: View items available for sale.
 - **`buy <item>`**: Purchase an item.
 - **`inventory`**: Check your or another user’s inventory.
-- **`add-item <price> <name> - <desc>`**: Add an item (Admin).
 - **`remove-item <name>`**: Remove an item (Admin).
 
-### Jobs
-- **`add-job <desc>`**: Create a job (Admin).
+### Jobs and Giveaway
 - **`joblist`**: View all jobs.
 - **`work`**: Assign yourself a random job.
-- **`complete-job @user <jobID> <reward>`**: Mark a job as complete (Admin).
+- **`giveaway`**: View the list of giveaways and see which ones youre entered in.
 
 
 ### Games
 - **`blackjack <bet>`**: Start a blackjack game.
 - **`hit`**: Draw another card in blackjack.
 - **`stand`**: Stay with your current hand.
+
+### Admin Commands
+- **`give-item @user <item>`**: Send an item to another user.
+- **`redeem <item>`**: Redeem an item from your inventory.
+- **`add-job <desc>`**: Create a job.
+- **`add-item <price> <name> - <desc>`**: Add an item.
+- **`complete-job @user <jobID> <point amount>`**: Mark a job as complete.
 
 ## License
 This project is open-source and available under the MIT License.

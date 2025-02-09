@@ -16,21 +16,38 @@ module.exports = {
   async execute(interaction) {
     try {
       const embed = new EmbedBuilder()
-        .setTitle(`${currency.name} Bot Commands`)
+        .setTitle(`Volt Bot Commands`)
         .setDescription(
-          `Here are the available commands for the ${currency.name} Bot.\n` +
-          `You can use these commands with either:\n` +
-          `- The legacy prefix: \`${currency.prefix}command\`\n` +
-          `- Slash commands: \`/command\``
+          `Here are the available commands.\n` +
+          `You can use them with slash commands: \`/command\``
         )
         .setColor(0x00AE86)
         .addFields(
           {
-            name: '**Basic Economy**',
+            name: '**Point System**',
             value:
-              `${currency.symbol} **balance** [@user]: Check wallet & bank balances.\n` +
-              `${currency.symbol} **deposit <amount>**: Deposit money into your bank.\n` +
-              `${currency.symbol} **withdraw <amount>**: Withdraw money from your bank.`,
+              `${currency.symbol} **balance** [@user]: Check point balances.\n` +
+              `${currency.symbol} **leaderboard**: Shows top 10 total balances.\n` +
+              `${currency.symbol} **give** [@user]: Send points to a user.\n` +
+              `${currency.symbol} **deposit <amount>**: Deposit points into your bank.\n` +
+              `${currency.symbol} **withdraw <amount>**: Withdraw points from your bank.`,
+            inline: false,
+          },
+          {
+            name: '**Shop & Inventory**',
+            value:
+              `🛍️ **shop**: View items for sale.\n` +
+              `🛍️ **buy <item name>**: Purchase an item from the shop.\n` +
+              `🛍️ **use <item name>**: Use an item from your inventory.\n` +
+              `🛍️ **inventory** [@user]: View your or another user's inventory.`,
+            inline: false,
+          },
+          {
+            name: '**Jobs and Giveaway**',
+            value:
+              `💼 **work**: Get assigned a random task from the joblist.\n` +
+              `💼 **joblist**: Show the current list of jobs with asignees.\n` +
+              `🛍️ View the list of giveaways and see which ones youre entered in.`,
             inline: false,
           },
           {
@@ -42,18 +59,14 @@ module.exports = {
             inline: false,
           },
           {
-            name: '**Shop & Inventory**',
-            value:
-              `🛍️ **shop**: View items for sale.\n` +
-              `🛍️ **buy <item name>**: Purchase an item from the shop.\n` +
-              `🛍️ **inventory** (or **inv**) [@user]: View your or another user's inventory.`,
-            inline: false,
-          },
-          {
             name: '**Admin Commands**',
             value:
-              `${currency.symbol} **give-money @user <amount>**: Transfer wallet money to another user.\n` +
-              `${currency.symbol} **add-item <price> <name> - <desc>** (Admin): Add a shop item.`,
+              `💻🔑 **giveaway-create <name> <duration> <time unit> <winners> <prize> [repeat]**: Create a new giveaway.\n` +
+              `💻🔑 **add-job <description>**: Add to the joblist.\n` +
+              `💻🔑 **remove-job <JobID>**: Remove from the joblist.\n` +
+              `💻🔑 **complete-job @user <amount>**: Mark users job as complete and give points.\n` +
+              `💻🔑 **remove-item <name>**: Remove shop item.\n` +
+              `💻🔑 **add-item <price> <name> - <desc>: Add a shop item.`,
             inline: false,
           }
         )

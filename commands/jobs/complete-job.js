@@ -30,9 +30,10 @@ module.exports = {
     const reward = options.getInteger('reward');
 
     // Validate input
-    if (!targetUser || reward <= 0) {
-      return interaction.reply({ content: '🚫 User and reward amount are required, and reward must be positive.', ephemeral: true });
+    if (!targetUser) {
+      return interaction.reply({ content: '🚫 A user must be specified.', ephemeral: true });
     }
+    
 
     try {
       // Get the user's active job (no need to input job ID manually)
@@ -46,6 +47,14 @@ module.exports = {
       if (!result.success) {
         return interaction.reply({ content: `🚫 Failed to complete the job for <@${targetUser.id}>.`, ephemeral: true });
       }
+
+
+      // Check if the reward is 0 and send a different message
+      if (reward === 0) {
+        return interaction.reply(
+         `😆 OOOHHH NICE TRY, BUT JOB INCOMPLETE! <@${targetUser.id}> didn't get any reward!`
+       );
+}
 
       return interaction.reply(
         `✅ Completed job for <@${targetUser.id}> with reward **${formatCurrency(reward)}**!`
