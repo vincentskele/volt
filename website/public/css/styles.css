@@ -14,10 +14,13 @@ body {
 
 /* Global link styles */
 a {
-  color: #FEDCA8; /* Link color matches brighter blue */
-  text-decoration: none; /* Remove underline */
+  color: #FEDCA8;
+  text-decoration: none;
   transition: color 0.3s ease;
+  text-shadow: 0px 0px 8px rgba(255, 255, 255, 0.8); /* Strong glowing effect */
 }
+
+
 
 a:hover {
   color: #E69349;; /* Slightly lighter blue on hover */
