@@ -47,7 +47,7 @@ module.exports = {
             value:
               `💼 **work**: Get assigned a random task from the joblist.\n` +
               `💼 **joblist**: Show the current list of jobs with asignees.\n` +
-              `🛍️ **giveaway** View the list of giveaways and see which ones youre entered in.`,
+              `🛍️ **giveaway**: View the list of giveaways and see which ones youre entered in.`,
             inline: false,
           },
           {
@@ -61,16 +61,16 @@ module.exports = {
           {
             name: '**Admin Commands**',
             value:
-              `💻🔑 **giveaway-create <name> <duration> <time unit> <winners> <prize> [repeat]**: Create a new giveaway.\n` +
+              `💻🔑 **giveaway-create <name> <duration> <time unit> <winners> <prize> <repeat #>**: Create a new giveaway.\n` +
               `💻🔑 **add-job <description>**: Add to the joblist.\n` +
               `💻🔑 **remove-job <JobID>**: Remove from the joblist.\n` +
               `💻🔑 **complete-job @user <amount>**: Mark users job as complete and give points.\n` +
               `💻🔑 **remove-item <name>**: Remove shop item.\n` +
-              `💻🔑 **add-item <price> <name> - <desc>: Add a shop item.`,
+              `💻🔑 **add-item <price> <name> - <desc>**: Add a shop item.`,
             inline: false,
           }
         )
-        .setFooter({ text: `Type /help or ${currency.prefix}${currency.helpCommand} for this message again!` })
+        .setFooter({ text: `Type /help for this message again!` })
         .setTimestamp();
 
       await interaction.reply({ embeds: [embed] });
