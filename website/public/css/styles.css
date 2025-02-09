@@ -184,84 +184,122 @@ code {
   color: #63baff; 
 }
 
-.leaderboard-item:hover {
-  background-color: rgba(55, 60, 80, 1); /* Slightly lighter hover background */
-  transform: scale(1.02); /* Subtle zoom effect on hover */
+/* ------------------------- */
+/* Generic Hover for Lower Ranks (4+) */
+/* ------------------------- */
+.leaderboard-item:not(:nth-child(-n+3)):hover {
+  background-color: rgba(55, 60, 80, 1); /* Hover background only for lower ranks */
+  transform: scale(1.02);               /* Subtle zoom effect */
 }
 
-/* User link styling */
+/* ------------------------- */
+/* Hover for Top 3 Items (Maintain Background) */
+/* ------------------------- */
+.leaderboard-item:nth-child(-n+3):hover {
+  transform: scale(1.02);  /* Only scale, background remains unchanged */
+}
+
+/* ------------------------- */
+/* User Link Styling */
+/* ------------------------- */
 .leaderboard-item a {
   color: #E0E0E0; /* Light gray for visibility */
-  font-weight: 600; /* Bold enough to stand out */
-  text-decoration: none; /* No underline for a clean look */
-  font-size: 1rem; /* Legible font size */
+  font-weight: 600;
+  text-decoration: none;
+  font-size: 1rem;
   padding-bottom: 10px;
-  text-shadow: 3px 3px 7px rgba(0, 0, 0, 0.9); /* Stronger shadow for better contrast */
-  transition: color 0.3s ease, text-shadow 0.3s ease; /* Smooth hover effect */
+  text-shadow: 3px 3px 7px rgba(0, 0, 0, 0.9);
+  transition: color 0.3s ease, text-shadow 0.3s ease;
 }
 
-/* Hover effect to enhance interaction */
+/* Link Hover Effect */
 .leaderboard-item a:hover {
   color: #FFD700; /* Bright gold on hover */
-  text-shadow: 7px 7px 11px rgba(0, 0, 0, 1); /* Even stronger shadow on hover */
+  text-shadow: 7px 7px 11px rgba(0, 0, 0, 1);
 }
 
-/* Information details */
+/* ------------------------- */
+/* Information Details */
+/* ------------------------- */
 .leaderboard-item span {
   font-size: 0.9rem;
-  color: #f4f4f9; /* Light text for details */
+  color: #f4f4f9;
   margin-left: 10px;
 }
 
-/* Highlight top 3 ranks with improved contrast */
+/* Ensure smooth transitions for all top-three effects */
+.leaderboard-item:nth-child(-n+3) {
+  transition: background-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* ------------------------- */
+/* Top Three Items Styling */
+/* ------------------------- */
+
+/* 1st Place Styling */
 .leaderboard-item:nth-child(1) {
   background-color: #ddbc00; /* Gold for 1st place */
   color: #000; /* Black text for contrast */
   font-weight: bold;
 }
 
-.leaderboard-item:nth-child(1) span {
-  color: #333; /* Dark gray for wallet, bank, and total details */
+/* 1st Place Hover - Brighter Gold with Fun Effects */
+.leaderboard-item:nth-child(1):hover {
+  background-color: #ffd700; /* Brighter gold on hover */
+  color: #000;
+  transform: scale(1.03) rotate(1deg); /* Slightly larger & rotated */
+  box-shadow: 0 0 20px 5px rgba(255, 215, 0, 0.5); /* Glowing gold shadow */
 }
 
+/* 2nd Place */
 .leaderboard-item:nth-child(2) {
-  background-color: #c0c0c0; /* Silver for 2nd place */
-  color: #000; /* Black text for contrast */
+  background-color: #c0c0c0; /* Silver */
+  color: #000;
   font-weight: bold;
 }
 
-.leaderboard-item:nth-child(2) span {
-  color: #333; /* Dark gray for wallet, bank, and total details */
+/* 2nd Place Hover - Brighter Silver with Fun Effects */
+.leaderboard-item:nth-child(2):hover {
+  background-color: #dcdcdc; /* Brighter silver on hover */
+  color: #000;
+  transform: scale(1.03) rotate(-1deg); /* Slight scale & opposite rotation */
+  box-shadow: 0 0 20px 5px rgba(220, 220, 220, 0.5); /* Glowing silver shadow */
 }
 
+/* 3rd Place */
 .leaderboard-item:nth-child(3) {
-  background-color: #cd7f32; /* Bronze for 3rd place */
-  color: #000; /* Black text for contrast */
+  background-color: #cd7f32; /* Bronze */
+  color: #000;
   font-weight: bold;
 }
 
-.leaderboard-item:nth-child(3) span {
-  color: #333; /* Dark gray for wallet, bank, and total details */
+/* 3rd Place Hover - Brighter Bronze with Fun Effects */
+.leaderboard-item:nth-child(3):hover {
+  background-color: #e2a56d; /* Brighter bronze on hover */
+  color: #000;
+  transform: scale(1.03) rotate(1deg); /* Slight scale & rotation */
+  box-shadow: 0 0 20px 5px rgba(226, 165, 109, 0.5); /* Glowing bronze shadow */
 }
 
-/* Default text for lower ranks */
-.leaderboard-item:not(:nth-child(-n+3)) span {
-  color: #d1d5db; /* Softer gray for details on dark backgrounds */
-}
 
-/* Responsive design */
+/* (Optional: Add a hover rule for 3rd place if needed) */
+
+/* ------------------------- */
+/* Responsive Design Adjustments */
+/* ------------------------- */
 @media (max-width: 600px) {
   .leaderboard-item {
     flex-direction: column;
     align-items: flex-start;
     padding: 10px 15px;
   }
-
+  
   .leaderboard-item span {
     margin-left: 0;
     margin-top: 5px;
   }
 }
+
 
 
 /* Refresh Button Styles */
@@ -344,9 +382,6 @@ code {
   transform: scale(1.02); /* Subtle zoom effect */
 }
 
-.leaderboard-item {
-
-}
 
 /* Specific Giveaway Item Styles */
 .giveaway-item {
