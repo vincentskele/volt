@@ -195,6 +195,7 @@ code {
   font-weight: 600; /* Bold enough to stand out */
   text-decoration: none; /* No underline for a clean look */
   font-size: 1rem; /* Legible font size */
+  padding-bottom: 10px;
   text-shadow: 3px 3px 7px rgba(0, 0, 0, 0.9); /* Stronger shadow for better contrast */
   transition: color 0.3s ease, text-shadow 0.3s ease; /* Smooth hover effect */
 }
@@ -341,6 +342,10 @@ code {
 .job-item:hover {
   background-color: #405D67; /* Brighter background on hover */
   transform: scale(1.02); /* Subtle zoom effect */
+}
+
+.leaderboard-item {
+
 }
 
 /* Specific Giveaway Item Styles */
