@@ -291,7 +291,7 @@ code {
   transform: translateY(-2px); /* Slight lift */
 }
 
-/* Shop, Job list, and Giveaway containers (identical styles) */
+/* General List Containers (Leaderboard, Admin, Shop, Job, Giveaway) */
 #leaderboardList,
 .admin-list,
 .giveaway-list,
@@ -299,49 +299,112 @@ code {
 .job-list {
   display: flex;
   flex-direction: column; /* Stack items vertically */
-  gap: 15px; /* Consistent spacing */
-  align-items: center; /* Centers items horizontally */
-  width: 100%; /* Full width */
-  max-width: 600px; /* Limit the container width */
-  margin: 0 auto; /* Centers the container on the page */
-  padding: 15px; /* Uniform padding */
-  box-sizing: border-box; /* Ensures padding is included in width */
+  gap: 15px; /* Add consistent spacing between items */
+  align-items: center; /* Center items horizontally */
+  width: 100%; /* Full container width */
+  max-width: 600px; /* Limit container width */
+  margin: 0 auto; /* Center the container */
+  padding: 15px; /* Add padding inside the container */
+  box-sizing: border-box; /* Include padding in total width */
 }
 
+/* General Item Styles (Leaderboard, Admin, Shop, Job, Giveaway) */
 .leaderboard-item,
 .admin-item,
 .shop-item,
 .giveaway-item,
 .job-item {
-  display: flex; /* Use flexbox for layout */
-  align-items: center; /* Center content vertically */
-  justify-content: center; /* Center content horizontally */
+  display: flex; /* Flexbox layout */
+  flex-direction: column; /* Stack children vertically */
+  align-items: center; /* Center content horizontally */
+  justify-content: center; /* Center content vertically */
   background-color: #27393F; /* Dark navy background */
   color: #fafafa; /* Light text color */
-  padding: 15px 20px; /* Uniform padding */
-  border: none;
-  border-radius: 8px; /* Rounded corners */
-  text-align: center; /* Ensures text is centered */
+  padding: 20px; /* Uniform padding */
+  margin-bottom: 15px; /* Spacing between items */
+  border-radius: 10px; /* Rounded corners */
+  text-align: center; /* Center all text */
   font-size: 1rem; /* Standard font size */
-  transition: background-color 0.3s ease, transform 0.2s ease;
-  width: 100%; /* Makes all buttons the same width */
-  max-width: 500px; /* Ensures a consistent maximum width */
-  word-break: break-word; /* Ensures text wraps properly */
-  cursor: pointer; /* Adds a pointer cursor on hover */
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Adds a shadow for depth */
+  word-break: break-word; /* Ensure text wraps if too long */
+  cursor: pointer; /* Pointer cursor on hover */
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Subtle shadow */
+  transition: background-color 0.3s ease, transform 0.2s ease; /* Smooth hover effects */
+  max-width: 500px; /* Limit item width */
+  width: 100%; /* Full width for responsiveness */
 }
 
+/* Hover Effects for Items */
+.leaderboard-item:hover,
 .admin-item:hover,
-.giveaway-item:hover,
 .shop-item:hover,
+.giveaway-item:hover,
 .job-item:hover {
-  background-color: #405D67; /* Slightly brighter on hover */
-  transform: scale(1.02); /* Adds a subtle zoom effect on hover */
+  background-color: #405D67; /* Brighter background on hover */
+  transform: scale(1.02); /* Subtle zoom effect */
 }
 
-.giveaway-info {
-  padding-top: 20px; 
+/* Specific Giveaway Item Styles */
+.giveaway-item {
+  display: flex; /* Use flexbox for layout */
+  flex-direction: column; /* Stack content vertically */
+  align-items: flex-start; /* Align content to the left */
+  gap: 10px; /* Add spacing between elements */
 }
+
+/* Giveaway Name */
+.giveaway-name {
+  color: #63baff;
+  font-size: 1.2rem; /* Slightly smaller font size */
+  font-weight: bold; /* Bold text */
+  margin: 5px 0; /* Reduce space above and below */
+  text-align: center; /* Center-align text */
+  width: 100%; /* Make the name span full width */
+  margin-top: -15px; /* Adjust spacing above the name */
+}
+
+/* Giveaway Content (Details like link, time, prize) */
+.giveaway-content {
+  display: flex; /* Flexbox for horizontal layout */
+  justify-content: space-between; /* Space between content sections */
+  align-items: center; /* Align items vertically */
+  width: 100%; /* Full width */
+  gap: 10px; /* Add spacing between sections */
+  text-align: left; /* Align text to the left */
+  margin-top: -10px; /* Fine-tune spacing for compact layout */
+}
+
+
+/* Link and Details Styling */
+.giveaway-content a {
+  flex: 1; /* Allow link to take equal space */
+  text-decoration: none; /* Remove underline from link */
+}
+
+.giveaway-content p {
+  margin: 0; /* Remove default margin for paragraphs */
+  flex: 1; /* Allow sections to stretch evenly */
+  text-align: left; /* Align text to the left */
+}
+
+/* Additional Giveaway Info Section */
+.giveaway-info {
+  padding-top: 20px; /* Space above additional info */
+  text-align: center; /* Center align info section */
+  font-size: 0.9rem; /* Slightly smaller font size */
+}
+
+/* Responsive Design */
+@media (max-width: 600px) {
+  .giveaway-content {
+    flex-direction: column; /* Stack content vertically on smaller screens */
+    gap: 10px; /* Reduce spacing for smaller screens */
+    align-items: flex-start; /* Align to the left */
+  }
+}
+
+
+
+
 
 
 /*timer*/
