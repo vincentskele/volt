@@ -55,7 +55,7 @@ module.exports = {
 
       // Include giveaway name
       giveawayList += `**${index + 1}.** 🎉 **${giveaway.giveaway_name || 'Unnamed Giveaway'}**\n` +
-        `[**Click Here to Enter**](https://discord.com/channels/${interaction.guildId}/${giveaway.channel_id}/${giveaway.message_id})\n` +
+        `[**Click Here and react to message to Enter**](https://discord.com/channels/${interaction.guildId}/${giveaway.channel_id}/${giveaway.message_id})\n` +
         `> **Prize:** ${giveaway.prize || 'Unknown'}\n` +
         `> **Winners:** ${giveaway.winners || 'Unknown'}\n` +
         `> **Time Remaining:** ${timeDisplay} ${repeatText}\n` +
