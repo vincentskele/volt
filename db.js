@@ -113,49 +113,72 @@ function initializeDatabase() {
     });
 
     // Giveaways table
-    db.run(`
-      CREATE TABLE IF NOT EXISTS giveaways (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        message_id TEXT NOT NULL,
-        channel_id TEXT NOT NULL,
-        end_time INTEGER NOT NULL,
-        prize TEXT NOT NULL,
-        winners INTEGER NOT NULL,
-        giveaway_name TEXT NOT NULL,
-        repeat INTEGER DEFAULT 0
-      )
-    `, (err) => {
-      if (err) console.error('Error creating giveaways table:', err);
-      // Migration: Check if the "repeat" column exists, add it if missing.
-      db.all("PRAGMA table_info(giveaways)", (err, columns) => {
-        if (err) {
-          console.error("Error retrieving giveaways table info:", err);
-        } else {
-          const hasRepeat = columns.some(column => column.name === "repeat");
-          if (!hasRepeat) {
-            db.run("ALTER TABLE giveaways ADD COLUMN repeat INTEGER DEFAULT 0", (alterErr) => {
-              if (alterErr) {
-                console.error("Error adding repeat column to giveaways table:", alterErr);
-              } else {
-                console.log("Added repeat column to giveaways table.");
-              }
-            });
-          }
-        }
-      });
-    });
+// Ensure giveaways table exists with all required columns
+db.run(`
+  CREATE TABLE IF NOT EXISTS giveaways (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    end_time INTEGER NOT NULL,
+    prize TEXT NOT NULL,
+    winners INTEGER NOT NULL,
+    giveaway_name TEXT NOT NULL DEFAULT 'Untitled Giveaway',
+    repeat INTEGER DEFAULT 0
+  )
+`, (err) => {
+  if (err) console.error('Error creating giveaways table:', err);
 
-    // Giveaway entries table (persistent state)
-    db.run(`
-      CREATE TABLE IF NOT EXISTS giveaway_entries (
-        giveaway_id INTEGER NOT NULL,
-        user_id TEXT NOT NULL,
-        PRIMARY KEY (giveaway_id, user_id),
-        FOREIGN KEY (giveaway_id) REFERENCES giveaways(id) ON DELETE CASCADE
-      )
-    `, (err) => {
-      if (err) console.error('Error creating giveaway_entries table:', err);
-    });
+  // Ensure the "giveaway_name" column exists
+  db.all("PRAGMA table_info(giveaways)", (err, columns) => {
+    if (err) {
+      console.error("Error retrieving giveaways table info:", err);
+    } else {
+      const hasGiveawayName = columns.some(column => column.name === "giveaway_name");
+      if (!hasGiveawayName) {
+        console.log("Adding missing 'giveaway_name' column...");
+        db.run("ALTER TABLE giveaways ADD COLUMN giveaway_name TEXT NOT NULL DEFAULT 'Untitled Giveaway'", (alterErr) => {
+          if (alterErr) {
+            console.error("Error adding giveaway_name column to giveaways table:", alterErr);
+          } else {
+            console.log("Successfully added 'giveaway_name' column to giveaways table.");
+          }
+        });
+      }
+    }
+  });
+
+  // Ensure the "repeat" column exists
+  db.all("PRAGMA table_info(giveaways)", (err, columns) => {
+    if (err) {
+      console.error("Error retrieving giveaways table info:", err);
+    } else {
+      const hasRepeat = columns.some(column => column.name === "repeat");
+      if (!hasRepeat) {
+        console.log("Adding missing 'repeat' column...");
+        db.run("ALTER TABLE giveaways ADD COLUMN repeat INTEGER DEFAULT 0", (alterErr) => {
+          if (alterErr) {
+            console.error("Error adding repeat column to giveaways table:", alterErr);
+          } else {
+            console.log("Successfully added 'repeat' column to giveaways table.");
+          }
+        });
+      }
+    }
+  });
+});
+
+// Ensure giveaway_entries table exists with foreign key constraint
+db.run(`
+  CREATE TABLE IF NOT EXISTS giveaway_entries (
+    giveaway_id INTEGER NOT NULL,
+    user_id TEXT NOT NULL,
+    PRIMARY KEY (giveaway_id, user_id),
+    FOREIGN KEY (giveaway_id) REFERENCES giveaways(id) ON DELETE CASCADE
+  )
+`, (err) => {
+  if (err) console.error('Error creating giveaway_entries table:', err);
+});
+
 
     // Job assignees table
     db.run(`
@@ -755,11 +778,11 @@ function redeemItem(userID, itemName) {
 // =========================================================================
 
 // Save a new giveaway and return its auto-generated id.
-async function saveGiveaway(messageId, channelId, endTime, prize, winners, repeat) {
+async function saveGiveaway(messageId, channelId, endTime, prize, winners, giveawayName, repeat) {
   return new Promise((resolve, reject) => {
     db.run(
-      'INSERT INTO giveaways (message_id, channel_id, end_time, prize, winners, repeat) VALUES (?, ?, ?, ?, ?, ?)',
-      [messageId, channelId, endTime, prize, winners, repeat],
+      'INSERT INTO giveaways (message_id, channel_id, end_time, prize, winners, giveaway_name, repeat) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [messageId, channelId, endTime, prize, winners, giveawayName, repeat],
       function (err) {
         if (err) reject(err);
         else resolve(this.lastID);
@@ -767,6 +790,7 @@ async function saveGiveaway(messageId, channelId, endTime, prize, winners, repea
     );
   });
 }
+
 
 // Get all active giveaways.
 async function getActiveGiveaways() {

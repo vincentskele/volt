@@ -38,13 +38,13 @@ module.exports = {
         }
       }
 
-      // Sometimes the repeat count might be stored under a different key.
-      // We try "repeat", "repeats", or "repeat_count" to cover different possibilities.
+      // Handle repeat count
       const repeatCount = parseInt(giveaway.repeat ?? giveaway.repeats ?? giveaway.repeat_count ?? 0, 10);
       const repeatText = repeatCount > 0
         ? `(Repeats ${repeatCount} more time${repeatCount === 1 ? '' : 's'})`
         : '';
 
+      // Check if user has entered the giveaway
       let hasEntered = false;
       try {
         const entries = await getGiveawayEntries(giveaway.id);
@@ -53,7 +53,9 @@ module.exports = {
         console.error(`Error checking giveaway entries: ${err.message}`);
       }
 
-      giveawayList += `**${index + 1}.** [🎉 **Click Here**](https://discord.com/channels/${interaction.guildId}/${giveaway.channel_id}/${giveaway.message_id})\n` +
+      // Include giveaway name
+      giveawayList += `**${index + 1}.** 🎉 **${giveaway.giveaway_name || 'Unnamed Giveaway'}**\n` +
+        `[**Click Here to Enter**](https://discord.com/channels/${interaction.guildId}/${giveaway.channel_id}/${giveaway.message_id})\n` +
         `> **Prize:** ${giveaway.prize || 'Unknown'}\n` +
         `> **Winners:** ${giveaway.winners || 'Unknown'}\n` +
         `> **Time Remaining:** ${timeDisplay} ${repeatText}\n` +
