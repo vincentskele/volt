@@ -26,7 +26,9 @@ function initializeDatabase() {
         wallet INTEGER DEFAULT 0,
         bank INTEGER DEFAULT 0
       )
-    `);
+    `, (err) => {
+      if (err) console.error('Error creating economy table:', err);
+    });
 
     // Items table
     db.run(`
@@ -49,7 +51,6 @@ function initializeDatabase() {
             const hasQuantity = columns.some(column => column.name === "quantity");
             if (!hasQuantity) {
               db.run("ALTER TABLE items ADD COLUMN quantity INTEGER DEFAULT 1", (alterErr) => {
-                // If the column somehow got created in between checks, just ignore that specific error
                 if (alterErr && alterErr.message.includes("duplicate column name")) {
                   console.log("Quantity column already exists, skipping migration.");
                 } else if (alterErr) {
@@ -73,14 +74,18 @@ function initializeDatabase() {
         PRIMARY KEY(userID, itemID),
         FOREIGN KEY(itemID) REFERENCES items(itemID)
       )
-    `);
+    `, (err) => {
+      if (err) console.error('Error creating inventory table:', err);
+    });
 
     // Admins table
     db.run(`
       CREATE TABLE IF NOT EXISTS admins (
         userID TEXT PRIMARY KEY
       )
-    `);
+    `, (err) => {
+      if (err) console.error('Error creating admins table:', err);
+    });
 
     // Blackjack games table
     db.run(`
@@ -93,7 +98,9 @@ function initializeDatabase() {
         status TEXT DEFAULT 'active',
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
       )
-    `);
+    `, (err) => {
+      if (err) console.error('Error creating blackjack_games table:', err);
+    });
 
     // Joblist table
     db.run(`
@@ -101,7 +108,9 @@ function initializeDatabase() {
         jobID INTEGER PRIMARY KEY AUTOINCREMENT,
         description TEXT
       )
-    `);
+    `, (err) => {
+      if (err) console.error('Error creating joblist table:', err);
+    });
 
     // Giveaways table
     db.run(`
@@ -111,9 +120,30 @@ function initializeDatabase() {
         channel_id TEXT NOT NULL,
         end_time INTEGER NOT NULL,
         prize TEXT NOT NULL,
-        winners INTEGER NOT NULL
+        winners INTEGER NOT NULL,
+        giveaway_name TEXT NOT NULL,
+        repeat INTEGER DEFAULT 0
       )
-    `);
+    `, (err) => {
+      if (err) console.error('Error creating giveaways table:', err);
+      // Migration: Check if the "repeat" column exists, add it if missing.
+      db.all("PRAGMA table_info(giveaways)", (err, columns) => {
+        if (err) {
+          console.error("Error retrieving giveaways table info:", err);
+        } else {
+          const hasRepeat = columns.some(column => column.name === "repeat");
+          if (!hasRepeat) {
+            db.run("ALTER TABLE giveaways ADD COLUMN repeat INTEGER DEFAULT 0", (alterErr) => {
+              if (alterErr) {
+                console.error("Error adding repeat column to giveaways table:", alterErr);
+              } else {
+                console.log("Added repeat column to giveaways table.");
+              }
+            });
+          }
+        }
+      });
+    });
 
     // Giveaway entries table (persistent state)
     db.run(`
@@ -123,7 +153,9 @@ function initializeDatabase() {
         PRIMARY KEY (giveaway_id, user_id),
         FOREIGN KEY (giveaway_id) REFERENCES giveaways(id) ON DELETE CASCADE
       )
-    `);
+    `, (err) => {
+      if (err) console.error('Error creating giveaway_entries table:', err);
+    });
 
     // Job assignees table
     db.run(`
@@ -132,121 +164,11 @@ function initializeDatabase() {
         userID TEXT,
         PRIMARY KEY(jobID, userID)
       )
-    `);
+    `, (err) => {
+      if (err) console.error('Error creating job_assignees table:', err);
+    });
 
     console.log('Database initialization complete.');
-  });
-}
-
-// =========================================================================
-// Giveaway Functions
-// =========================================================================
-
-// Save a new giveaway and return its auto-generated id.
-async function saveGiveaway(messageId, channelId, endTime, prize, winners) {
-  return new Promise((resolve, reject) => {
-    db.run(
-      'INSERT INTO giveaways (message_id, channel_id, end_time, prize, winners) VALUES (?, ?, ?, ?, ?)',
-      [messageId, channelId, endTime, prize, winners],
-      function (err) {
-        if (err) reject(err);
-        else resolve(this.lastID);
-      }
-    );
-  });
-}
-
-// Get all active giveaways.
-async function getActiveGiveaways() {
-  return new Promise((resolve, reject) => {
-    db.all(
-      'SELECT * FROM giveaways WHERE end_time > ?',
-      [Date.now()],
-      (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows);
-      }
-    );
-  });
-}
-
-// Delete a giveaway by its message_id.
-async function deleteGiveaway(messageId) {
-  return new Promise((resolve, reject) => {
-    db.run('DELETE FROM giveaways WHERE message_id = ?', [messageId], function (err) {
-      if (err) reject(err);
-      else resolve();
-    });
-  });
-}
-
-// Get a giveaway by its message_id.
-async function getGiveawayByMessageId(messageId) {
-  return new Promise((resolve, reject) => {
-    db.get(
-      'SELECT * FROM giveaways WHERE message_id = ?',
-      [messageId],
-      (err, row) => {
-        if (err) reject(err);
-        else resolve(row);
-      }
-    );
-  });
-}
-
-// Record a giveaway entry (i.e. when a user reacts).
-async function addGiveawayEntry(giveawayId, userId) {
-  return new Promise((resolve, reject) => {
-    db.run(
-      'INSERT OR IGNORE INTO giveaway_entries (giveaway_id, user_id) VALUES (?, ?)',
-      [giveawayId, userId],
-      function (err) {
-        if (err) reject(err);
-        else resolve(this.lastID);
-      }
-    );
-  });
-}
-
-// Get all giveaway entries (user IDs) for a specific giveaway.
-async function getGiveawayEntries(giveawayId) {
-  return new Promise((resolve, reject) => {
-    db.all(
-      'SELECT user_id FROM giveaway_entries WHERE giveaway_id = ?',
-      [giveawayId],
-      (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows.map(row => row.user_id));
-      }
-    );
-  });
-}
-
-// Remove a giveaway entry when a reaction is removed.
-async function removeGiveawayEntry(giveawayId, userId) {
-  return new Promise((resolve, reject) => {
-    db.run(
-      'DELETE FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?',
-      [giveawayId, userId],
-      function (err) {
-        if (err) reject(err);
-        else resolve();
-      }
-    );
-  });
-}
-
-// Clear all giveaway entries for a given giveaway (used when syncing reactions).
-async function clearGiveawayEntries(giveawayId) {
-  return new Promise((resolve, reject) => {
-    db.run(
-      'DELETE FROM giveaway_entries WHERE giveaway_id = ?',
-      [giveawayId],
-      function (err) {
-        if (err) reject(err);
-        else resolve();
-      }
-    );
   });
 }
 
@@ -829,6 +751,119 @@ function redeemItem(userID, itemName) {
 }
 
 // =========================================================================
+// Giveaway Functions
+// =========================================================================
+
+// Save a new giveaway and return its auto-generated id.
+async function saveGiveaway(messageId, channelId, endTime, prize, winners, repeat) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'INSERT INTO giveaways (message_id, channel_id, end_time, prize, winners, repeat) VALUES (?, ?, ?, ?, ?, ?)',
+      [messageId, channelId, endTime, prize, winners, repeat],
+      function (err) {
+        if (err) reject(err);
+        else resolve(this.lastID);
+      }
+    );
+  });
+}
+
+// Get all active giveaways.
+async function getActiveGiveaways() {
+  return new Promise((resolve, reject) => {
+    db.all(
+      'SELECT * FROM giveaways WHERE end_time > ?',
+      [Date.now()],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      }
+    );
+  });
+}
+
+// Delete a giveaway by its message_id.
+async function deleteGiveaway(messageId) {
+  return new Promise((resolve, reject) => {
+    db.run('DELETE FROM giveaways WHERE message_id = ?', [messageId], function (err) {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
+
+// Get a giveaway by its message_id.
+async function getGiveawayByMessageId(messageId) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      'SELECT * FROM giveaways WHERE message_id = ?',
+      [messageId],
+      (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      }
+    );
+  });
+}
+
+// Record a giveaway entry (i.e. when a user reacts).
+async function addGiveawayEntry(giveawayId, userId) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'INSERT OR IGNORE INTO giveaway_entries (giveaway_id, user_id) VALUES (?, ?)',
+      [giveawayId, userId],
+      function (err) {
+        if (err) reject(err);
+        else resolve(this.lastID);
+      }
+    );
+  });
+}
+
+// Get all giveaway entries (user IDs) for a specific giveaway.
+async function getGiveawayEntries(giveawayId) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      'SELECT user_id FROM giveaway_entries WHERE giveaway_id = ?',
+      [giveawayId],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows.map(row => row.user_id));
+      }
+    );
+  });
+}
+
+// Remove a giveaway entry when a reaction is removed.
+async function removeGiveawayEntry(giveawayId, userId) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'DELETE FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?',
+      [giveawayId, userId],
+      function (err) {
+        if (err) reject(err);
+        else resolve();
+      }
+    );
+  });
+}
+
+// Clear all giveaway entries for a given giveaway (used when syncing reactions).
+async function clearGiveawayEntries(giveawayId) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'DELETE FROM giveaway_entries WHERE giveaway_id = ?',
+      [giveawayId],
+      function (err) {
+        if (err) reject(err);
+        else resolve();
+      }
+    );
+  });
+}
+
+
+// =========================================================================
 // Blackjack Functions
 // =========================================================================
 
@@ -1048,6 +1083,7 @@ module.exports = {
   getActiveJob,
 
   // Giveaway
+  initializeDatabase,
   saveGiveaway,
   getActiveGiveaways,
   deleteGiveaway,

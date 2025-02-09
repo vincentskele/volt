@@ -93,14 +93,15 @@ module.exports = {
 
       const endTime = Date.now() + durationMs;
 
-      // Save giveaway info to the DB.
+      // Save giveaway info to the DB, now including the repeat value.
       await saveGiveaway(
         giveawayMessage.id,
         giveawayMessage.channel.id,
         endTime,
         prizeInput,
         winners,
-        giveawayName
+        giveawayName,
+        repeat
       );
 
       // Timer to end the giveaway.

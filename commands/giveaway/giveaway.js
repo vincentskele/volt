@@ -1,4 +1,3 @@
-// commands/giveaway-list.js
 const { SlashCommandBuilder } = require('discord.js');
 const { getActiveGiveaways, getGiveawayEntries } = require('../../db');
 
@@ -17,9 +16,11 @@ module.exports = {
     let giveawayList = '**Active Giveaways: Click to go to message and then react to enter.**\n\n';
 
     for (const [index, giveaway] of activeGiveaways.entries()) {
-      // Use the correct property name (end_time) from the DB.
-      const remainingTime = giveaway.end_time - Date.now();
+      const currentTime = Date.now();
+      let remainingTime = giveaway.end_time - currentTime;
       let timeDisplay = '';
+
+      console.log('[DEBUG] Giveaway details:', giveaway);
 
       if (remainingTime <= 0) {
         timeDisplay = 'Expired';
@@ -37,7 +38,13 @@ module.exports = {
         }
       }
 
-      // Check persistent state for giveaway entries using the giveaway id.
+      // Sometimes the repeat count might be stored under a different key.
+      // We try "repeat", "repeats", or "repeat_count" to cover different possibilities.
+      const repeatCount = parseInt(giveaway.repeat ?? giveaway.repeats ?? giveaway.repeat_count ?? 0, 10);
+      const repeatText = repeatCount > 0
+        ? `(Repeats ${repeatCount} more time${repeatCount === 1 ? '' : 's'})`
+        : '';
+
       let hasEntered = false;
       try {
         const entries = await getGiveawayEntries(giveaway.id);
@@ -49,7 +56,7 @@ module.exports = {
       giveawayList += `**${index + 1}.** [🎉 **Click Here**](https://discord.com/channels/${interaction.guildId}/${giveaway.channel_id}/${giveaway.message_id})\n` +
         `> **Prize:** ${giveaway.prize || 'Unknown'}\n` +
         `> **Winners:** ${giveaway.winners || 'Unknown'}\n` +
-        `> **Time Remaining:** ${timeDisplay}\n` +
+        `> **Time Remaining:** ${timeDisplay} ${repeatText}\n` +
         `> **Entered:** ${hasEntered ? '✅ Yes' : '❌ No'}\n\n`;
     }
 
