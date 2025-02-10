@@ -1,10 +1,10 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { EmbedBuilder } = require('discord.js');
 
-const currency = {
+const volt = {
   name: 'Bot',
   prefix: '$',
-  symbol: '💰',
+  symbol: '⚡',
   helpCommand: 'help',
 };
 
@@ -26,11 +26,11 @@ module.exports = {
           {
             name: '**Volt System**',
             value:
-              `${currency.symbol} **volts** [@user]: Check Solarians Volts.\n` +
-              `${currency.symbol} **leaderboard**: Shows top 10 most well charged Solarians.\n` +
-              `${currency.symbol} **give** [@user]: transfers Volts to a user.\n` +
-              `${currency.symbol} **deposit <amount>**: Trasnfer Volts into your battery bank.\n` +
-              `${currency.symbol} **withdraw <amount>**: Trasnfer Volts from your battery bank.`,
+              `${volt.symbol} **volts** [@user]: Check Solarians Volts.\n` +
+              `${volt.symbol} **leaderboard**: Shows top 10 most well charged Solarians.\n` +
+              `${volt.symbol} **give** [@user]: transfers Volts to a user.\n` +
+              `${volt.symbol} **deposit <amount>**: Trasnfer Volts into your battery bank.\n` +
+              `${volt.symbol} **withdraw <amount>**: Trasnfer Volts from your battery bank.`,
             inline: false,
           },
           {
