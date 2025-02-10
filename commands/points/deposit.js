@@ -6,7 +6,7 @@ module.exports = {
   // Command definition
   data: new SlashCommandBuilder()
     .setName('deposit') // Command name
-    .setDescription('Deposit Volts from your wallet to your battery bank.') // Command description
+    .setDescription('Deposit Volts from your Solarian to your battery bank.') // Command description
     .addIntegerOption(option =>
       option.setName('amount') // Option to specify the deposit amount
         .setDescription('The amount to deposit') // Option description
@@ -19,7 +19,7 @@ module.exports = {
 
     // Validate the amount
     if (amount <= 0) {
-      return interaction.reply({ content: '🚫 Please specify a positive amount to deposit.', ephemeral: true });
+      return interaction.reply({ content: '🚫 Please specify a positive amount to transfer.', ephemeral: true });
     }
 
     try {
@@ -27,11 +27,11 @@ module.exports = {
       await db.deposit(interaction.user.id, amount);
 
       // Respond with a success message
-      return interaction.reply(`✅ Deposited ${formatCurrency(amount)} into your battery bank.`);
+      return interaction.reply(`✅ Transfered ${formatCurrency(amount)} into your battery bank.`);
     } catch (err) {
       // Handle errors gracefully and log them
       console.error(`Error in deposit command for user ${interaction.user.id}:`, err);
-      return interaction.reply({ content: `🚫 Deposit failed: ${err.message || err}`, ephemeral: true });
+      return interaction.reply({ content: `🚫 Transfer failed: ${err.message || err}`, ephemeral: true });
     }
   }
 };
