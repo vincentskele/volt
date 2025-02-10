@@ -6,15 +6,15 @@ const { currency, formatCurrency } = require('../../currency'); // Import curren
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('complete-job')
-    .setDescription('Complete a job and reward a user (Admin Only).')
+    .setDescription('Complete a job and charge up a users Solarian (Admin Only).')
     .addUserOption(option =>
       option.setName('user')
-        .setDescription('The user to reward')
+        .setDescription('The user to charge up')
         .setRequired(true)
     )
     .addIntegerOption(option =>
       option.setName('reward')
-        .setDescription('The amount of currency to reward')
+        .setDescription('The amount of Volts to transger')
         .setRequired(true)
     ),
 
