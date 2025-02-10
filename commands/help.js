@@ -24,13 +24,13 @@ module.exports = {
         .setColor(0x00AE86)
         .addFields(
           {
-            name: '**Point System**',
+            name: '**Volt System**',
             value:
               `${currency.symbol} **balance** [@user]: Check point balances.\n` +
               `${currency.symbol} **leaderboard**: Shows top 10 total balances.\n` +
-              `${currency.symbol} **give** [@user]: Send points to a user.\n` +
-              `${currency.symbol} **deposit <amount>**: Deposit points into your bank.\n` +
-              `${currency.symbol} **withdraw <amount>**: Withdraw points from your bank.`,
+              `${currency.symbol} **give** [@user]: Send Volts to a user.\n` +
+              `${currency.symbol} **deposit <amount>**: Deposit Volts into your battery bank.\n` +
+              `${currency.symbol} **withdraw <amount>**: Withdraw Volts from your battery bank.`,
             inline: false,
           },
           {
@@ -56,7 +56,7 @@ module.exports = {
               `💻🔑 **giveaway-create <name> <duration> <time unit> <winners> <prize> <repeat #>**: Create a new giveaway.\n` +
               `💻🔑 **add-job <description>**: Add to the joblist.\n` +
               `💻🔑 **remove-job <JobID>**: Remove from the joblist.\n` +
-              `💻🔑 **complete-job @user <amount>**: Mark users job as complete and give points.\n` +
+              `💻🔑 **complete-job @user <amount>**: Mark users job as complete and gives Volts.\n` +
               `💻🔑 **remove-item <name>**: Remove shop item.\n` +
               `💻🔑 **add-item <price> <name> - <desc>**: Add a shop item.`,
             inline: false,

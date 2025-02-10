@@ -47,7 +47,7 @@ async function handleBalanceCommand(ctx, isSlash, targetUser = null) {
     const response =
       `**${user.username}'s Balance**\n` +
       `Wallet: ${formatCurrency(wallet)}\n` +
-      `Bank: ${formatCurrency(bank)}\n` +
+      `Battery bank: ${formatCurrency(bank)}\n` +
       `Total: ${formatCurrency(wallet + bank)}`;
 
     // Send the response

@@ -4,11 +4,11 @@ const { formatCurrency } = require('../../currency');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('rob') // Command name
-    .setDescription('Attempt to rob another user.') // Command description
+    .setName('drain') // Command name
+    .setDescription('Attempt to drain another Solarian.') // Command description
     .addUserOption(option =>
-      option.setName('user') // User to rob
-        .setDescription('The user to rob')
+      option.setName('user') // User to drain
+        .setDescription('The Solarian to drain')
         .setRequired(true)),
   
   async execute(interaction) {
@@ -17,7 +17,7 @@ module.exports = {
     // Prevent self-robbery
     if (targetUser.id === interaction.user.id) {
       return interaction.reply({ 
-        content: '🚫 You cannot rob yourself!', 
+        content: '🚫 You cannot drain yourself!', 
         ephemeral: true 
       });
     }
@@ -29,7 +29,7 @@ module.exports = {
       // Handle robbery outcomes
       if (!result.success) {
         return interaction.reply({ 
-          content: `🚫 Rob attempt failed: ${result.message}`, 
+          content: `🚫 Drain attempt failed: ${result.message}`, 
           ephemeral: true 
         });
       }
@@ -37,29 +37,29 @@ module.exports = {
       // Successful robbery
       if (result.outcome === 'success') {
         return interaction.reply(
-          `💰 You successfully robbed <@${targetUser.id}> and stole **${formatCurrency(result.amountStolen)}**!`
+          `⚡⚡⚡ You successfully drained <@${targetUser.id}> and drained **${formatCurrency(result.amountStolen)}**!`
         );
       }
 
       // Failed robbery with penalty
       if (result.outcome === 'fail') {
         return interaction.reply(
-          `👮 Your robbery failed! You were caught and paid **${formatCurrency(result.penalty)}** to <@${targetUser.id}>.`
+          `⚡⚡ZAPPEP⚡⚡ Your drain failed! You drained yourself and lost **${formatCurrency(result.penalty)}** to <@${targetUser.id}>.`
         );
       }
 
       // Handle unexpected outcomes
       return interaction.reply({ 
-        content: '🚫 An unexpected error occurred during the robbery.', 
+        content: '🚫 An unexpected error occurred during the drain.', 
         ephemeral: true 
       });
 
     } catch (err) {
-      console.error(`Error in /rob command:`, err);
+      console.error(`Error in /drain command:`, err);
 
       // Handle errors gracefully
       return interaction.reply({ 
-        content: `🚫 Rob failed due to an internal error: ${err.message || err}`, 
+        content: `🚫 Drain failed due to an internal error: ${err.message || err}`, 
         ephemeral: true 
       });
     }

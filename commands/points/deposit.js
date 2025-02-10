@@ -6,7 +6,7 @@ module.exports = {
   // Command definition
   data: new SlashCommandBuilder()
     .setName('deposit') // Command name
-    .setDescription('Deposit money from your wallet to your bank.') // Command description
+    .setDescription('Deposit money from your wallet to your battery bank.') // Command description
     .addIntegerOption(option =>
       option.setName('amount') // Option to specify the deposit amount
         .setDescription('The amount to deposit') // Option description
@@ -23,11 +23,11 @@ module.exports = {
     }
 
     try {
-      // Deposit the amount into the user's bank account in the database
+      // Deposit the amount into the user's battery bank account in the database
       await db.deposit(interaction.user.id, amount);
 
       // Respond with a success message
-      return interaction.reply(`✅ Deposited ${formatCurrency(amount)} into your bank.`);
+      return interaction.reply(`✅ Deposited ${formatCurrency(amount)} into your battery bank.`);
     } catch (err) {
       // Handle errors gracefully and log them
       console.error(`Error in deposit command for user ${interaction.user.id}:`, err);

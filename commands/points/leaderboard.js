@@ -6,7 +6,7 @@ const db = require('../../db');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('leaderboard')
-    .setDescription('View the top users by total balance (wallet + bank).'),
+    .setDescription('View the top users by total balance (wallet + battery bank).'),
 
   async execute(interaction) {
     try {
@@ -22,7 +22,7 @@ module.exports = {
         .map((user, index) => {
           const totalBalance = formatCurrency(user.totalBalance);
           const banked = user.bank; // Raw bank amount without formatting
-          return `**${index + 1}.** <@${user.userID}> - **${totalBalance}**  (${banked} banked)`;
+          return `**${index + 1}.** <@${user.userID}> - **${totalBalance}**  (${banked} battery bank)`;
         })
         .join('\n');
 

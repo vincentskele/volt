@@ -6,10 +6,10 @@ const PREFIX = process.env.PREFIX || '$';
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('give')
-    .setDescription('Transfer points to another user.')
+    .setDescription('Transfer Volts to another user.')
     .addUserOption(option =>
       option.setName('user')
-        .setDescription('The user to give points to')
+        .setDescription('The user to give Volts to')
         .setRequired(true))
     .addIntegerOption(option =>
       option.setName('amount')
@@ -55,7 +55,7 @@ module.exports = {
     }
 
     if (senderId === targetUser.id) {
-      const replyPayload = { content: '🚫 You cannot give points to yourself.', ephemeral: true };
+      const replyPayload = { content: '🚫 You cannot give Volts to yourself.', ephemeral: true };
       if (messageOrInteraction) {
         return messageOrInteraction.reply(replyPayload);
       } else {

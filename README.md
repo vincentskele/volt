@@ -1,13 +1,12 @@
 # Volt
 
-Volt is an open source Discord bot and Web Dashboard designed by RoboDAO for RoboDAO to provide a fun and interactive Discord point system paired with a basic UI.
+Volt is an open source Discord bot and Web Dashboard designed by RoboDAO for RoboDAO to provide a fun and interactive Discord Volt system paired with a basic UI.
 
 ## Features
-- **Points System**: Manage points with commands like deposit, withdraw, and transfer.
-- **Admin Tools**: Grant points or items, create or remove items, and manage users and jobs.
+- **Volt System**: Manage Volts with commands like deposit, withdraw, and give.
 - **Shop System**: Buy, sell, and redeem items.
-- **Jobs**: Assign jobs to users for rewards.
-- **Web UI**: Dynamic dashboard page.
+- **Jobs**: Assign jobs to Solarians for Volts.
+- **Web UI**: Dynamic dashboard page including leaderboard, adminlist, shop, job list, giveaway list, and daily task page. User instructions are also described in the dashboard.
 
 ## Prerequisites
 Ensure your environment meets the following requirements before setting up PizzaBot:
@@ -49,16 +48,16 @@ Follow these steps to set up PizzaBot on your server:
 
 ### Point system
 - **`balance`**: Check point balances.
-- **`deposit <amount>`**: Move points from wallet to bank.
-- **`withdraw <amount>`**: Move points from bank to wallet.
-- **`rob @user`**: Attempt to rob another user.
-- **`give @user <amount>`**: Transfer points to another user.
+- **`deposit <amount>`**: Move Volts from Solarian to their battery bank.
+- **`withdraw <amount>`**: Move Volts from battery bank to Solarian.
+- **`drain @username`**: Attempt to drain another Solarian's Volts.
+- **`give @username <amount>`**: Transfer Volts to another Solarian.
 - **`leaderboard`**: Shows top 10 total balances.
 
 ### Shop & Inventory
 - **`shop`**: View items available for sale.
 - **`buy <item>`**: Purchase an item.
-- **`inventory`**: Check your or another user’s inventory.
+- **`inventory`**: Check your or another Solarians's inventory.
 - **`remove-item <name>`**: Remove an item (Admin).
 
 ### Jobs and Giveaway
@@ -67,11 +66,11 @@ Follow these steps to set up PizzaBot on your server:
 - **`giveaway`**: View the list of giveaways and see which ones youre entered in.
 
 ### Admin Commands
-- **`give-item @user <item>`**: Send an item to another user.
+- **`give-item @Solarian <item>`**: Send an item to another Solarian.
 - **`redeem <item>`**: Redeem an item from your inventory.
 - **`add-job <desc>`**: Create a job.
 - **`add-item <price> <name> - <desc>`**: Add an item.
-- **`complete-job @user <jobID> <point amount>`**: Mark a job as complete.
+- **`complete-job @username <jobID> <point amount>`**: Mark a job as complete.
 
 ## License
 This project is open-source and available under the MIT License.
