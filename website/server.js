@@ -143,35 +143,27 @@ app.get('/api/shop', (req, res) => {
 
 /**
  * GET /api/jobs
- * Return a list of jobs with user mappings resolved.
+ * Return a list of jobs with user mappings resolved,
+ * including assignee links to their Discord profiles.
  */
 app.get('/api/jobs', async (req, res) => {
   try {
-    db.all(`SELECT jobID, description FROM joblist`, [], async (err, rows) => {
+    db.all(`
+      SELECT j.jobID, j.description, GROUP_CONCAT(ja.userID) as assignees
+      FROM joblist j
+      LEFT JOIN job_assignees ja ON j.jobID = ja.jobID
+      GROUP BY j.jobID
+    `, [], (err, rows) => {
       if (err) {
         console.error('Error fetching jobs:', err);
         return res.status(500).json({ error: 'Failed to fetch jobs.' });
       }
 
-      const jobs = await Promise.all(
-        rows.map(async (job) => {
-          // Find all user IDs in the job description
-          const userIdMatches = job.description.match(/<@(\d+)>/g) || [];
-          const userIds = [...new Set(userIdMatches.map((match) => match.slice(2, -1)))];
-
-          // Resolve user IDs to usernames
-          const userMappings = {};
-          for (const userId of userIds) {
-            const userTag = await resolveUsername(userId); // Assume resolveUsername is defined
-            userMappings[userId] = userTag || 'UnknownUser';
-          }
-
-          return {
-            ...job,
-            userMappings,
-          };
-        })
-      );
+      const jobs = rows.map((job) => ({
+        jobID: job.jobID,
+        description: job.description,
+        assignees: job.assignees ? job.assignees.split(',') : [],
+      }));
 
       res.json(jobs);
     });
@@ -180,6 +172,48 @@ app.get('/api/jobs', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+/**
+ * GET /api/resolveUser/:userId
+ * Resolve a user ID to a username.
+ */
+app.get('/api/resolveUser/:userId', async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const username = await resolveUsername(userId); // Your database or API logic here
+    res.json({ username });
+  } catch (error) {
+    console.error(`Error resolving user ID ${userId}:`, error);
+    res.json({ username: null });
+  }
+});
+
+/**
+ * GET /api/resolveChannel/:channelId
+ * Resolve a channel ID to a channel name.
+ */
+app.get('/api/resolveChannel/:channelId', async (req, res) => {
+  const { channelId } = req.params;
+  try {
+    const channelName = await resolveChannelName(channelId);
+    res.json({ channelName });
+  } catch (error) {
+    console.error(`Error resolving channel ID ${channelId}:`, error);
+    res.json({ channelName: `UnknownChannel (${channelId})` });
+  }
+});
+
+/**
+ * Example implementation of resolveChannelName.
+ * Replace with your actual logic to resolve channel names.
+ */
+async function resolveChannelName(channelId) {
+  const mockChannelMap = {
+    '1027625627983028265': 'robo-news',
+  };
+  return mockChannelMap[channelId] || `UnknownChannel (${channelId})`;
+}
+
 
 /**
  * GET /api/giveaways

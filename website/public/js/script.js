@@ -193,6 +193,32 @@ function showSection(sectionId) {
 const showJobListButton = document.getElementById('showJobListButton');
 const jobListContent = document.getElementById('jobListContent');
 
+// Function to resolve a user ID to a username
+async function resolveUsername(userId) {
+  try {
+    const res = await fetch(`/api/resolveUser/${userId}`);
+    if (!res.ok) throw new Error(`Failed to fetch username for ${userId}`);
+    const data = await res.json();
+    return data.username || `UnknownUser (${userId})`;
+  } catch (error) {
+    console.error('Error resolving username:', error);
+    return `UnknownUser (${userId})`;
+  }
+}
+
+// Function to resolve a channel ID to a channel name
+async function resolveChannelName(channelId) {
+  try {
+    const res = await fetch(`/api/resolveChannel/${channelId}`);
+    if (!res.ok) throw new Error(`Failed to fetch channel name for ${channelId}`);
+    const data = await res.json();
+    return data.channelName || `UnknownChannel (${channelId})`;
+  } catch (error) {
+    console.error('Error resolving channel name:', error);
+    return `UnknownChannel (${channelId})`;
+  }
+}
+
 async function fetchJobs() {
   try {
     jobListContent.innerHTML = '<p>Loading jobs...</p>'; // Show loading state
@@ -204,47 +230,67 @@ async function fetchJobs() {
       return;
     }
 
-    // Clear existing content
     jobListContent.innerHTML = '';
-
-    // Create the job list container
     const jobList = document.createElement('div');
     jobList.className = 'job-list';
 
     for (const job of jobs) {
       let description = job.description;
 
-      // Replace user IDs with names and links
-      if (job.userMappings) {
-        for (const userId in job.userMappings) {
-          const userName = job.userMappings[userId];
-          description = description.replace(
-            new RegExp(`<@${userId}>`, 'g'),
-            `<a href="https://discord.com/users/${userId}" target="_blank" class="link">@${userName}</a>`
-          );
-        }
+      // Resolve user mentions in the description (Discord format <@userID>)
+      const userIdMatches = description.match(/<@(\d+)>/g) || [];
+      const uniqueUserIds = [...new Set(userIdMatches.map(match => match.slice(2, -1)))];
+
+      const userMappings = {};
+      await Promise.all(uniqueUserIds.map(async (userId) => {
+        userMappings[userId] = await resolveUsername(userId);
+      }));
+
+      for (const userId in userMappings) {
+        description = description.replace(
+          new RegExp(`<@${userId}>`, 'g'),
+          `<a href="https://discord.com/users/${userId}" target="_blank" class="link">@${userMappings[userId]}</a>`
+        );
       }
 
-      // Replace channel IDs with links
-      description = description.replace(
-        /<#(\d+)>/g,
-        '<a href="https://discord.com/channels/$1" target="_blank" class="link">#$1</a>'
-      );
+      // Resolve channel IDs to names
+      const channelIdMatches = description.match(/<#(\d+)>/g) || [];
+      await Promise.all(channelIdMatches.map(async (match) => {
+        const channelId = match.slice(2, -1); // Extract the ID
+        const channelName = await resolveChannelName(channelId);
+        description = description.replace(
+          new RegExp(`<#${channelId}>`, 'g'),
+          `<a href="https://discord.com/channels/${channelId}" target="_blank" class="link">#${channelName}</a>`
+        );
+      }));
 
-      // Replace Markdown-style links with HTML
+      // Replace Markdown-style links with HTML.
       description = description.replace(
         /\[([^\]]+)\]\(([^)]+)\)/g,
         '<a href="$2" target="_blank" class="link">$1</a>'
       );
 
-      // Create job item and set the inner HTML
+      // Create job item element.
       const jobItem = document.createElement('div');
       jobItem.className = 'job-item';
       jobItem.innerHTML = `<p><strong>Job:</strong> ${description}</p>`;
+
+      // Resolve assignees and convert them into links.
+      if (job.assignees && Array.isArray(job.assignees) && job.assignees.length > 0) {
+        const assigneeLinks = await Promise.all(job.assignees.map(async (userId) => {
+          const username = await resolveUsername(userId);
+          return `<a href="https://discord.com/users/${userId}" target="_blank" class="link">@${username}</a>`;
+        }));
+
+        jobItem.innerHTML += `<p>Assigned to: ${assigneeLinks.join(', ')}</p>`;
+      } else {
+        jobItem.innerHTML += `<p>Not assigned</p>`;
+      }
+
       jobList.appendChild(jobItem);
     }
 
-    // Append the job list to the content container
+    // Append the job list to the content container.
     jobListContent.appendChild(jobList);
   } catch (error) {
     console.error('Error fetching jobs:', error.message, error.stack);
@@ -255,11 +301,11 @@ async function fetchJobs() {
 if (showJobListButton) {
   showJobListButton.addEventListener('click', () => {
     fetchJobs();
-    showSection('jobList'); // Ensure this displays the job list section
+    showSection('jobList'); // Ensure this displays the job list section.
   });
 }
 
-// Helper function to toggle sections
+// Helper function to toggle sections.
 function showSection(sectionId) {
   document.querySelectorAll('.content').forEach((section) => {
     section.style.display = 'none';
@@ -267,6 +313,7 @@ function showSection(sectionId) {
   const section = document.getElementById(sectionId);
   if (section) section.style.display = 'block';
 }
+
 
 
 
