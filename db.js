@@ -28,6 +28,7 @@ function initializeDatabase() {
       )
     `, (err) => {
       if (err) console.error('Error creating economy table:', err);
+      else console.log('Economy table is ready.');
     });
 
     // Items table
@@ -43,6 +44,7 @@ function initializeDatabase() {
       if (err) {
         console.error('Error creating items table:', err);
       } else {
+        console.log('Items table is ready.');
         // Migration: Check if the "quantity" column exists, add it if missing
         db.all("PRAGMA table_info(items)", (err, columns) => {
           if (err) {
@@ -76,6 +78,7 @@ function initializeDatabase() {
       )
     `, (err) => {
       if (err) console.error('Error creating inventory table:', err);
+      else console.log('Inventory table is ready.');
     });
 
     // Admins table
@@ -85,6 +88,7 @@ function initializeDatabase() {
       )
     `, (err) => {
       if (err) console.error('Error creating admins table:', err);
+      else console.log('Admins table is ready.');
     });
 
     // Blackjack games table
@@ -100,85 +104,22 @@ function initializeDatabase() {
       )
     `, (err) => {
       if (err) console.error('Error creating blackjack_games table:', err);
+      else console.log('Blackjack games table is ready.');
     });
 
     // Joblist table
     db.run(`
       CREATE TABLE IF NOT EXISTS joblist (
         jobID INTEGER PRIMARY KEY AUTOINCREMENT,
-        description TEXT
+        description TEXT NOT NULL
       )
     `, (err) => {
-      if (err) console.error('Error creating joblist table:', err);
+      if (err) {
+        console.error('Error creating joblist table:', err);
+      } else {
+        console.log('Joblist table is ready.');
+      }
     });
-
-    // Giveaways table
-// Ensure giveaways table exists with all required columns
-db.run(`
-  CREATE TABLE IF NOT EXISTS giveaways (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    message_id TEXT NOT NULL,
-    channel_id TEXT NOT NULL,
-    end_time INTEGER NOT NULL,
-    prize TEXT NOT NULL,
-    winners INTEGER NOT NULL,
-    giveaway_name TEXT NOT NULL DEFAULT 'Untitled Giveaway',
-    repeat INTEGER DEFAULT 0
-  )
-`, (err) => {
-  if (err) console.error('Error creating giveaways table:', err);
-
-  // Ensure the "giveaway_name" column exists
-  db.all("PRAGMA table_info(giveaways)", (err, columns) => {
-    if (err) {
-      console.error("Error retrieving giveaways table info:", err);
-    } else {
-      const hasGiveawayName = columns.some(column => column.name === "giveaway_name");
-      if (!hasGiveawayName) {
-        console.log("Adding missing 'giveaway_name' column...");
-        db.run("ALTER TABLE giveaways ADD COLUMN giveaway_name TEXT NOT NULL DEFAULT 'Untitled Giveaway'", (alterErr) => {
-          if (alterErr) {
-            console.error("Error adding giveaway_name column to giveaways table:", alterErr);
-          } else {
-            console.log("Successfully added 'giveaway_name' column to giveaways table.");
-          }
-        });
-      }
-    }
-  });
-
-  // Ensure the "repeat" column exists
-  db.all("PRAGMA table_info(giveaways)", (err, columns) => {
-    if (err) {
-      console.error("Error retrieving giveaways table info:", err);
-    } else {
-      const hasRepeat = columns.some(column => column.name === "repeat");
-      if (!hasRepeat) {
-        console.log("Adding missing 'repeat' column...");
-        db.run("ALTER TABLE giveaways ADD COLUMN repeat INTEGER DEFAULT 0", (alterErr) => {
-          if (alterErr) {
-            console.error("Error adding repeat column to giveaways table:", alterErr);
-          } else {
-            console.log("Successfully added 'repeat' column to giveaways table.");
-          }
-        });
-      }
-    }
-  });
-});
-
-// Ensure giveaway_entries table exists with foreign key constraint
-db.run(`
-  CREATE TABLE IF NOT EXISTS giveaway_entries (
-    giveaway_id INTEGER NOT NULL,
-    user_id TEXT NOT NULL,
-    PRIMARY KEY (giveaway_id, user_id),
-    FOREIGN KEY (giveaway_id) REFERENCES giveaways(id) ON DELETE CASCADE
-  )
-`, (err) => {
-  if (err) console.error('Error creating giveaway_entries table:', err);
-});
-
 
     // Job assignees table
     db.run(`
@@ -189,12 +130,109 @@ db.run(`
       )
     `, (err) => {
       if (err) console.error('Error creating job_assignees table:', err);
+      else console.log('Job assignees table is ready.');
+    });
+
+    // Job cycle table for round-robin (cycled) job assignments
+    db.run(`
+      CREATE TABLE IF NOT EXISTS job_cycle (
+        current_index INTEGER NOT NULL
+      )
+    `, (err) => {
+      if (err) {
+        console.error('Error creating job_cycle table:', err);
+      } else {
+        console.log('Job cycle table is ready.');
+        // Ensure the job_cycle table has an initial row with current_index = 0
+        db.get("SELECT current_index FROM job_cycle LIMIT 1", (err, row) => {
+          if (err) {
+            console.error("Error checking job_cycle table:", err);
+          } else if (!row) {
+            db.run("INSERT INTO job_cycle (current_index) VALUES (0)", (err) => {
+              if (err) {
+                console.error("Error inserting initial job_cycle value:", err);
+              } else {
+                console.log("Job cycle table initialized with current_index = 0.");
+              }
+            });
+          }
+        });
+      }
+    });
+
+    // Giveaways table
+    db.run(`
+      CREATE TABLE IF NOT EXISTS giveaways (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        end_time INTEGER NOT NULL,
+        prize TEXT NOT NULL,
+        winners INTEGER NOT NULL,
+        giveaway_name TEXT NOT NULL DEFAULT 'Untitled Giveaway',
+        repeat INTEGER DEFAULT 0
+      )
+    `, (err) => {
+      if (err) {
+        console.error('Error creating giveaways table:', err);
+      } else {
+        console.log('Giveaways table is ready.');
+        // Ensure the "giveaway_name" column exists
+        db.all("PRAGMA table_info(giveaways)", (err, columns) => {
+          if (err) {
+            console.error("Error retrieving giveaways table info:", err);
+          } else {
+            const hasGiveawayName = columns.some(column => column.name === "giveaway_name");
+            if (!hasGiveawayName) {
+              console.log("Adding missing 'giveaway_name' column...");
+              db.run("ALTER TABLE giveaways ADD COLUMN giveaway_name TEXT NOT NULL DEFAULT 'Untitled Giveaway'", (alterErr) => {
+                if (alterErr) {
+                  console.error("Error adding giveaway_name column to giveaways table:", alterErr);
+                } else {
+                  console.log("Successfully added 'giveaway_name' column to giveaways table.");
+                }
+              });
+            }
+          }
+        });
+
+        // Ensure the "repeat" column exists
+        db.all("PRAGMA table_info(giveaways)", (err, columns) => {
+          if (err) {
+            console.error("Error retrieving giveaways table info:", err);
+          } else {
+            const hasRepeat = columns.some(column => column.name === "repeat");
+            if (!hasRepeat) {
+              console.log("Adding missing 'repeat' column...");
+              db.run("ALTER TABLE giveaways ADD COLUMN repeat INTEGER DEFAULT 0", (alterErr) => {
+                if (alterErr) {
+                  console.error("Error adding repeat column to giveaways table:", alterErr);
+                } else {
+                  console.log("Successfully added 'repeat' column to giveaways table.");
+                }
+              });
+            }
+          }
+        });
+      }
+    });
+
+    // Giveaway entries table
+    db.run(`
+      CREATE TABLE IF NOT EXISTS giveaway_entries (
+        giveaway_id INTEGER NOT NULL,
+        user_id TEXT NOT NULL,
+        PRIMARY KEY (giveaway_id, user_id),
+        FOREIGN KEY (giveaway_id) REFERENCES giveaways(id) ON DELETE CASCADE
+      )
+    `, (err) => {
+      if (err) console.error('Error creating giveaway_entries table:', err);
+      else console.log('Giveaway entries table is ready.');
     });
 
     console.log('Database initialization complete.');
   });
 }
-
 // =========================================================================
 // Core Economy Functions
 // =========================================================================
@@ -422,9 +460,16 @@ async function robUser(robberId, targetId) {
 }
 
 // =========================================================================
-// Job System
+// Job System (Updated for Cycled Assignment)
 // =========================================================================
 
+// Note: This snippet assumes that `db` is loaded elsewhere (e.g., via require('../../db')).
+
+// --------------------- Original Functions ---------------------
+
+/**
+ * Retrieves the active job for a given user.
+ */
 function getActiveJob(userID) {
   return new Promise((resolve, reject) => {
     db.get(
@@ -444,6 +489,9 @@ function getActiveJob(userID) {
   });
 }
 
+/**
+ * Retrieves the description of the current job for a given user.
+ */
 function getUserJob(userID) {
   return new Promise((resolve, reject) => {
     db.get(
@@ -463,6 +511,9 @@ function getUserJob(userID) {
   });
 }
 
+/**
+ * Adds a new job to the job list and renumbers jobs.
+ */
 function addJob(description) {
   return new Promise((resolve, reject) => {
     if (!description || typeof description !== 'string') {
@@ -470,6 +521,7 @@ function addJob(description) {
     }
     db.run(`INSERT INTO joblist (description) VALUES (?)`, [description], function (err) {
       if (err) return reject('Failed to add job');
+      // Renumber job IDs after adding a new job.
       renumberJobs()
         .then(() =>
           resolve({
@@ -482,6 +534,9 @@ function addJob(description) {
   });
 }
 
+/**
+ * Retrieves the job list along with assigned users.
+ */
 function getJobList() {
   return new Promise((resolve, reject) => {
     db.all(
@@ -508,54 +563,9 @@ function getJobList() {
   });
 }
 
-function assignRandomJob(userID) {
-  return new Promise((resolve, reject) => {
-    if (!userID) return reject('Invalid user ID');
-    db.serialize(() => {
-      db.run('BEGIN TRANSACTION');
-      db.get(`SELECT COUNT(*) as count FROM job_assignees WHERE userID = ?`, [userID], (err) => {
-        if (err) {
-          db.run('ROLLBACK');
-          return reject('Failed to check existing assignments');
-        }
-        db.get(
-          `
-          SELECT j.jobID, j.description
-          FROM joblist j
-          WHERE j.jobID NOT IN (
-            SELECT jobID FROM job_assignees WHERE userID = ?
-          )
-          ORDER BY RANDOM() 
-          LIMIT 1
-          `,
-          [userID],
-          (err, job) => {
-            if (err) {
-              db.run('ROLLBACK');
-              return reject('Database error while finding job');
-            }
-            if (!job) {
-              db.run('ROLLBACK');
-              return reject('No available jobs found');
-            }
-            db.run(`INSERT INTO job_assignees (jobID, userID) VALUES (?, ?)`, [job.jobID, userID], (err2) => {
-              if (err2) {
-                db.run('ROLLBACK');
-                return reject('Failed to assign job');
-              }
-              db.run('COMMIT');
-              resolve({
-                jobID: job.jobID,
-                description: job.description,
-              });
-            });
-          }
-        );
-      });
-    });
-  });
-}
-
+/**
+ * Completes a job for a user and adds a reward to their wallet.
+ */
 function completeJob(userID, reward) {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
@@ -569,18 +579,21 @@ function completeJob(userID, reward) {
           if (!row) {
             return resolve({ success: false, message: 'No active job found.' });
           }
-
           const jobID = row.jobID;
           db.run(`DELETE FROM job_assignees WHERE userID = ?`, [userID], (err2) => {
             if (err2) {
               return reject('Failed to remove job assignment');
             }
-            db.run(`UPDATE economy SET wallet = wallet + ? WHERE userID = ?`, [reward, userID], (err3) => {
-              if (err3) {
-                return reject('Failed to add reward');
+            db.run(
+              `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
+              [reward, userID],
+              (err3) => {
+                if (err3) {
+                  return reject('Failed to add reward');
+                }
+                resolve({ success: true });
               }
-              resolve({ success: true });
-            });
+            );
           });
         }
       );
@@ -588,6 +601,9 @@ function completeJob(userID, reward) {
   });
 }
 
+/**
+ * Renumbers jobs in the job list.
+ */
 function renumberJobs() {
   return new Promise((resolve, reject) => {
     db.all(`SELECT jobID FROM joblist ORDER BY jobID`, [], (err, rows) => {
@@ -595,17 +611,144 @@ function renumberJobs() {
       const jobs = rows.map((row, index) => ({ oldID: row.jobID, newID: index + 1 }));
       db.serialize(() => {
         db.run('BEGIN TRANSACTION');
+        let errorOccurred = false;
         jobs.forEach(({ oldID, newID }) => {
-          db.run(`UPDATE joblist SET jobID = ? WHERE jobID = ?`, [newID, oldID], (err2) => {
-            if (err2) {
-              db.run('ROLLBACK');
-              return reject('Failed to renumber job IDs');
+          db.run(
+            `UPDATE joblist SET jobID = ? WHERE jobID = ?`,
+            [newID, oldID],
+            (err2) => {
+              if (err2) {
+                errorOccurred = true;
+                db.run('ROLLBACK');
+                return reject('Failed to renumber job IDs');
+              }
             }
-          });
+          );
         });
-        db.run('COMMIT', (err3) => {
-          if (err3) return reject('Failed to commit renumbering');
-          resolve();
+        if (!errorOccurred) {
+          db.run('COMMIT', (err3) => {
+            if (err3) return reject('Failed to commit renumbering');
+            resolve();
+          });
+        }
+      });
+    });
+  });
+}
+
+// --------------------- New Functions for Cycled Assignment ---------------------
+
+/**
+ * Retrieves the current job index from the job_cycle table.
+ * If the table is empty (or no row exists) it initializes it to 0.
+ */
+function getCurrentJobIndex() {
+  return new Promise((resolve, reject) => {
+    db.get(`SELECT current_index FROM job_cycle LIMIT 1`, [], (err, row) => {
+      if (err) {
+        return reject('Failed to retrieve current job index');
+      }
+      if (!row) {
+        // No row exists yet—initialize it with 0.
+        db.run(`INSERT INTO job_cycle (current_index) VALUES (0)`, [], function (err2) {
+          if (err2) return reject('Failed to initialize job cycle');
+          resolve(0);
+        });
+      } else {
+        resolve(row.current_index);
+      }
+    });
+  });
+}
+
+/**
+ * Updates the current job index in the job_cycle table.
+ */
+function setCurrentJobIndex(index) {
+  return new Promise((resolve, reject) => {
+    db.run(`UPDATE job_cycle SET current_index = ?`, [index], function (err) {
+      if (err) return reject('Failed to update current job index');
+      resolve();
+    });
+  });
+}
+
+/**
+ * Assigns a job to a user using round-robin (cycled) logic.
+ *
+ * The steps are:
+ * 1. Verify the user does not already have an active job.
+ * 2. Retrieve the full list of jobs in a consistent order (ordered by jobID).
+ * 3. Get the current index from the job_cycle table.
+ * 4. Choose the job at that index.
+ * 5. Increment the index (wrapping around to 0 if necessary) and update the table.
+ * 6. Insert the assignment into job_assignees.
+ */
+function assignCycledJob(userID) {
+  return new Promise((resolve, reject) => {
+    if (!userID) return reject('Invalid user ID');
+    db.serialize(() => {
+      // Begin transaction for consistency.
+      db.run('BEGIN TRANSACTION');
+      // Verify the user does not already have an active job.
+      db.get(`SELECT jobID FROM job_assignees WHERE userID = ?`, [userID], (err, row) => {
+        if (err) {
+          db.run('ROLLBACK');
+          return reject('Failed to check existing assignments');
+        }
+        if (row) {
+          db.run('ROLLBACK');
+          return reject('User already has an assigned job');
+        }
+        // Retrieve all jobs (ordered by jobID for a consistent cycle).
+        db.all(`SELECT jobID, description FROM joblist ORDER BY jobID ASC`, [], (err, jobs) => {
+          if (err) {
+            db.run('ROLLBACK');
+            return reject('Failed to retrieve job list');
+          }
+          if (!jobs || jobs.length === 0) {
+            db.run('ROLLBACK');
+            return reject('No jobs available');
+          }
+          // Get the current job index.
+          getCurrentJobIndex()
+            .then((currentIndex) => {
+              // Normalize index if out-of-bounds.
+              if (currentIndex < 0 || currentIndex >= jobs.length) {
+                currentIndex = 0;
+              }
+              const job = jobs[currentIndex];
+              // Compute the next index (wrap-around to 0 if needed).
+              const nextIndex = (currentIndex + 1) % jobs.length;
+              // Update the job_cycle pointer.
+              setCurrentJobIndex(nextIndex)
+                .then(() => {
+                  // Insert the assignment into job_assignees.
+                  db.run(
+                    `INSERT INTO job_assignees (jobID, userID) VALUES (?, ?)`,
+                    [job.jobID, userID],
+                    (err2) => {
+                      if (err2) {
+                        db.run('ROLLBACK');
+                        return reject('Failed to assign job');
+                      }
+                      db.run('COMMIT');
+                      resolve({
+                        jobID: job.jobID,
+                        description: job.description,
+                      });
+                    }
+                  );
+                })
+                .catch((err) => {
+                  db.run('ROLLBACK');
+                  reject(err);
+                });
+            })
+            .catch((err) => {
+              db.run('ROLLBACK');
+              reject(err);
+            });
         });
       });
     });
@@ -1098,13 +1241,15 @@ module.exports = {
   redeemItem,
 
   // Jobs
+  getActiveJob,
+  getUserJob,
   addJob,
   getJobList,
-  assignRandomJob,
   completeJob,
-  getAllJobs,
-  getUserJob,
-  getActiveJob,
+  renumberJobs,
+  getCurrentJobIndex,
+  setCurrentJobIndex,
+  assignCycledJob,
 
   // Giveaway
   initializeDatabase,
