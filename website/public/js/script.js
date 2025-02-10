@@ -319,63 +319,63 @@ function showSection(sectionId) {
 
 
 
-  // 5) Giveaways
-  const showGiveawayListButton = document.getElementById('showGiveawayListButton');
-  const giveawayItems = document.getElementById('giveawayItems');
+// 5) Giveaways
+const showGiveawayListButton = document.getElementById('showGiveawayListButton');
+const giveawayItems = document.getElementById('giveawayItems');
 
-  async function fetchGiveaways() {
-    try {
-      // Fetch active giveaways
-      const res = await fetch('/api/giveaways/active');
-      const giveaways = await res.json();
-  
-      if (!giveaways.length) {
-        giveawayItems.innerHTML = '<p>No active giveaways at the moment.</p>';
-      } else {
-        let html = `
-          <button id="refreshGiveaways" class="refresh-button">🔄 Refresh</button>
-        `;
-  
-        // Reverse the order to show the newest first
-        giveaways.reverse().forEach((g) => {
-          const endTime = new Date(parseInt(g.end_time)).toLocaleString();
-          const giveawayLink = `https://discord.com/channels/${SERVER_ID}/${g.channel_id}/${g.message_id}`;
-  
-          html += `
-          <div class="giveaway-item">
-            <p class="giveaway-name">${g.giveaway_name}</p>
-            <div class="giveaway-content">
-              <p>
-                <a href="${giveawayLink}" target="_blank">
-                  Click here and react to enter giveaway!
-                </a>
-              </p>
-              <p><strong>End Time:</strong> ${endTime}</p>
-              <p><strong>Prize:</strong> ${g.prize}</p>
-            </div>
+async function fetchGiveaways() {
+  try {
+    // Fetch active giveaways
+    const res = await fetch('/api/giveaways/active');
+    const giveaways = await res.json();
+
+    if (!giveaways.length) {
+      giveawayItems.innerHTML = '<p>No active giveaways at the moment.</p>';
+    } else {
+      let html = `
+        <button id="refreshGiveaways" class="refresh-button">🔄 Refresh</button>
+      `;
+
+      // Reverse the order to show the newest first
+      giveaways.reverse().forEach((g) => {
+        const endTime = new Date(parseInt(g.end_time)).toLocaleString();
+        const giveawayLink = `https://discord.com/channels/${SERVER_ID}/${g.channel_id}/${g.message_id}`;
+
+        html += `
+        <div class="giveaway-item">
+          <p class="giveaway-name">${g.giveaway_name}</p>
+          <div class="giveaway-content">
+            <p>
+              <a href="${giveawayLink}" target="_blank">
+                Click here and react to enter giveaway!
+              </a>
+            </p>
+            <p><strong>End Time:</strong> ${endTime}</p>
+            <p><strong>Prize:</strong> ${g.prize}</p>
+            <p><strong>Winners:</strong> ${g.winners}</p>
           </div>
-        `;
-        
-        });
-  
-        giveawayItems.innerHTML = html;
-  
-        // Attach event listener to the new Refresh button
-        document.getElementById('refreshGiveaways').addEventListener('click', fetchGiveaways);
-      }
-    } catch (error) {
-      console.error('Error fetching giveaways:', error);
-      giveawayItems.innerHTML = '<p>Error loading giveaways.</p>';
+        </div>
+      `;
+      });
+
+      giveawayItems.innerHTML = html;
+
+      // Attach event listener to the new Refresh button
+      document.getElementById('refreshGiveaways').addEventListener('click', fetchGiveaways);
     }
+  } catch (error) {
+    console.error('Error fetching giveaways:', error);
+    giveawayItems.innerHTML = '<p>Error loading giveaways.</p>';
   }
-  
-  if (showGiveawayListButton) {
-    showGiveawayListButton.addEventListener('click', () => {
-      fetchGiveaways();
-      showSection('giveawayList');
-    });
-  }
-  
+}
+
+if (showGiveawayListButton) {
+  showGiveawayListButton.addEventListener('click', () => {
+    fetchGiveaways();
+    showSection('giveawayList');
+  });
+}
+
 
 // Daily Tasks Section with Countdown Timer (resets at midnight EST)
 function getNextMidnightEST() {
