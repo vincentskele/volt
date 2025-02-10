@@ -209,7 +209,9 @@ app.get('/api/resolveChannel/:channelId', async (req, res) => {
  */
 async function resolveChannelName(channelId) {
   const mockChannelMap = {
-    '1027625627983028265': 'robo-news',
+    '1027625627983028265': 'robo-culture',
+    '1015078531526574141': 'robo-chat',
+    '1336779333641179146': 'playground',
   };
   return mockChannelMap[channelId] || `UnknownChannel (${channelId})`;
 }
