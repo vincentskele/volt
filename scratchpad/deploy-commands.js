@@ -33,7 +33,7 @@ function getAllCommandFiles(dirPath, commandFiles = []) {
 }
 
 // Collect all command files from the commands directory and subdirectories
-const commandsPath = path.join(__dirname, 'commands');
+const commandsPath = path.join(__dirname, '../commands');
 const commandFiles = getAllCommandFiles(commandsPath);
 
 const commands = [];

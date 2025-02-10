@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
-const { formatCurrency } = require('../../currency');
+const { formatCurrency } = require('../../points');
 const db = require('../../db');
 const PREFIX = process.env.PREFIX || '$';
 

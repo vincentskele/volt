@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require('@discordjs/builders'); // For creating slash commands
-const { formatCurrency } = require('../../currency'); // Custom currency formatting module
+const { formatCurrency } = require('../../points'); // Custom points formatting module
 const db = require('../../db'); // Database module
 
 module.exports = {

@@ -16,7 +16,7 @@ console.log('DEBUG: db object keys =>', Object.keys(db)); // Verify that addItem
 // 2) Other imports for the slash command
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { EmbedBuilder } = require('discord.js');
-const { currency, formatCurrency } = require('../../currency');
+const { points, formatCurrency } = require('../../points');
 
 // 3) Export the Slash Command
 module.exports = {

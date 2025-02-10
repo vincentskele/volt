@@ -21,7 +21,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Connect to SQLite database (adjust path as needed)
-const dbPath = path.join(__dirname, '..', 'economy.db');
+const dbPath = path.join(__dirname, '..', 'points.db');
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('Error connecting to SQLite DB:', err.message);

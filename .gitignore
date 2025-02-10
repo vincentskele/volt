@@ -30,5 +30,5 @@ userMessageCounts.json
 
 # Other files (if applicable)
 *.env.local
-economy.db
+points.db
 

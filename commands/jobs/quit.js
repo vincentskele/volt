@@ -1,6 +1,6 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const db = require('../../db');
-const { formatCurrency } = require('../../currency'); // Import currency module
+const { formatCurrency } = require('../../points'); // Import points module
 
 module.exports = {
   data: new SlashCommandBuilder()

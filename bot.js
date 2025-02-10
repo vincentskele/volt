@@ -219,11 +219,11 @@ async function concludeGiveaway(giveaway) {
       }
     }
 
-    // Check if the prize is numeric currency or a named shop item
+    // Check if the prize is numeric points or a named shop item
     const prizeCurrency = parseInt(giveaway.prize, 10);
     for (const winner of selectedWinners) {
       if (!isNaN(prizeCurrency)) {
-        // Award currency
+        // Award points
         await updateWallet(winner.id, prizeCurrency);
         console.log(`💰 Updated wallet for ${winner.id}: +${prizeCurrency}`);
       } else {
@@ -486,7 +486,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
   userMessageCounts.set(userId, userData);
   saveMessageCounts(); // Save progress
 
-  // Grant money (assuming updateWallet is your function for adding currency)
+  // Grant money (assuming updateWallet is your function for adding points)
   await updateWallet(userId, REACTION_REWARD_AMOUNT);
   console.log(`🌟 Given ${REACTION_REWARD_AMOUNT} to ${user.username} for reacting in the reward channel.`);
 });

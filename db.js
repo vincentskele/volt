@@ -3,7 +3,7 @@
 // Require & Connect to SQLite
 // =========================================================================
 const SQLite = require('sqlite3').verbose();
-const db = new SQLite.Database('./economy.db', (err) => {
+const db = new SQLite.Database('./points.db', (err) => {
   if (err) {
     console.error('Database connection error:', err);
   } else {

@@ -13,7 +13,7 @@ const POINTS_SYMBOL = process.env.POINTS_SYMBOL || '';
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('giveaway-create')
-    .setDescription('Create a giveaway for currency or shop items.')
+    .setDescription('Create a giveaway for points or shop items.')
     .addStringOption(option =>
       option.setName('name')
         .setDescription('Giveaway name (for identification)')
@@ -41,7 +41,7 @@ module.exports = {
     )
     .addStringOption(option =>
       option.setName('prize')
-        .setDescription('Prize: either a currency amount (number) or a shop item name (text)')
+        .setDescription('Prize: either a points amount (number) or a shop item name (text)')
         .setRequired(true)
     )
     .addIntegerOption(option =>
@@ -136,7 +136,7 @@ module.exports = {
 
               // Award prizes based on the prize type.
               if (!isNaN(prizeInput)) {
-                // Prize is a currency amount.
+                // Prize is a points amount.
                 const prizeAmount = parseInt(prizeInput, 10);
 
                 for (const winner of winnersList) {

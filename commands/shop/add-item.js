@@ -1,7 +1,7 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { EmbedBuilder, PermissionsBitField } = require('discord.js');
 const db = require('../../db');
-const { currency, formatCurrency } = require('../../currency');
+const { points, formatCurrency } = require('../../points');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -9,7 +9,7 @@ module.exports = {
     .setDescription('Add a new item to the shop. (Admin Only)')
     .addIntegerOption(option =>
       option.setName('price')
-        .setDescription(`The price of the item in ${currency.symbol}`)
+        .setDescription(`The price of the item in ${points.symbol}`)
         .setRequired(true))
     .addStringOption(option =>
       option.setName('name')

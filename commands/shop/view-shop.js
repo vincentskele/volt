@@ -1,7 +1,7 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { EmbedBuilder } = require('discord.js');
 const db = require('../../db');
-const { currency, formatCurrency } = require('../../currency');
+const { points, formatCurrency } = require('../../points');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -16,7 +16,7 @@ module.exports = {
       }
 
       const embed = new EmbedBuilder()
-        .setTitle(`🛍️ ${currency.name.charAt(0).toUpperCase() + currency.name.slice(1)} Shop`)
+        .setTitle(`🛍️ ${points.name.charAt(0).toUpperCase() + points.name.slice(1)} Shop`)
         .setColor(0xFFD700)
         .setTimestamp();
 
