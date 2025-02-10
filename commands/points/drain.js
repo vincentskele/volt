@@ -14,7 +14,7 @@ module.exports = {
   async execute(interaction) {
     const targetUser = interaction.options.getUser('user');
 
-    // Prevent self-robbery
+    // Prevent self-drain
     if (targetUser.id === interaction.user.id) {
       return interaction.reply({ 
         content: '🚫 You cannot drain yourself!', 
@@ -23,10 +23,10 @@ module.exports = {
     }
 
     try {
-      // Attempt the robbery
+      // Attempt the drain
       const result = await db.robUser(interaction.user.id, targetUser.id);
 
-      // Handle robbery outcomes
+      // Handle drain outcomes
       if (!result.success) {
         return interaction.reply({ 
           content: `🚫 Drain attempt failed: ${result.message}`, 
@@ -34,14 +34,14 @@ module.exports = {
         });
       }
 
-      // Successful robbery
+      // Successful drain
       if (result.outcome === 'success') {
         return interaction.reply(
           `⚡⚡⚡ You successfully drained <@${targetUser.id}> and drained **${formatCurrency(result.amountStolen)}**!`
         );
       }
 
-      // Failed robbery with penalty
+      // Failed drain with penalty
       if (result.outcome === 'fail') {
         return interaction.reply(
           `⚡⚡ZAPPEP⚡⚡ Your drain failed! You drained yourself and lost **${formatCurrency(result.penalty)}** to <@${targetUser.id}>.`
