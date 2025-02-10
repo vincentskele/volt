@@ -237,8 +237,8 @@ client.once('ready', async () => {
 
 // Handle prefix-based commands (e.g. "$balance")
 client.on('messageCreate', async (message) => {
-  // Ignore bots and anything not starting with prefix
-  if (message.author.bot || !message.content.startsWith(PREFIX)) return;
+  // Only ignore messages that don't start with the prefix
+  if (!message.content.startsWith(PREFIX)) return;
 
   const [command, ...args] = message.content.slice(PREFIX.length).trim().split(/\s+/);
   const commandName = command.toLowerCase();
@@ -413,7 +413,6 @@ client.on('messageReactionAdd', async (reaction, user) => {
   await updateWallet(userId, REACTION_REWARD_AMOUNT);
   console.log(`🌟 Given ${REACTION_REWARD_AMOUNT} to ${user.username} for reacting in the reward channel.`);
 });
-
 
 
 
