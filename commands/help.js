@@ -26,11 +26,11 @@ module.exports = {
           {
             name: '**Volt System**',
             value:
-              `${volt.symbol} **volts** [@user]: Check Solarians Volts.\n` +
-              `${volt.symbol} **leaderboard**: Shows top 10 most well charged Solarians.\n` +
-              `${volt.symbol} **give** [@user]: transfers Volts to a user.\n` +
-              `${volt.symbol} **deposit <amount>**: Trasnfer Volts into your battery bank.\n` +
-              `${volt.symbol} **withdraw <amount>**: Trasnfer Volts from your battery bank.`,
+              `⚡ **volts** [@user]: Check Solarians Volts.\n` +
+              `⚡ **leaderboard**: Shows top 10 most well charged Solarians.\n` +
+              `⚡ **give** [@user]: transfers Volts to a user.\n` +
+              `⚡ **deposit <amount>**: Trasnfer Volts into your battery bank.\n` +
+              `⚡ **withdraw <amount>**: Trasnfer Volts from your battery bank.`,
             inline: false,
           },
           {
