@@ -5,7 +5,7 @@ const { formatCurrency } = require('../../currency');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('drain') // Command name
-    .setDescription('Attempt to drain another Solarian.') // Command description
+    .setDescription("Attempt to drain another Solarian's Volts (Be careful you might get shocked!)") // Command description
     .addUserOption(option =>
       option.setName('user') // User to drain
         .setDescription('The Solarian to drain')
@@ -44,7 +44,7 @@ module.exports = {
       // Failed drain with penalty
       if (result.outcome === 'fail') {
         return interaction.reply(
-          `⚡⚡ZAPPEP⚡⚡ Your drain failed! You drained yourself and lost **${formatCurrency(result.penalty)}** to <@${targetUser.id}>.`
+          `⚡⚡ZAPPEP⚡⚡ You got shocked! You got drained yourself and lost **${formatCurrency(result.penalty)}** to <@${targetUser.id}>.`
         );
       }
 
