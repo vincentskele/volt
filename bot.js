@@ -308,7 +308,8 @@ const REACTION_REWARD_CHANNEL = process.env.REACTION_REWARD_CHANNEL || "";
 const MESSAGE_REWARD_AMOUNT = parseInt(process.env.MESSAGE_REWARD_AMOUNT, 10) || 10;
 const MESSAGE_REWARD_LIMIT = parseInt(process.env.MESSAGE_REWARD_LIMIT, 10) || 8;
 const REACTION_REWARD_AMOUNT = parseInt(process.env.REACTION_REWARD_AMOUNT, 10) || 20;
-
+const FIRST_MESSAGE_BONUS = parseInt(process.env.FIRST_MESSAGE_BONUS, 10) || 50;
+const FIRST_MESSAGE_BONUS_CHANNEL = process.env.FIRST_MESSAGE_BONUS_CHANNEL || ""; // Default: all channels
 // Function to save message counts to file
 function saveMessageCounts() {
   fs.writeFileSync(userMessageCountsPath, JSON.stringify([...userMessageCounts]), 'utf8');
@@ -342,31 +343,51 @@ function scheduleMidnightReset() {
 scheduleMidnightReset();
 
 // ==========================
-// 📩 MESSAGE-BASED REWARDS
+// 📩 MESSAGE-BASED REWARDS + FIRST MESSAGE BONUS
 // ==========================
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
-
-  // Check if message is in an allowed channel
-  if (!allowedChannels.includes(message.channel.id)) return;
 
   const userId = message.author.id;
   const today = new Date().toISOString().split('T')[0];
 
   // Get or initialize user message data
   if (!userMessageCounts.has(userId)) {
-    userMessageCounts.set(userId, { date: today, count: 0, reacted: false });
+    userMessageCounts.set(userId, { date: today, count: 0, reacted: false, firstMessage: false });
   }
 
   const userData = userMessageCounts.get(userId);
 
-  // Reward if user hasn't reached limit
-  if (userData.count < MESSAGE_REWARD_LIMIT) {
+  // Reset data if it's a new day
+  if (userData.date !== today) {
+    userData.date = today;
+    userData.count = 0;
+    userData.reacted = false;
+    userData.firstMessage = false; // Reset first message bonus eligibility
+  }
+
+  // Check if the message is in the allowed first message bonus channel (or all channels if blank)
+  const isBonusChannel = !FIRST_MESSAGE_BONUS_CHANNEL || message.channel.id === FIRST_MESSAGE_BONUS_CHANNEL;
+
+  // 🎁 First Message Bonus - Award if it's the user's first message of the day
+  if (!userData.firstMessage && isBonusChannel) {
+    userData.firstMessage = true;
+    userMessageCounts.set(userId, userData);
+    saveMessageCounts(); // Save progress
+
+    await updateWallet(userId, FIRST_MESSAGE_BONUS);
+    console.log(`🎁 First message bonus! Given ${FIRST_MESSAGE_BONUS} to ${message.author.username}`);
+
+    /* Optional: Notify the user
+    message.reply(`🎉 You've received your first message bonus of the day! (+${FIRST_MESSAGE_BONUS})`);*/
+  }
+
+  // 💬 Regular message-based rewards (only in allowed channels)
+  if (allowedChannels.includes(message.channel.id) && userData.count < MESSAGE_REWARD_LIMIT) {
     userData.count += 1;
     userMessageCounts.set(userId, userData);
     saveMessageCounts(); // Save progress
 
-    // Grant money (assuming updateWallet is your function for adding currency)
     await updateWallet(userId, MESSAGE_REWARD_AMOUNT);
     console.log(`💰 Given ${MESSAGE_REWARD_AMOUNT} to ${message.author.username} for message #${userData.count} today`);
   }
