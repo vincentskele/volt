@@ -5,7 +5,7 @@ const db = require('../../db');
 module.exports = {
   // Slash command registration
   data: new SlashCommandBuilder()
-    .setName('Volts')
+    .setName('volts')
     .setDescription('Check your Volts or another Solarian\'s Volts.')
     .addUserOption(option =>
       option.setName('Solarian')
