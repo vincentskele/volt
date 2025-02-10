@@ -32,7 +32,45 @@ const PREFIX = process.env.PREFIX || '$';
 client.commands = new Collection();
 const commandModules = {};
 
-// Dynamically load commands from the "commands" folder (and subfolders).
+// ==========================
+// 🚦 ALLOWED ROLES FILTER
+// ==========================
+// The ALLOWED_ROLES env variable should be a comma-separated list of role IDs.
+// If left blank, no filtering is applied.
+const ALLOWED_ROLES = process.env.ALLOWED_ROLES
+  ? process.env.ALLOWED_ROLES.split(',').map(role => role.trim())
+  : [];
+
+if (ALLOWED_ROLES.length > 0) {
+  console.log(`🚦 Bot is filtering by allowed roles: ${ALLOWED_ROLES.join(', ')}`);
+} else {
+  console.log(`🚦 Bot is not filtering by roles.`);
+}
+
+/**
+ * Checks if the user (from a guild) has at least one of the allowed roles.
+ * If no allowed roles are defined, returns true.
+ * @param {User} user - The Discord user.
+ * @param {Guild} guild - The guild in which to check the user's roles.
+ * @returns {Promise<boolean>}
+ */
+async function userHasAllowedRole(user, guild) {
+  if (ALLOWED_ROLES.length === 0) return true; // No filter applied.
+  let member = guild.members.cache.get(user.id);
+  if (!member) {
+    try {
+      member = await guild.members.fetch(user.id);
+    } catch (err) {
+      console.error(`Error fetching member ${user.id} in guild ${guild.id}:`, err);
+      return false;
+    }
+  }
+  return member.roles.cache.some(role => ALLOWED_ROLES.includes(role.id));
+}
+
+// ==========================
+// COMMANDS LOADING
+// ==========================
 const commandsPath = path.join(__dirname, 'commands');
 function loadCommands(dir) {
   console.log(`Scanning directory: ${dir}`);
@@ -102,6 +140,8 @@ async function syncGiveawayEntries(giveaway) {
  */
 client.on('messageReactionAdd', async (reaction, user) => {
   if (user.bot || reaction.emoji.name !== '🎉') return;
+  // Allowed roles filter check
+  if (reaction.message.guild && !(await userHasAllowedRole(user, reaction.message.guild))) return;
   try {
     if (reaction.partial) await reaction.fetch();
     const giveaway = await getGiveawayByMessageId(reaction.message.id);
@@ -118,6 +158,8 @@ client.on('messageReactionAdd', async (reaction, user) => {
  */
 client.on('messageReactionRemove', async (reaction, user) => {
   if (user.bot || reaction.emoji.name !== '🎉') return;
+  // Allowed roles filter check
+  if (reaction.message.guild && !(await userHasAllowedRole(user, reaction.message.guild))) return;
   try {
     if (reaction.partial) await reaction.fetch();
     const giveaway = await getGiveawayByMessageId(reaction.message.id);
@@ -235,10 +277,15 @@ client.once('ready', async () => {
   }
 });
 
-// Handle prefix-based commands (e.g. "$balance")
+// ==========================
+// HANDLE PREFIX-BASED COMMANDS
+// ==========================
 client.on('messageCreate', async (message) => {
-  // Only ignore messages that don't start with the prefix
+  // Only process messages that start with the prefix.
   if (!message.content.startsWith(PREFIX)) return;
+  if (!message.guild) return; // Only process guild messages.
+  // Allowed roles filter check:
+  if (!(await userHasAllowedRole(message.author, message.guild))) return;
 
   const [command, ...args] = message.content.slice(PREFIX.length).trim().split(/\s+/);
   const commandName = command.toLowerCase();
@@ -256,9 +303,14 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// Handle slash commands ("/balance", etc.)
+// ==========================
+// HANDLE SLASH COMMANDS
+// ==========================
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isCommand()) return;
+  if (interaction.guild && !(await userHasAllowedRole(interaction.user, interaction.guild))) {
+    return interaction.reply({ content: '🚫 You do not have permission to use this command.', ephemeral: true });
+  }
 
   const command = client.commands.get(interaction.commandName);
   if (!command) {
@@ -282,9 +334,8 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // ==========================
-// 🎁 DAILY REWARDS SYSTEM 🎁
+// 🎁 DAILY REWARDS SYSTEM SETUP
 // ==========================
-
 const userMessageCountsPath = path.join(__dirname, 'userMessageCounts.json');
 
 // Load previous message counts from file
@@ -310,6 +361,7 @@ const MESSAGE_REWARD_LIMIT = parseInt(process.env.MESSAGE_REWARD_LIMIT, 10) || 8
 const REACTION_REWARD_AMOUNT = parseInt(process.env.REACTION_REWARD_AMOUNT, 10) || 20;
 const FIRST_MESSAGE_BONUS = parseInt(process.env.FIRST_MESSAGE_BONUS, 10) || 50;
 const FIRST_MESSAGE_BONUS_CHANNEL = process.env.FIRST_MESSAGE_BONUS_CHANNEL || ""; // Default: all channels
+
 // Function to save message counts to file
 function saveMessageCounts() {
   fs.writeFileSync(userMessageCountsPath, JSON.stringify([...userMessageCounts]), 'utf8');
@@ -347,6 +399,9 @@ scheduleMidnightReset();
 // ==========================
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
+  if (!message.guild) return;
+  // Allowed roles filter check:
+  if (!(await userHasAllowedRole(message.author, message.guild))) return;
 
   const userId = message.author.id;
   const today = new Date().toISOString().split('T')[0];
@@ -397,7 +452,8 @@ client.on('messageCreate', async (message) => {
 // ⭐ REACTION-BASED REWARDS (Once Per 24 Hours Once Per Message)
 // ==========================
 client.on('messageReactionAdd', async (reaction, user) => {
-  if (user.bot) return; // Ignore bot reactions
+  if (user.bot) return;
+  if (reaction.message.guild && !(await userHasAllowedRole(user, reaction.message.guild))) return;
 
   // Ensure reaction happened in the defined reward channel
   if (reaction.message.channel.id !== REACTION_REWARD_CHANNEL) return;
@@ -435,10 +491,9 @@ client.on('messageReactionAdd', async (reaction, user) => {
   console.log(`🌟 Given ${REACTION_REWARD_AMOUNT} to ${user.username} for reacting in the reward channel.`);
 });
 
-
-
-
-// Export the client so server.js can do `client.users.fetch(...)`
+// ==========================
+// EXPORT THE CLIENT
+// ==========================
 module.exports = { client };
 
 // Finally, log in the bot with your token from .env
