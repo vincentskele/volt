@@ -1,13 +1,12 @@
 # Volt
 
-Volt is an open source Discord bot and Web Dashboard designed by RoboDAO for RoboDAO to provide a fun and interactive Discord token system paired with a basic UI. Users can earn, spend, and manage virtual points while enjoying features like jobs and games.
+Volt is an open source Discord bot and Web Dashboard designed by RoboDAO for RoboDAO to provide a fun and interactive Discord point system paired with a basic UI.
 
 ## Features
 - **Points System**: Manage points with commands like deposit, withdraw, and transfer.
 - **Admin Tools**: Grant points or items, create or remove items, and manage users and jobs.
 - **Shop System**: Buy, sell, and redeem items.
 - **Jobs**: Assign jobs to users for rewards.
-- **Games**: Play blackjack.
 - **Web UI**: Dynamic dashboard page.
 
 ## Prerequisites
@@ -66,12 +65,6 @@ Follow these steps to set up PizzaBot on your server:
 - **`joblist`**: View all jobs.
 - **`work`**: Assign yourself a random job.
 - **`giveaway`**: View the list of giveaways and see which ones youre entered in.
-
-
-### Games
-- **`blackjack <bet>`**: Start a blackjack game.
-- **`hit`**: Draw another card in blackjack.
-- **`stand`**: Stay with your current hand.
 
 ### Admin Commands
 - **`give-item @user <item>`**: Send an item to another user.

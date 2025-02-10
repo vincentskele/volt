@@ -51,14 +51,6 @@ module.exports = {
             inline: false,
           },
           {
-            name: '**Games**',
-            value:
-              `🎲 **blackjack <bet>**: Start a blackjack game.\n` +
-              `🎲 **hit**: Draw another card in blackjack.\n` +
-              `🎲 **stand**: Keep your current hand in blackjack.`,
-            inline: false,
-          },
-          {
             name: '**Admin Commands**',
             value:
               `💻🔑 **giveaway-create <name> <duration> <time unit> <winners> <prize> <repeat #>**: Create a new giveaway.\n` +
