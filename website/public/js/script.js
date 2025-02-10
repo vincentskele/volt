@@ -79,7 +79,7 @@ if (showLeaderboardButton) {
           // Create details span
           const total = entry.wallet + entry.bank;
           const details = document.createElement('span');
-          details.innerHTML = `Wallet: ${entry.wallet} | Battery Bank: ${entry.bank} | Total: ${total || 0}`;
+          details.innerHTML = `Solarian: ${entry.wallet} | Battery Bank: ${entry.bank} | Total: ${total || 0}`;
           details.className = 'details'; // Add class for styling if needed
 
           // Append link and details to the item

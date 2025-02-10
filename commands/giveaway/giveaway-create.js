@@ -7,8 +7,8 @@ const {
 } = require('../../db'); // Ensure the path to your db methods is correct
 require('dotenv').config();
 
-const CURRENCY_NAME = process.env.CURRENCY_NAME || 'Coins';
-const CURRENCY_SYMBOL = process.env.CURRENCY_SYMBOL || '';
+const POINTS_NAME = process.env.POINTS_NAME || 'Coins';
+const POINTS_SYMBOL = process.env.POINTS_SYMBOL || '';
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -141,10 +141,10 @@ module.exports = {
 
                 for (const winner of winnersList) {
                   await interaction.channel.send(
-                    `Congrats <@${winner.id}>! You won **${giveawayName}** and have been given (**${prizeAmount}${CURRENCY_SYMBOL}**).`
+                    `Congrats <@${winner.id}>! You won **${giveawayName}** and have been given (**${prizeAmount}${POINTS_SYMBOL}**).`
                   );
                   await updateWallet(winner.id, prizeAmount);
-                  console.log(`[SUCCESS] ${winner.username} (${winner.id}) received ${prizeAmount}${CURRENCY_SYMBOL} ${CURRENCY_NAME}`);
+                  console.log(`[SUCCESS] ${winner.username} (${winner.id}) received ${prizeAmount}${POINTS_SYMBOL} ${POINTS_NAME}`);
                 }
               } else {
                 // Prize is assumed to be a shop item.
