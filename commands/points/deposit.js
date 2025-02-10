@@ -6,7 +6,7 @@ module.exports = {
   // Command definition
   data: new SlashCommandBuilder()
     .setName('deposit') // Command name
-    .setDescription('Deposit money from your wallet to your battery bank.') // Command description
+    .setDescription('Deposit Volts from your wallet to your battery bank.') // Command description
     .addIntegerOption(option =>
       option.setName('amount') // Option to specify the deposit amount
         .setDescription('The amount to deposit') // Option description

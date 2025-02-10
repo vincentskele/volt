@@ -5,11 +5,11 @@ const db = require('../../db');
 module.exports = {
   // Slash command registration
   data: new SlashCommandBuilder()
-    .setName('balance')
-    .setDescription('Check your balance or another user\'s balance.')
+    .setName('Volts')
+    .setDescription('Check your Volts or another Solarian\'s Volts.')
     .addUserOption(option =>
-      option.setName('user')
-        .setDescription('The user to check the balance of')
+      option.setName('Solarian')
+        .setDescription('The @user to check the Volts of')
         .setRequired(false)),
 
   // Slash command execution
@@ -31,7 +31,7 @@ async function handleBalanceCommand(ctx, isSlash, targetUser = null) {
 
     // Resolve the user based on the command type
     if (isSlash) {
-      user = ctx.options?.getUser('user') || ctx.user; // Slash command: options user or interaction user
+      user = ctx.options?.getUser('Solarian') || ctx.user; // Slash command: options user or interaction user
     } else {
       user = targetUser; // Prefix command: resolved user from mentions or author
     }
@@ -57,9 +57,9 @@ async function handleBalanceCommand(ctx, isSlash, targetUser = null) {
       await ctx.channel.send(response);
     }
   } catch (error) {
-    console.error('Error in balance command:', error);
+    console.error('Error in volts command:', error);
 
-    const errorMsg = '🚫 Failed to retrieve balance.';
+    const errorMsg = '🚫 Failed to retrieve Volts.';
     if (isSlash) {
       if (ctx.replied || ctx.deferred) {
         await ctx.followUp({ content: errorMsg, ephemeral: true });

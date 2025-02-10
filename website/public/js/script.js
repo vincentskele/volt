@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Format data depending on the endpoint type
   function getFormatter(type) {
     const formatters = {
-      leaderboard: (item) => `User: ${item.userTag} | Wallet: ${item.wallet} | Bank: ${item.bank} | Total: ${item.totalBalance}`,
+      leaderboard: (item) => `User: ${item.userTag} | Wallet: ${item.wallet} | Battery Bank: ${item.bank} | Total: ${item.totalBalance}`,
       admins: (item) => `Admin: ${item.userTag}`,
       shop: (item) => `[${item.id}] ${item.name} - ${item.price} | Qty: ${item.quantity ?? 'N/A'} | Desc: ${item.description ?? ''}`,
       jobs: (job) => `[${job.jobID}] ${job.description}`,
@@ -79,7 +79,7 @@ if (showLeaderboardButton) {
           // Create details span
           const total = entry.wallet + entry.bank;
           const details = document.createElement('span');
-          details.innerHTML = `Wallet: ${entry.wallet} | Bank: ${entry.bank} | Total: ${total || 0}`;
+          details.innerHTML = `Wallet: ${entry.wallet} | Battery Bank: ${entry.bank} | Total: ${total || 0}`;
           details.className = 'details'; // Add class for styling if needed
 
           // Append link and details to the item

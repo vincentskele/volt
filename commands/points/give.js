@@ -9,11 +9,11 @@ module.exports = {
     .setDescription('Transfer Volts to another user.')
     .addUserOption(option =>
       option.setName('user')
-        .setDescription('The user to give Volts to')
+        .setDescription('The user to transfer Volts to')
         .setRequired(true))
     .addIntegerOption(option =>
       option.setName('amount')
-        .setDescription('The amount to give')
+        .setDescription('The amount to transfer')
         .setRequired(true)),
 
   async execute(context, messageOrInteraction, args) {

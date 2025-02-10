@@ -5,23 +5,23 @@ const db = require('../../db');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('withdraw')
-    .setDescription('Withdraw money from your bank to your wallet.')
+    .setDescription('Charge your Solarian with Volts from your battery bank.')
     .addIntegerOption(option =>
       option.setName('amount')
-        .setDescription('The amount to withdraw')
+        .setDescription('The amount to transfer')
         .setRequired(true)),
   
   async execute(interaction) {
     const amount = interaction.options.getInteger('amount');
     if (amount <= 0) {
-      return interaction.reply({ content: 'Please specify a positive amount to withdraw.', ephemeral: true });
+      return interaction.reply({ content: 'Please specify a positive amount to transfer.', ephemeral: true });
     }
 
     try {
       await db.withdraw(interaction.user.id, amount);
-      return interaction.reply(`✅ Withdrew ${formatCurrency(amount)} to your wallet.`);
+      return interaction.reply(`✅ Charged their Solarian with ${formatCurrency(amount)} from their battery bank.`);
     } catch (err) {
-      return interaction.reply({ content: `🚫 Withdraw failed: ${err}`, ephemeral: true });
+      return interaction.reply({ content: `🚫 Transfer failed: ${err}`, ephemeral: true });
     }
   }
 };

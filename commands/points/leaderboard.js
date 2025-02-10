@@ -6,7 +6,7 @@ const db = require('../../db');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('leaderboard')
-    .setDescription('View the top users by total balance (wallet + battery bank).'),
+    .setDescription('View the top users by total Volts (wallet + battery bank).'),
 
   async execute(interaction) {
     try {
