@@ -17,44 +17,69 @@ module.exports = {
         .setRequired(true)),
 
   async execute(context, messageOrInteraction, args) {
+    // We'll distinguish between prefix and slash commands by checking if the second argument is provided.
     let targetUser, amount, senderId;
 
-    if (context === 'prefix') {
-      // Prefix-based command handling
-      if (args.length < 2) {
-        return messageOrInteraction.reply(`🚫 Usage: \`${PREFIX}give @user amount\``);
-      }
-      
-      targetUser = messageOrInteraction.mentions.users.first();
-      amount = parseInt(args[1], 10);
-      senderId = messageOrInteraction.author.id;
-      
-      if (!targetUser || isNaN(amount)) {
-        return messageOrInteraction.reply(`🚫 Invalid syntax. Usage: \`${PREFIX}give @user amount\``);
-      }
-    } else {
+    // If messageOrInteraction is undefined, we assume it's a slash command
+    if (typeof messageOrInteraction === 'undefined') {
       // Slash command handling
-      targetUser = messageOrInteraction.options.getUser('user');
-      amount = messageOrInteraction.options.getInteger('amount');
-      senderId = messageOrInteraction.user.id;
+      const interaction = context; // In this case, 'context' is actually the interaction.
+      targetUser = interaction.options.getUser('user');
+      amount = interaction.options.getInteger('amount');
+      senderId = interaction.user.id;
+    } else {
+      // Prefix-based command handling
+      const message = messageOrInteraction;
+      // Expecting the syntax: $give @user amount
+      if (args.length < 2) {
+        return message.reply(`🚫 Usage: \`${PREFIX}give @user amount\``);
+      }
+
+      targetUser = message.mentions.users.first();
+      amount = parseInt(args[1], 10);
+      senderId = message.author.id;
+
+      if (!targetUser || isNaN(amount)) {
+        return message.reply(`🚫 Invalid syntax. Usage: \`${PREFIX}give @user amount\``);
+      }
     }
 
+    // Validate amount and prevent self-transfers
     if (amount <= 0) {
-      return messageOrInteraction.reply({ content: '🚫 Please specify a positive amount to give.', ephemeral: true });
+      const replyPayload = { content: '🚫 Please specify a positive amount to give.', ephemeral: true };
+      if (messageOrInteraction) {
+        return messageOrInteraction.reply(replyPayload);
+      } else {
+        return context.reply(replyPayload);
+      }
     }
 
     if (senderId === targetUser.id) {
-      return messageOrInteraction.reply({ content: '🚫 You cannot give points to yourself.', ephemeral: true });
+      const replyPayload = { content: '🚫 You cannot give points to yourself.', ephemeral: true };
+      if (messageOrInteraction) {
+        return messageOrInteraction.reply(replyPayload);
+      } else {
+        return context.reply(replyPayload);
+      }
     }
 
     try {
       // Transfer money using the database method
       await db.transferFromWallet(senderId, targetUser.id, amount);
-
-      return messageOrInteraction.reply(`✅ You gave ${formatCurrency(amount)} to <@${targetUser.id}>!`);
+      const successMessage = `✅ You gave ${formatCurrency(amount)} to <@${targetUser.id}>!`;
+      if (messageOrInteraction) {
+        return messageOrInteraction.reply(successMessage);
+      } else {
+        return context.reply(successMessage);
+      }
     } catch (err) {
       console.error(`Error transferring money from ${senderId} to ${targetUser.id}:`, err);
-      return messageOrInteraction.reply({ content: `🚫 Transfer failed: ${err.message}`, ephemeral: true });
+      const errorPayload = { content: `🚫 Transfer failed: ${err.message}`, ephemeral: true };
+      if (messageOrInteraction) {
+        return messageOrInteraction.reply(errorPayload);
+      } else {
+        return context.reply(errorPayload);
+      }
     }
   }
 };
