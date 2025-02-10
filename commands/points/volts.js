@@ -8,7 +8,7 @@ module.exports = {
     .setName('volts')
     .setDescription('Check your Volts or another Solarian\'s Volts.')
     .addUserOption(option =>
-      option.setName('Solarian')
+      option.setName('solarian')
         .setDescription('The @user to check the Volts of')
         .setRequired(false)),
 
@@ -31,13 +31,13 @@ async function handleBalanceCommand(ctx, isSlash, targetUser = null) {
 
     // Resolve the user based on the command type
     if (isSlash) {
-      user = ctx.options?.getUser('Solarian') || ctx.user; // Slash command: options user or interaction user
+      user = ctx.options?.getUser('solarian') || ctx.user; // Slash command: options user or interaction user
     } else {
       user = targetUser; // Prefix command: resolved user from mentions or author
     }
 
     if (!user) {
-      throw new Error('Unable to determine user.');
+      throw new Error('Unable to determine Solarian.');
     }
 
     // Fetch balances from the database
