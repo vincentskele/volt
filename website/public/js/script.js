@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
       admins: (item) => `Admin: ${item.userTag}`,
       shop: (item) =>
         `[${item.id}] ${item.name} - ${item.price} | Qty: ${item.quantity ?? 'N/A'} | Desc: ${item.description ?? ''}`,
-      tasks: (task) => `[${task.taskID}] ${task.description}`,
+      jobs: (job) => `[${job.jobID}] ${job.description}`,
       giveaways: (item) =>
         `Giveaway #${item.id} — Prize: "${item.prize}" — Ends: ${item.end_time ? new Date(item.end_time).toLocaleString() : 'N/A'}`,
     };
@@ -162,10 +162,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ------------------------------
-  // tasks Section
+  // Jobs Section
   // ------------------------------
-  const showtaskListButton = document.getElementById('showtaskListButton');
-  const taskListContent = document.getElementById('taskListContent');
+  const showJobListButton = document.getElementById('showJobListButton');
+  const jobListContent = document.getElementById('jobListContent');
 
   async function resolveUsername(userId) {
     try {
@@ -191,20 +191,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  async function fetchtasks() {
+  async function fetchJobs() {
     try {
-      taskListContent.innerHTML = '<p>Loading tasks...</p>';
-      const res = await fetch('/api/tasks');
-      const tasks = await res.json();
-      if (!tasks.length) {
-        taskListContent.innerHTML = '<p class="no-tasks-message">No tasks available at the moment. Please check back later.</p>';
+      jobListContent.innerHTML = '<p>Loading jobs...</p>';
+      const res = await fetch('/api/jobs');
+      const jobs = await res.json();
+      if (!jobs.length) {
+        jobListContent.innerHTML = '<p class="no-jobs-message">No jobs available at the moment. Please check back later.</p>';
         return;
       }
-      taskListContent.innerHTML = '';
-      const taskList = document.createElement('div');
-      taskList.className = 'task-list';
-      for (const task of tasks) {
-        let description = task.description;
+      jobListContent.innerHTML = '';
+      const jobList = document.createElement('div');
+      jobList.className = 'job-list';
+      for (const job of jobs) {
+        let description = job.description;
         const userIdMatches = description.match(/<@(\d+)>/g) || [];
         const uniqueUserIds = [...new Set(userIdMatches.map(match => match.slice(2, -1)))];
         const userMappings = {};
@@ -230,31 +230,31 @@ document.addEventListener('DOMContentLoaded', () => {
           /\[([^\]]+)\]\(([^)]+)\)/g,
           '<a href="$2" target="_blank" class="link">$1</a>'
         );
-        const taskItem = document.createElement('div');
-        taskItem.className = 'task-item';
-        taskItem.innerHTML = `<p><strong>task:</strong> ${description}</p>`;
-        if (task.assignees && Array.isArray(task.assignees) && task.assignees.length > 0) {
-          const assigneeLinks = await Promise.all(task.assignees.map(async (userId) => {
+        const jobItem = document.createElement('div');
+        jobItem.className = 'job-item';
+        jobItem.innerHTML = `<p><strong>Job:</strong> ${description}</p>`;
+        if (job.assignees && Array.isArray(job.assignees) && job.assignees.length > 0) {
+          const assigneeLinks = await Promise.all(job.assignees.map(async (userId) => {
             const username = await resolveUsername(userId);
             return `<a href="https://discord.com/users/${userId}" target="_blank" class="link">@${username}</a>`;
           }));
-          taskItem.innerHTML += `<p>Assigned to: ${assigneeLinks.join(', ')}</p>`;
+          jobItem.innerHTML += `<p>Assigned to: ${assigneeLinks.join(', ')}</p>`;
         } else {
-          taskItem.innerHTML += `<p>Not assigned</p>`;
+          jobItem.innerHTML += `<p>Not assigned</p>`;
         }
-        taskList.appendChild(taskItem);
+        jobList.appendChild(jobItem);
       }
-      taskListContent.appendChild(taskList);
+      jobListContent.appendChild(jobList);
     } catch (error) {
-      console.error('Error fetching tasks:', error.message, error.stack);
-      taskListContent.innerHTML = '<p>Error loading tasks. Please try again later.</p>';
+      console.error('Error fetching jobs:', error.message, error.stack);
+      jobListContent.innerHTML = '<p>Error loading jobs. Please try again later.</p>';
     }
   }
 
-  if (showtaskListButton) {
-    showtaskListButton.addEventListener('click', () => {
-      fetchtasks();
-      showSection('taskList');
+  if (showJobListButton) {
+    showJobListButton.addEventListener('click', () => {
+      fetchJobs();
+      showSection('jobList');
     });
   }
 
@@ -316,21 +316,21 @@ if (showGiveawayListButton) {
 function getNextMidnightEST() {
   const now = new Date();
 
-  // Get the current EST time
-  const options = { timeZone: "America/New_York", hour12: false, year: "numeric", month: "2-digit", day: "2-digit" };
-  const estTimeString = new Intl.DateTimeFormat("en-US", options).format(now);
+  // Convert current time to UTC milliseconds
+  const nowUTC = now.getTime();
 
-  // Extract the EST date components
-  const [month, day, year] = estTimeString.split("/").map(Number);
+  // Get EST time offset (EST = UTC-5, EDT = UTC-4)
+  const estOffset = new Date().toLocaleString("en-US", { timeZone: "America/New_York" }).includes("AM") ? -5 : -4;
+
+  // Get current time in EST
+  const nowEST = new Date(nowUTC + estOffset * 60 * 60 * 1000);
 
   // Create a Date object for midnight EST
-  const nextMidnightEST = new Date(Date.UTC(year, month - 1, day, 5, 0, 0, 0)); // Midnight EST is 05:00 UTC
+  let nextMidnightEST = new Date(nowEST);
+  nextMidnightEST.setUTCDate(nextMidnightEST.getUTCDate() + 1); // Move to next day
+  nextMidnightEST.setUTCHours(-estOffset, 0, 0, 0); // Set to midnight EST
 
-  // If the current time is already past midnight EST, move to the next day
-  if (now.getUTCHours() >= 5) {
-      nextMidnightEST.setUTCDate(nextMidnightEST.getUTCDate() + 1);
-  }
-
+  // Convert EST midnight time back to UTC timestamp
   return nextMidnightEST.getTime();
 }
 
@@ -344,7 +344,8 @@ function updateCountdown() {
   const diff = nextMidnightUTC - nowUTC;
 
   if (diff <= 0) {
-      location.reload(); // Reload when countdown reaches zero
+      // Force refresh when countdown reaches zero to reset UI
+      location.reload();
       return;
   }
 
