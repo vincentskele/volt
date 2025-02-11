@@ -331,21 +331,22 @@ if (showDailyTasksButton) {
 
 
 // ------------------------------
-// Console Section with Rolling Updates
+// Console Section with Rolling Updates & Mobile Scroll Fix
 // ------------------------------
 const showConsoleButton = document.getElementById("showConsoleButton");
 let consoleUpdateInterval = null; // Store interval reference
+let firstOpen = true; // Track first open for mobile
 
 if (showConsoleButton) {
   showConsoleButton.addEventListener("click", () => {
     showSection("consoleSection");
-    fetchAndDisplayConsoleLogs(); // Fetch immediately
+    fetchAndDisplayConsoleLogs(true); // Fetch immediately and check for first open
     startConsoleUpdates(); // Start rolling updates
   });
 }
 
 // Fetch and display logs
-async function fetchAndDisplayConsoleLogs() {
+async function fetchAndDisplayConsoleLogs(isFirstOpen = false) {
   try {
     const response = await fetch("/api/console");
     if (!response.ok) {
@@ -361,6 +362,8 @@ async function fetchAndDisplayConsoleLogs() {
 
     const consoleLogs = document.getElementById("consoleLogs");
     if (!consoleLogs) return;
+    const isScrolledToBottom = consoleLogs.scrollHeight - consoleLogs.clientHeight <= consoleLogs.scrollTop + 1;
+
     consoleLogs.innerHTML = "";
 
     if (logs.length === 0) {
@@ -390,6 +393,17 @@ async function fetchAndDisplayConsoleLogs() {
       consoleLogs.appendChild(li);
     });
 
+    // Auto-scroll on first open (mobile only)
+    if (isFirstOpen && isMobileDevice()) {
+      consoleLogs.scrollTop = consoleLogs.scrollHeight;
+      firstOpen = false; // Prevents auto-scrolling on subsequent updates
+    }
+
+    // Auto-scroll only if user was already at the bottom
+    if (isScrolledToBottom) {
+      consoleLogs.scrollTop = consoleLogs.scrollHeight;
+    }
+
   } catch (error) {
     console.error("Error fetching console logs:", error);
     document.getElementById("consoleLogs").innerHTML =
@@ -415,6 +429,11 @@ function stopConsoleUpdates() {
 document.querySelectorAll(".back-button").forEach(button => {
   button.addEventListener("click", stopConsoleUpdates);
 });
+
+// Helper function to detect if the user is on a mobile device
+function isMobileDevice() {
+  return /Mobi|Android|iPhone|iPad|iPod/.test(navigator.userAgent);
+}
 
 
 
