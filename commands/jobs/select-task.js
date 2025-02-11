@@ -1,86 +1,77 @@
-// File: select-task.js
+// File: tasklist.js
 
 const { 
     SlashCommandBuilder, 
     EmbedBuilder, 
     ActionRowBuilder, 
-    StringSelectMenuBuilder, 
-    MessageFlags 
+    StringSelectMenuBuilder 
   } = require('discord.js');
   const db = require('../../db');
   
   module.exports = {
     data: new SlashCommandBuilder()
-      .setName('select-task')
-      .setDescription('Choose a specific job from the available list.'),
+      .setName('tasklist')
+      .setDescription('View available tasks with assignment details.'),
     
     async execute(interaction) {
       // Log only when the command is run.
-      console.log(`[INFO] User ${interaction.user.id} runs command /select-task`);
+      console.log(`[INFO] User ${interaction.user.id} runs command /tasklist`);
       try {
-        const userID = interaction.user.id;
-  
-        // Check if the user already has a job.
-        const existingJob = await db.getUserJob(userID);
-        if (existingJob) {
-          const embed = new EmbedBuilder()
-            .setTitle('🛠️ You Already Have a Job')
-            .setDescription(`Your current job: **${existingJob}**`)
-            .setColor(0xFFA500)
-            .setTimestamp();
-          return interaction.reply({ embeds: [embed], flags: MessageFlags.EPHEMERAL });
-        }
-  
-        // Retrieve available jobs.
+        // Retrieve available tasks from your DB.
         const jobList = await db.getJobList();
         if (!jobList || jobList.length === 0) {
-          return interaction.reply({
-            content: '🚫 No jobs available at this time.',
-            flags: MessageFlags.EPHEMERAL,
-          });
+          return interaction.reply({ content: '🚫 No tasks available at this time.', ephemeral: true });
         }
   
-        // Build an embed listing available jobs.
+        // For a fixed-size display, limit the number of tasks shown.
+        const MAX_TASKS_PER_PAGE = 10;
+        const tasksToShow = jobList.slice(0, MAX_TASKS_PER_PAGE);
+        const totalTasks = jobList.length;
+        
+        // Build the embed.
         const embed = new EmbedBuilder()
-          .setTitle('📋 Available Jobs')
-          .setDescription('Select a job from the dropdown menu below.')
+          .setTitle('📋 Task List')
+          .setDescription('Select a task from the dropdown below. (Message refreshes on selection)')
           .setColor(0x00AE86)
           .setTimestamp();
         
-        jobList.forEach((job) => {
+        tasksToShow.forEach(task => {
+          // Show assignment status: list mentions if assigned; else “Not assigned”.
+          let assignment = (task.assignees && task.assignees.length > 0)
+            ? task.assignees.map(id => `<@${id}>`).join(', ')
+            : 'Not assigned';
           embed.addFields({
-            name: `Job #${job.jobID}`,
-            value: job.description || 'No description available',
+            name: `Task #${task.jobID}`,
+            value: `${task.description || 'No description available'}\nAssigned to: ${assignment}`,
             inline: false,
           });
         });
-  
-        // Create a dropdown (select menu) for available jobs.
+        
+        if (totalTasks > MAX_TASKS_PER_PAGE) {
+          embed.setFooter({ text: `Showing ${MAX_TASKS_PER_PAGE} of ${totalTasks} tasks. (Pagination not implemented)` });
+        }
+        
+        // Create a dropdown with all tasks.
         const selectMenu = new StringSelectMenuBuilder()
-          .setCustomId('select-task')
-          .setPlaceholder('Choose a job...')
+          .setCustomId('tasklist')
+          .setPlaceholder('Choose a task...')
           .addOptions(
-            jobList.map((job) => ({
-              label: `Job #${job.jobID}`,
-              description: job.description && job.description.length > 100
-                ? job.description.substring(0, 97) + '...'
-                : job.description || 'No description available',
-              value: job.jobID.toString(),
+            jobList.map(task => ({
+              label: `Task #${task.jobID}`,
+              description: task.description && task.description.length > 100
+                ? task.description.substring(0, 97) + '...'
+                : task.description || 'No description available',
+              value: task.jobID.toString()
             }))
           );
-  
+        
         const row = new ActionRowBuilder().addComponents(selectMenu);
-        return interaction.reply({
-          embeds: [embed],
-          components: [row],
-          flags: MessageFlags.EPHEMERAL,
-        });
+        
+        // Send the message publicly (without ephemeral flags).
+        return interaction.reply({ embeds: [embed], components: [row] });
       } catch (error) {
-        console.error(`[ERROR] /select-task command: ${error}`);
-        return interaction.reply({
-          content: `🚫 An error occurred: ${error.message || error}`,
-          flags: MessageFlags.EPHEMERAL,
-        });
+        console.error(`[ERROR] /tasklist command: ${error}`);
+        return interaction.reply({ content: `🚫 An error occurred: ${error.message || error}`, ephemeral: true });
       }
     },
   };
