@@ -17,13 +17,13 @@
 <div id="landingPage" class="content">
   <h2>Welcome to the Volt Dashboard!</h2>
   <div class="buttons">
-    <button id="showLeaderboardButton" class="btn">Show Leaderboard</button>
-    <button id="showAdminListButton" class="btn">Show Admin List</button>
-    <button id="showShopButton" class="btn">View Shop</button>
+    <button id="showLeaderboardButton" class="btn">Leaderboard</button>
+    <button id="showAdminListButton" class="btn">Admin List</button>
+    <button id="showShopButton" class="btn">Shop</button>
     <button id="showJobListButton" class="btn">Job List</button>
     <button id="showGiveawayListButton" class="btn">Giveaway List</button>
     <button id="showDailyTasksButton" class="btn">Daily Tasks</button>
-
+    <button id="showConsoleButton" class="btn">Console</button>
   </div>
   <p>
     This page works seamlessly with our Discord bot and 
@@ -183,6 +183,20 @@
       to get charged up 1 Volt per message.</li>
     <li>🤖 React to a new message in <a href="https://discord.com/channels/1014872741846974514/1015076041934520330">#announcements</a> once per day to receive a 10 Volt charge.</li>
   </ul>
+
+  <button class="back-button">Back</button>
+</div>
+
+<!-- Console Section -->
+<div id="consoleSection" class="content" style="display: none;">
+  <h2>🖥️ Console</h2>
+  <p>Live information refreshed every 5s.</p>
+
+  <div class="console-box">
+    <ul id="consoleLogs" class="console-list">
+      <!-- Console logs will be dynamically added here -->
+    </ul>
+  </div>
 
   <button class="back-button">Back</button>
 </div>

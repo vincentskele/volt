@@ -4,6 +4,38 @@ const { Client, GatewayIntentBits, Partials, Collection } = require('discord.js'
 const fs = require('fs');
 const path = require('path');
 
+/**
+ * NEW: Log capturing functionality.
+ * This code captures the last 16 console log/error messages and writes them to console.json.
+ */
+const LOG_LIMIT = 160;
+const logBuffer = [];
+const originalConsoleLog = console.log;
+const originalConsoleError = console.error;
+
+function updateLogBuffer(logEntry) {
+  logBuffer.push(logEntry);
+  if (logBuffer.length > LOG_LIMIT) {
+    logBuffer.shift();
+  }
+  // Write the updated logBuffer to console.json (formatted for readability)
+  fs.writeFileSync(path.join(__dirname, 'console.json'), JSON.stringify(logBuffer, null, 2), 'utf8');
+}
+
+console.log = function (...args) {
+  const message = args.join(' ');
+  const logEntry = { timestamp: new Date().toISOString(), message };
+  updateLogBuffer(logEntry);
+  originalConsoleLog.apply(console, args);
+};
+
+console.error = function (...args) {
+  const message = args.join(' ');
+  const logEntry = { timestamp: new Date().toISOString(), message };
+  updateLogBuffer(logEntry);
+  originalConsoleError.apply(console, args);
+};
+
 // Import the required database functions (adjust to your actual db.js exports).
 const {
   getActiveGiveaways,

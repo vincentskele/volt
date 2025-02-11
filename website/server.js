@@ -5,6 +5,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const express = require('express');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
+const fs = require('fs'); // Needed to read the console.json file
 
 // Import your Discord bot client so we can fetch usernames
 // Make sure ../bot exports something like: module.exports = { client }
@@ -92,7 +93,6 @@ app.get('/api/leaderboard', async (req, res) => {
   }
 });
 
-
 /**
  * GET /api/admins
  * Return a list of admins from 'admins' table, with userID and userTag resolved.
@@ -117,7 +117,6 @@ app.get('/api/admins', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
-
 
 /**
  * GET /api/shop
@@ -148,25 +147,29 @@ app.get('/api/shop', (req, res) => {
  */
 app.get('/api/jobs', async (req, res) => {
   try {
-    db.all(`
+    db.all(
+      `
       SELECT j.jobID, j.description, GROUP_CONCAT(ja.userID) as assignees
       FROM joblist j
       LEFT JOIN job_assignees ja ON j.jobID = ja.jobID
       GROUP BY j.jobID
-    `, [], (err, rows) => {
-      if (err) {
-        console.error('Error fetching jobs:', err);
-        return res.status(500).json({ error: 'Failed to fetch jobs.' });
+      `,
+      [],
+      (err, rows) => {
+        if (err) {
+          console.error('Error fetching jobs:', err);
+          return res.status(500).json({ error: 'Failed to fetch jobs.' });
+        }
+
+        const jobs = rows.map((job) => ({
+          jobID: job.jobID,
+          description: job.description,
+          assignees: job.assignees ? job.assignees.split(',') : [],
+        }));
+
+        res.json(jobs);
       }
-
-      const jobs = rows.map((job) => ({
-        jobID: job.jobID,
-        description: job.description,
-        assignees: job.assignees ? job.assignees.split(',') : [],
-      }));
-
-      res.json(jobs);
-    });
+    );
   } catch (err) {
     console.error('Error in /api/jobs route:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -216,7 +219,6 @@ async function resolveChannelName(channelId) {
   return mockChannelMap[channelId] || `UnknownChannel (${channelId})`;
 }
 
-
 /**
  * GET /api/giveaways
  * If you want *all* giveaways, do:
@@ -245,6 +247,51 @@ app.get('/api/giveaways/active', (req, res) => {
     res.json(rows);
   });
 });
+
+/**
+ * GET /api/console
+ * Serve the last 16 log entries from console.json in a readable format.
+ */
+app.get('/api/console', (req, res) => {
+  const consoleFilePath = path.join(__dirname, '..', 'console.json');
+
+  fs.readFile(consoleFilePath, 'utf8', (err, data) => {
+    if (err) {
+      console.error('Error reading console.json:', err);
+      return res.status(500).json({ error: 'Failed to read console logs.' });
+    }
+
+    try {
+      let logs = JSON.parse(data);
+
+      // Ensure logs is an array before processing
+      if (!Array.isArray(logs)) {
+        throw new Error('console.json does not contain an array.');
+      }
+
+      // Get the last 160 log entries
+      const lastLogs = logs.slice(-160);
+
+      res.setHeader('Content-Type', 'application/json');
+      res.send(
+        JSON.stringify(
+          {
+            logs: lastLogs,
+            count: lastLogs.length,
+            message: 'Last 160 log entries retrieved successfully',
+          },
+          null,
+          2 // Indentation for readability
+        )
+      );
+    } catch (parseErr) {
+      console.error('Error parsing console.json:', parseErr);
+      res.status(500).json({ error: 'Invalid JSON format in console.json.' });
+    }
+  });
+});
+
+
 
 // Default route → serve index.html
 app.get('/', (req, res) => {
