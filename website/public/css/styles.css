@@ -330,7 +330,18 @@ code {
   transform: translateY(-2px); /* Slight lift */
 }
 
-/* General List Containers (Leaderboard, Admin, Shop, Job, Giveaway) */
+/* --------------------------------------------------
+   CSS Variables for List Sections
+-------------------------------------------------- */
+:root {
+  --list-bg: #27393F;       /* Background for list items */
+  --list-text: #fafafa;     /* Text color for list items */
+  --list-hover-bg: #405D67; /* Hover background for list items */
+}
+
+/* --------------------------------------------------
+   General List Containers (Leaderboard, Admin, Shop, Job, Giveaway)
+-------------------------------------------------- */
 #leaderboardList,
 .admin-list,
 .giveaway-list,
@@ -338,49 +349,80 @@ code {
 .job-list {
   display: flex;
   flex-direction: column; /* Stack items vertically */
-  gap: 15px; /* Add consistent spacing between items */
-  align-items: center; /* Center items horizontally */
-  width: 100%; /* Full container width */
-  max-width: 600px; /* Limit container width */
-  margin: 0 auto; /* Center the container */
-  padding: 15px; /* Add padding inside the container */
+  gap: 15px;              /* Consistent spacing between items */
+  align-items: center;    /* Center items horizontally */
+  width: 100%;            /* Full container width */
+  max-width: 600px;       /* Limit container width */
+  margin: 0 auto;         /* Center the container */
+  padding: 15px;          /* Add padding inside the container */
   box-sizing: border-box; /* Include padding in total width */
 }
 
-/* General Item Styles (Leaderboard, Admin, Shop, Job, Giveaway) */
+/* --------------------------------------------------
+   General Item Styles (Leaderboard, Admin, Shop, Job, Giveaway)
+-------------------------------------------------- */
 .leaderboard-item,
 .admin-item,
 .shop-item,
 .giveaway-item,
 .job-item {
-  display: flex; /* Flexbox layout */
-  flex-direction: column; /* Stack children vertically */
-  align-items: center; /* Center content horizontally */
-  justify-content: center; /* Center content vertically */
-  background-color: #27393F; /* Dark navy background */
-  color: #fafafa; /* Light text color */
-  padding: 20px; /* Uniform padding */
-  margin-bottom: 15px; /* Spacing between items */
-  border-radius: 10px; /* Rounded corners */
-  text-align: center; /* Center all text */
-  font-size: 1rem; /* Standard font size */
-  word-break: break-word; /* Ensure text wraps if too long */
-  cursor: pointer; /* Pointer cursor on hover */
+  display: flex;                /* Flexbox layout */
+  flex-direction: column;       /* Stack children vertically */
+  align-items: center;          /* Center content horizontally */
+  justify-content: center;      /* Center content vertically */
+  background-color: var(--list-bg); /* Dark navy background */
+  color: var(--list-text);          /* Light text color */
+  padding: 20px;                /* Uniform padding */
+  margin-bottom: 15px;          /* Spacing between items */
+  border-radius: 10px;          /* Rounded corners */
+  text-align: center;           /* Center all text */
+  font-size: 1rem;              /* Standard font size */
+  word-break: break-word;       /* Ensure text wraps if too long */
+  cursor: pointer;              /* Pointer cursor on hover */
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Subtle shadow */
   transition: background-color 0.3s ease, transform 0.2s ease; /* Smooth hover effects */
-  max-width: 500px; /* Limit item width */
-  width: 100%; /* Full width for responsiveness */
+  max-width: 500px;             /* Limit item width */
+  width: 100%;                  /* Full width for responsiveness */
 }
 
-/* Hover Effects for Items */
+/* Even Slimmer Job List Items */
+.admin-item,
+.job-item {
+  padding: 5px 10px;        /* Further reduce padding */
+  margin-bottom: 5px;       /* Minimize gap between items */
+  font-size: 0.85rem;       /* Maintain readability */
+  max-width: 380px;         /* Reduce max width for a slimmer look */
+  width: 85%;               /* Maintain responsiveness */
+  min-height: auto;         /* Ensure no extra height */
+  line-height: 1.2;         /* Reduce line spacing */
+  border-radius: 5px;       /* Less rounded corners */
+}
+
+/* Reduce spacing in the job list container */
+.admin-item,
+.job-list {
+  gap: 5px;                 /* Reduce spacing between list items */
+  padding: 5px;             /* Decrease padding inside the container */
+}
+
+/* Reduce space between text elements inside the job item */
+.admin-item,
+.job-item p {
+  margin: 2px 0;            /* Tighten spacing between paragraphs */
+  padding: 0;               /* Remove extra padding */
+}
+/* --------------------------------------------------
+   Hover Effects for Items
+-------------------------------------------------- */
 .leaderboard-item:hover,
 .admin-item:hover,
 .shop-item:hover,
 .giveaway-item:hover,
 .job-item:hover {
-  background-color: #405D67; /* Brighter background on hover */
-  transform: scale(1.02); /* Subtle zoom effect */
+  background-color: var(--list-hover-bg); /* Brighter background on hover */
+  transform: scale(1.02);                 /* Subtle zoom effect */
 }
+
 
 
 /* Specific Giveaway Item Styles */
