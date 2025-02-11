@@ -6,7 +6,7 @@ const path = require('path');
 
 /**
  * NEW: Log capturing functionality.
- * This code captures the last 16 console log/error messages and writes them to console.json.
+ * This code captures the last 160 console log/error messages and writes them to console.json.
  */
 const LOG_LIMIT = 160;
 const logBuffer = [];
@@ -49,6 +49,8 @@ const {
   clearGiveawayEntries,
 } = require('./db');
 
+
+
 // Initialize the bot client with necessary intents and partials.
 const client = new Client({
   intents: [
@@ -56,6 +58,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMessageReactions,
+    
   ],
   partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
@@ -63,6 +66,22 @@ const client = new Client({
 const PREFIX = process.env.PREFIX || '$';
 client.commands = new Collection();
 const commandModules = {};
+
+// Load events from the "events" folder
+const eventsPath = path.join(__dirname, 'events'); // Adjust if your folder is elsewhere
+const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
+
+for (const file of eventFiles) {
+  const filePath = path.join(eventsPath, file);
+  const event = require(filePath);
+  console.log(`[DEBUG] Registering event: ${event.name} from ${file}`);
+  if (event.once) {
+    client.once(event.name, (...args) => event.execute(...args));
+  } else {
+    client.on(event.name, (...args) => event.execute(...args));
+  }
+}
+
 
 // ==========================
 // 🚦 ALLOWED ROLES FILTER

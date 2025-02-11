@@ -901,6 +901,58 @@ function redeemItem(userID, itemName) {
   });
 }
 
+/**
+ * Retrieves all jobs from the joblist table.
+ */
+function getAllJobs() {
+  return new Promise((resolve, reject) => {
+    db.all(`SELECT jobID, description FROM joblist ORDER BY jobID ASC`, [], (err, rows) => {
+      if (err) return reject('Failed to fetch jobs from the database');
+      resolve(rows);
+    });
+  });
+}
+
+// Optional: assignJobById (does not affect the round-robin cycle)
+function assignJobById(userID, jobID) {
+  return new Promise((resolve, reject) => {
+    if (!userID || !jobID) {
+      return reject(new Error("Invalid user or job ID"));
+    }
+    db.serialize(() => {
+      // Check if the user already has an assigned job
+      db.get(
+        `SELECT jobID FROM job_assignees WHERE userID = ?`,
+        [userID],
+        (err, row) => {
+          if (err) return reject(new Error("Database error while checking active job"));
+          if (row) return reject(new Error("User already has a job"));
+          // Verify that the job exists
+          db.get(
+            `SELECT jobID, description FROM joblist WHERE jobID = ?`,
+            [jobID],
+            (err, job) => {
+              if (err) return reject(new Error("Database error while verifying job"));
+              if (!job) return reject(new Error("Job not found"));
+              // Insert the assignment (this does not change your job cycle)
+              db.run(
+                `INSERT INTO job_assignees (jobID, userID) VALUES (?, ?)`,
+                [jobID, userID],
+                function (err2) {
+                  if (err2) return reject(new Error("Failed to assign job"));
+                  resolve(job);
+                }
+              );
+            }
+          );
+        }
+      );
+    });
+  });
+}
+
+
+
 // =========================================================================
 // Giveaway Functions
 // =========================================================================
@@ -1054,6 +1106,8 @@ module.exports = {
   getCurrentJobIndex,
   setCurrentJobIndex,
   assignCycledJob,
+  assignJobById,
+  getAllJobs,
 
   // Giveaway
   initializeDatabase,
