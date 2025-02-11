@@ -258,99 +258,77 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ------------------------------
-  // Giveaways Section
-  // ------------------------------
-  const showGiveawayListButton = document.getElementById('showGiveawayListButton');
-  const giveawayItems = document.getElementById('giveawayItems');
+// ------------------------------
+// Daily Tasks Countdown Timer (Resets at Midnight EST)
+// ------------------------------
 
-  async function fetchGiveaways() {
-    try {
-      const res = await fetch('/api/giveaways/active');
-      const giveaways = await res.json();
-      if (!giveaways.length) {
-        giveawayItems.innerHTML = '<p>No active giveaways at the moment.</p>';
-      } else {
-        let html = `<button id="refreshGiveaways" class="refresh-button">🔄 Refresh</button>`;
-        giveaways.reverse().forEach((g) => {
-          const endTime = new Date(parseInt(g.end_time)).toLocaleString();
-          const giveawayLink = `https://discord.com/channels/${SERVER_ID}/${g.channel_id}/${g.message_id}`;
-          html += `
-          <div class="giveaway-item">
-            <p class="giveaway-name">${g.giveaway_name}</p>
-            <div class="giveaway-content">
-              <p>
-                <a href="${giveawayLink}" target="_blank">
-                  Click here and react to enter giveaway!
-                </a>
-              </p>
-              <p><strong>End Time:</strong> ${endTime}</p>
-              <p><strong>Prize:</strong> ${g.prize}</p>
-              <p><strong>Winners:</strong> ${g.winners}</p>
-            </div>
-          </div>
-        `;
-        });
-        giveawayItems.innerHTML = html;
-        document.getElementById('refreshGiveaways').addEventListener('click', fetchGiveaways);
-      }
-    } catch (error) {
-      console.error('Error fetching giveaways:', error);
-      giveawayItems.innerHTML = '<p>Error loading giveaways.</p>';
-    }
+// Function to calculate the next midnight EST in UTC
+function getNextMidnightEST() {
+  const now = new Date();
+
+  // Convert current time to UTC milliseconds
+  const nowUTC = now.getTime();
+
+  // Get EST time offset (EST = UTC-5, EDT = UTC-4)
+  const estOffset = new Date().toLocaleString("en-US", { timeZone: "America/New_York" }).includes("AM") ? -5 : -4;
+
+  // Get current time in EST
+  const nowEST = new Date(nowUTC + estOffset * 60 * 60 * 1000);
+
+  // Create a Date object for midnight EST
+  let nextMidnightEST = new Date(nowEST);
+  nextMidnightEST.setUTCDate(nextMidnightEST.getUTCDate() + 1); // Move to next day
+  nextMidnightEST.setUTCHours(-estOffset, 0, 0, 0); // Set to midnight EST
+
+  // Convert EST midnight time back to UTC timestamp
+  return nextMidnightEST.getTime();
+}
+
+// Function to update the countdown timer
+function updateCountdown() {
+  const countdownElem = document.getElementById("countdownTimer");
+  if (!countdownElem) return;
+
+  const nowUTC = new Date().getTime();
+  const nextMidnightUTC = getNextMidnightEST();
+  const diff = nextMidnightUTC - nowUTC;
+
+  if (diff <= 0) {
+      // Force refresh when countdown reaches zero to reset UI
+      location.reload();
+      return;
   }
 
-  if (showGiveawayListButton) {
-    showGiveawayListButton.addEventListener('click', () => {
-      fetchGiveaways();
-      showSection('giveawayList');
-    });
-  }
+  // Convert remaining time into hours, minutes, and seconds
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
-  // ------------------------------
-  // Daily Tasks Section with Countdown Timer (resets at midnight EST)
-  // ------------------------------
-  function getNextMidnightEST() {
-    const now = new Date();
-    const nowEST = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-    const nextMidnightEST = new Date(nowEST);
-    nextMidnightEST.setDate(nowEST.getDate() + 1);
-    nextMidnightEST.setHours(0, 0, 0, 0);
-    return nextMidnightEST;
-  }
+  countdownElem.innerText = `${hours.toString().padStart(2, '0')}:` +
+                            `${minutes.toString().padStart(2, '0')}:` +
+                            `${seconds.toString().padStart(2, '0')}`;
+}
 
-  function updateCountdown() {
-    const countdownElem = document.getElementById("countdownTimer");
-    if (!countdownElem) return;
-    
-    const now = new Date();
-    const nextMidnight = getNextMidnightEST();
-    const diff = nextMidnight - now;
-    
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-    
-    countdownElem.innerText = `${hours.toString().padStart(2, '0')}:` +
-                              `${minutes.toString().padStart(2, '0')}:` +
-                              `${seconds.toString().padStart(2, '0')}`;
-  }
+// Start and maintain the countdown timer
+let countdownInterval;
+function startCountdownTimer() {
+  updateCountdown();
+  if (countdownInterval) clearInterval(countdownInterval);
+  countdownInterval = setInterval(updateCountdown, 1000);
+}
 
-  let countdownInterval;
+// Start the countdown when the page loads
+document.addEventListener("DOMContentLoaded", startCountdownTimer);
 
-  function startCountdownTimer() {
-    updateCountdown();
-    if (countdownInterval) clearInterval(countdownInterval);
-    countdownInterval = setInterval(updateCountdown, 1000);
-  }
-
-  const showDailyTasksButton = document.getElementById('showDailyTasksButton');
-  if (showDailyTasksButton) {
-    showDailyTasksButton.addEventListener('click', () => {
+// If triggered by a button
+const showDailyTasksButton = document.getElementById('showDailyTasksButton');
+if (showDailyTasksButton) {
+  showDailyTasksButton.addEventListener('click', () => {
       showSection('dailyTasksPage');
       startCountdownTimer();
-    });
-  }
+  });
+}
+
 
 // ------------------------------
 // Console Section with Rolling Updates
