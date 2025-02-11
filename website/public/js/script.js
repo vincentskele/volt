@@ -316,21 +316,21 @@ if (showGiveawayListButton) {
 function getNextMidnightEST() {
   const now = new Date();
 
-  // Convert current time to UTC milliseconds
-  const nowUTC = now.getTime();
+  // Get the current EST time
+  const options = { timeZone: "America/New_York", hour12: false, year: "numeric", month: "2-digit", day: "2-digit" };
+  const estTimeString = new Intl.DateTimeFormat("en-US", options).format(now);
 
-  // Get EST time offset (EST = UTC-5, EDT = UTC-4)
-  const estOffset = new Date().toLocaleString("en-US", { timeZone: "America/New_York" }).includes("AM") ? -5 : -4;
-
-  // Get current time in EST
-  const nowEST = new Date(nowUTC + estOffset * 60 * 60 * 1000);
+  // Extract the EST date components
+  const [month, day, year] = estTimeString.split("/").map(Number);
 
   // Create a Date object for midnight EST
-  let nextMidnightEST = new Date(nowEST);
-  nextMidnightEST.setUTCDate(nextMidnightEST.getUTCDate() + 1); // Move to next day
-  nextMidnightEST.setUTCHours(-estOffset, 0, 0, 0); // Set to midnight EST
+  const nextMidnightEST = new Date(Date.UTC(year, month - 1, day, 5, 0, 0, 0)); // Midnight EST is 05:00 UTC
 
-  // Convert EST midnight time back to UTC timestamp
+  // If the current time is already past midnight EST, move to the next day
+  if (now.getUTCHours() >= 5) {
+      nextMidnightEST.setUTCDate(nextMidnightEST.getUTCDate() + 1);
+  }
+
   return nextMidnightEST.getTime();
 }
 
@@ -344,8 +344,7 @@ function updateCountdown() {
   const diff = nextMidnightUTC - nowUTC;
 
   if (diff <= 0) {
-      // Force refresh when countdown reaches zero to reset UI
-      location.reload();
+      location.reload(); // Reload when countdown reaches zero
       return;
   }
 
