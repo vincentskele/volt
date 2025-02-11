@@ -476,7 +476,7 @@ client.on('messageCreate', async (message) => {
     saveMessageCounts(); // Save progress
 
     await updateWallet(userId, MESSAGE_REWARD_AMOUNT);
-    console.log(`💰 Given ${MESSAGE_REWARD_AMOUNT} to ${message.author.username} for message #${userData.count} today`);
+    console.log(`⚡ Given ${MESSAGE_REWARD_AMOUNT} to ${message.author.username} for message #${userData.count} today`);
   }
 });
 

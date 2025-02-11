@@ -412,11 +412,6 @@ async function fetchAndDisplayConsoleLogs() {
       consoleLogs.appendChild(li);
     });
 
-    // Auto-scroll to bottom when new logs appear
-    const consoleBox = document.querySelector(".console-box");
-    if (consoleBox) {
-      consoleBox.scrollTop = consoleBox.scrollHeight;
-    }
   } catch (error) {
     console.error("Error fetching console logs:", error);
     document.getElementById("consoleLogs").innerHTML =

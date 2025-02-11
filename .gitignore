@@ -31,4 +31,4 @@ userMessageCounts.json
 # Other files (if applicable)
 *.env.local
 points.db
-
+console.json
