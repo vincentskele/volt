@@ -331,22 +331,21 @@ if (showDailyTasksButton) {
 
 
 // ------------------------------
-// Console Section with Rolling Updates & Mobile Scroll Fix
+// Console Section with Rolling Updates & Mobile Log Limit
 // ------------------------------
 const showConsoleButton = document.getElementById("showConsoleButton");
 let consoleUpdateInterval = null; // Store interval reference
-let firstOpen = true; // Track first open for mobile
 
 if (showConsoleButton) {
   showConsoleButton.addEventListener("click", () => {
     showSection("consoleSection");
-    fetchAndDisplayConsoleLogs(true); // Fetch immediately and check for first open
+    fetchAndDisplayConsoleLogs(); // Fetch immediately
     startConsoleUpdates(); // Start rolling updates
   });
 }
 
 // Fetch and display logs
-async function fetchAndDisplayConsoleLogs(isFirstOpen = false) {
+async function fetchAndDisplayConsoleLogs() {
   try {
     const response = await fetch("/api/console");
     if (!response.ok) {
@@ -360,8 +359,15 @@ async function fetchAndDisplayConsoleLogs(isFirstOpen = false) {
       logs = logs.logs || Object.values(logs);
     }
 
+    // Limit logs to the last 8 items on mobile
+    if (isMobileDevice() && logs.length > 8) {
+      logs = logs.slice(-8);
+    }
+
     const consoleLogs = document.getElementById("consoleLogs");
     if (!consoleLogs) return;
+
+    // Preserve user's scroll position
     const isScrolledToBottom = consoleLogs.scrollHeight - consoleLogs.clientHeight <= consoleLogs.scrollTop + 1;
 
     consoleLogs.innerHTML = "";
@@ -383,7 +389,7 @@ async function fetchAndDisplayConsoleLogs(isFirstOpen = false) {
           hour: '2-digit',
           minute: '2-digit',
           second: '2-digit',
-          hour12: true, // Ensures AM/PM format
+          hour12: true,
         });
       }
 
@@ -393,13 +399,7 @@ async function fetchAndDisplayConsoleLogs(isFirstOpen = false) {
       consoleLogs.appendChild(li);
     });
 
-    // Auto-scroll on first open (mobile only)
-    if (isFirstOpen && isMobileDevice()) {
-      consoleLogs.scrollTop = consoleLogs.scrollHeight;
-      firstOpen = false; // Prevents auto-scrolling on subsequent updates
-    }
-
-    // Auto-scroll only if user was already at the bottom
+    // Keep scrolling to the bottom if the user hasn't scrolled up
     if (isScrolledToBottom) {
       consoleLogs.scrollTop = consoleLogs.scrollHeight;
     }
@@ -413,7 +413,7 @@ async function fetchAndDisplayConsoleLogs(isFirstOpen = false) {
 
 // Start rolling updates every 5 seconds
 function startConsoleUpdates() {
-  if (consoleUpdateInterval) clearInterval(consoleUpdateInterval); // Prevent multiple intervals
+  if (consoleUpdateInterval) clearInterval(consoleUpdateInterval);
   consoleUpdateInterval = setInterval(fetchAndDisplayConsoleLogs, 5000);
 }
 
