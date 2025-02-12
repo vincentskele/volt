@@ -550,6 +550,7 @@ code {
   transform: scale(1.02);
 }
 
+
 /* Slimmer Admin/Job Items */
 .admin-item,
 .job-item {
@@ -573,6 +574,10 @@ code {
   margin: 2px 0;
 }
 
+.shop-instructions li {
+  margin-left: 20px; /* Indents the list items */
+  padding: 10px 0 !important; /* Adds spacing between items */
+}
 
 
 /* --------------------------------------------------
