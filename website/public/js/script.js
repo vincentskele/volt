@@ -307,58 +307,72 @@ if (showGiveawayListButton) {
   });
 }
 
-  
-// ------------------------------
-// Daily Tasks Countdown Timer (Resets at Midnight EST)
-// ------------------------------
+// Daily Tasks Countdown Timer (Resets at Midnight EST/EDT)
+// ---------------------------------------------------------
 
-// Function to calculate the next midnight EST in UTC
-function getNextMidnightEST() {
+/**
+ * Returns the absolute UTC timestamp (in milliseconds) for the upcoming midnight 
+ * in New York (America/New_York) based on New York’s wall‐clock day.
+ *
+ * This function first “converts” the current time to New York time by using 
+ * toLocaleString() with the appropriate timeZone. It then creates a Date object 
+ * from that string (which is parsed as a local Date) and resets it to midnight. 
+ * Because the conversion loses the actual New York offset, we compute the difference 
+ * between the current absolute time and the parsed “New York time” and adjust accordingly.
+ */
+function getNextMidnightNY() {
   const now = new Date();
-
-  // Get the current EST time
-  const options = { timeZone: "America/New_York", hour12: false, year: "numeric", month: "2-digit", day: "2-digit" };
-  const estTimeString = new Intl.DateTimeFormat("en-US", options).format(now);
-
-  // Extract the EST date components
-  const [month, day, year] = estTimeString.split("/").map(Number);
-
-  // Create a Date object for midnight EST
-  const nextMidnightEST = new Date(Date.UTC(year, month - 1, day, 5, 0, 0, 0)); // Midnight EST is 05:00 UTC
-
-  // If the current time is already past midnight EST, move to the next day
-  if (now.getUTCHours() >= 5) {
-      nextMidnightEST.setUTCDate(nextMidnightEST.getUTCDate() + 1);
-  }
-
-  return nextMidnightEST.getTime();
+  // Convert current time to a string in New York’s timezone.
+  // (The format “en-US” works reliably in most browsers.)
+  const nowInNYString = now.toLocaleString("en-US", { timeZone: "America/New_York" });
+  // Parse that string to get a Date object.
+  // (This Date is created in the browser’s local timezone but its time reflects NY’s wall clock.)
+  const nowNY = new Date(nowInNYString);
+  
+  // Create a Date for New York’s midnight today (using the NY wall-clock date)
+  const nyMidnightToday = new Date(nowNY);
+  nyMidnightToday.setHours(0, 0, 0, 0);
+  
+  // The upcoming NY midnight is the midnight of the next day.
+  nyMidnightToday.setDate(nyMidnightToday.getDate() + 1);
+  
+  // Because nowNY was parsed in local time, we compute the offset difference between 
+  // the true current time (now) and the parsed New York time (nowNY).
+  const offsetDiff = now.getTime() - nowNY.getTime();
+  
+  // Adjust the NY midnight by that difference to get the correct absolute timestamp.
+  return nyMidnightToday.getTime() + offsetDiff;
 }
 
-// Function to update the countdown timer
+/**
+ * Updates the countdown timer displayed on the page.
+ * The timer shows the remaining time (HH:MM:SS) until midnight in New York.
+ */
 function updateCountdown() {
   const countdownElem = document.getElementById("countdownTimer");
   if (!countdownElem) return;
 
-  const nowUTC = new Date().getTime();
-  const nextMidnightUTC = getNextMidnightEST();
-  const diff = nextMidnightUTC - nowUTC;
+  const now = Date.now();
+  const nextMidnightUTC = getNextMidnightNY();
+  const diff = nextMidnightUTC - now;
 
+  // When the countdown reaches (or passes) zero, force a refresh so the UI can reset.
   if (diff <= 0) {
-      location.reload(); // Reload when countdown reaches zero
-      return;
+    location.reload();
+    return;
   }
 
-  // Convert remaining time into hours, minutes, and seconds
+  // Convert the difference into hours, minutes, and seconds.
   const hours = Math.floor(diff / (1000 * 60 * 60));
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
   const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
   countdownElem.innerText = `${hours.toString().padStart(2, '0')}:` +
-                            `${minutes.toString().padStart(2, '0')}:` +
-                            `${seconds.toString().padStart(2, '0')}`;
+                              `${minutes.toString().padStart(2, '0')}:` +
+                              `${seconds.toString().padStart(2, '0')}`;
 }
 
-// Start and maintain the countdown timer
+// Starts (or restarts) the countdown timer.
 let countdownInterval;
 function startCountdownTimer() {
   updateCountdown();
@@ -366,15 +380,15 @@ function startCountdownTimer() {
   countdownInterval = setInterval(updateCountdown, 1000);
 }
 
-// Start the countdown when the page loads
+// Start the countdown when the page loads.
 document.addEventListener("DOMContentLoaded", startCountdownTimer);
 
-// If triggered by a button
+// Optional: If your UI uses a button to show daily tasks.
 const showDailyTasksButton = document.getElementById('showDailyTasksButton');
 if (showDailyTasksButton) {
   showDailyTasksButton.addEventListener('click', () => {
-      showSection('dailyTasksPage');
-      startCountdownTimer();
+    showSection('dailyTasksPage'); // Assumes you have a function to display the desired section.
+    startCountdownTimer();
   });
 }
 
