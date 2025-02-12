@@ -651,7 +651,7 @@ code {
 }
 
 .countdown-timer {
-  font-family: 'Press Start 2P', cursive;
+  font-family: Courier, monospace;
   font-size: 1.5rem;
   font-weight: bold;
   color: #404A65; /* Extracted from image */
