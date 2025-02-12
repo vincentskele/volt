@@ -286,8 +286,7 @@ async function fetchGiveaways() {
     if (!giveaways.length) {
       giveawayItems.innerHTML = '<p>No active giveaways at the moment.</p>';
     } else {
-      // Create a refresh button and build HTML for each giveaway.
-      let html = `<button id="refreshGiveaways" class="refresh-button">🔄 Refresh</button>`;
+      let html = ''; // No refresh button
 
       // Formatting options: Month (full), Day (numeric), Hour & Minute (12-hour clock)
       const options = {
@@ -328,12 +327,6 @@ async function fetchGiveaways() {
       });
 
       giveawayItems.innerHTML = html;
-      
-      // Attach the refresh event to the refresh button.
-      const refreshButton = document.getElementById('refreshGiveaways');
-      if (refreshButton) {
-        refreshButton.addEventListener('click', fetchGiveaways);
-      }
     }
   } catch (error) {
     console.error('Error fetching giveaways:', error);
@@ -347,6 +340,7 @@ if (showGiveawayListButton) {
     showSection('giveawayList'); // Assumes showSection() is defined elsewhere
   });
 }
+
 
 // Daily Tasks Countdown Timer (Resets at Midnight EST/EDT)
 // ---------------------------------------------------------
@@ -443,8 +437,8 @@ let consoleUpdateInterval = null; // Store interval reference
 if (showConsoleButton) {
   showConsoleButton.addEventListener("click", () => {
     showSection("consoleSection");
-    fetchAndDisplayConsoleLogs(); // Fetch immediately
-    startConsoleUpdates(); // Start rolling updates
+    fetchAndDisplayConsoleLogs(); // Fetch logs immediately
+    startConsoleUpdates(); // Start rolling updates every 5 seconds
   });
 }
 
@@ -458,12 +452,12 @@ async function fetchAndDisplayConsoleLogs() {
     let logs = await response.json();
     console.log("Fetched logs:", logs); // Debugging log
 
-    // Ensure logs is an array
+    // Ensure logs is an array; if not, try extracting from an object
     if (!Array.isArray(logs)) {
       logs = logs.logs || Object.values(logs);
     }
 
-    // Limit logs to the last 8 items on mobile
+    // Limit logs to the last 8 items on mobile devices
     if (isMobileDevice() && logs.length > 8) {
       logs = logs.slice(-8);
     }
@@ -471,47 +465,45 @@ async function fetchAndDisplayConsoleLogs() {
     const consoleLogs = document.getElementById("consoleLogs");
     if (!consoleLogs) return;
 
-    // Preserve user's scroll position
-    const isScrolledToBottom = consoleLogs.scrollHeight - consoleLogs.clientHeight <= consoleLogs.scrollTop + 1;
-
+    // Clear previous logs
     consoleLogs.innerHTML = "";
 
     if (logs.length === 0) {
       consoleLogs.innerHTML = `<li class="log-item">No logs available.</li>`;
-      return;
+    } else {
+      logs.forEach(log => {
+        const rawTimestamp = log.timestamp || log.time || 'Unknown Time';
+        const message = log.message || log.msg || 'Unknown Message';
+
+        // Convert timestamp to local time (hh:mm:ss AM/PM)
+        let formattedTime = "Unknown Time";
+        if (rawTimestamp !== "Unknown Time") {
+          const date = new Date(rawTimestamp);
+          formattedTime = date.toLocaleTimeString(undefined, {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true,
+          });
+        }
+
+        const li = document.createElement("li");
+        li.className = "log-item";
+        li.innerHTML = `<strong>[${formattedTime}]</strong> ${message}`;
+        consoleLogs.appendChild(li);
+      });
     }
 
-    logs.forEach(log => {
-      const rawTimestamp = log.timestamp || log.time || 'Unknown Time';
-      const message = log.message || log.msg || 'Unknown Message';
-
-      // Convert timestamp to local time (hh:mm:ss AM/PM)
-      let formattedTime = "Unknown Time";
-      if (rawTimestamp !== "Unknown Time") {
-        const date = new Date(rawTimestamp);
-        formattedTime = date.toLocaleTimeString(undefined, {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: true,
-        });
-      }
-
-      const li = document.createElement("li");
-      li.className = "log-item";
-      li.innerHTML = `<strong>[${formattedTime}]</strong> ${message}`;
-      consoleLogs.appendChild(li);
-    });
-
-    // Keep scrolling to the bottom if the user hasn't scrolled up
-    if (isScrolledToBottom) {
-      consoleLogs.scrollTop = consoleLogs.scrollHeight;
-    }
-
+    // Force the scrollbar to scroll to the bottom
+    consoleLogs.scrollTop = consoleLogs.scrollHeight;
+    
   } catch (error) {
     console.error("Error fetching console logs:", error);
-    document.getElementById("consoleLogs").innerHTML =
-      `<li class="log-item error">⚠️ Error loading logs. Please try again later.</li>`;
+    const consoleLogs = document.getElementById("consoleLogs");
+    if (consoleLogs) {
+      consoleLogs.innerHTML =
+        `<li class="log-item error">⚠️ Error loading logs. Please try again later.</li>`;
+    }
   }
 }
 
@@ -529,7 +521,7 @@ function stopConsoleUpdates() {
   }
 }
 
-// Detect when user leaves the console section
+// Detect when user leaves the console section (assumes elements with class "back-button" exist)
 document.querySelectorAll(".back-button").forEach(button => {
   button.addEventListener("click", stopConsoleUpdates);
 });
