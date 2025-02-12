@@ -128,38 +128,52 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ------------------------------
-  // Shop Section
-  // ------------------------------
-  const showShopButton = document.getElementById('showShopButton');
-  if (showShopButton) {
-    showShopButton.addEventListener('click', async () => {
-      let shopItems = document.getElementById('shopItems');
-      if (!shopItems) {
-        shopItems = document.createElement('div');
-        shopItems.id = 'shopItems';
-        shopItems.className = 'shop-list';
-        document.body.appendChild(shopItems);
-      }
-      try {
-        const response = await fetch('/api/shop');
-        const data = await response.json();
-        shopItems.innerHTML = '';
-        data.forEach(item => {
-          const button = document.createElement('button');
-          button.className = 'shop-item';
-          const description = item.description.replace(
-            /\[([^\]]+)\]\(([^)]+)\)/g,
-            '<a href="$2" target="_blank" class="link">$1</a>'
-          );
-          button.innerHTML = `${item.name} - ⚡${item.price} | Qty: ${item.quantity} | ${description}`;
-          shopItems.appendChild(button);
-        });
-        showSection('shop');
-      } catch (error) {
-        console.error('Error fetching shop data:', error);
-      }
-    });
-  }
+// Shop Section
+// ------------------------------
+const showShopButton = document.getElementById('showShopButton');
+if (showShopButton) {
+  showShopButton.addEventListener('click', async () => {
+    let shopItems = document.getElementById('shopItems');
+    if (!shopItems) {
+      shopItems = document.createElement('div');
+      shopItems.id = 'shopItems';
+      shopItems.className = 'shop-list';
+      document.body.appendChild(shopItems);
+    }
+    try {
+      const response = await fetch('/api/shop');
+      const data = await response.json();
+      shopItems.innerHTML = ''; // Clear any existing content
+
+      data.forEach((item) => {
+        // Create a container for each shop item.
+        const itemContainer = document.createElement('div');
+        itemContainer.className = 'shop-item';
+
+        // Create a span for the item details (name, price, and quantity)
+        const detailsSpan = document.createElement('span');
+        detailsSpan.textContent = `${item.name} - ⚡${item.price} | Qty: ${item.quantity} `;
+        itemContainer.appendChild(detailsSpan);
+
+        // Create a span for the description and replace markdown links with HTML anchors.
+        const descriptionSpan = document.createElement('span');
+        const descriptionHTML = item.description.replace(
+          /\[([^\]]+)\]\(([^)]+)\)/g,
+          '<a href="$2" target="_blank" class="link">$1</a>'
+        );
+        descriptionSpan.innerHTML = descriptionHTML;
+        itemContainer.appendChild(descriptionSpan);
+
+        // Append the shop item container to the main shop list.
+        shopItems.appendChild(itemContainer);
+      });
+
+      showSection('shop');
+    } catch (error) {
+      console.error('Error fetching shop data:', error);
+    }
+  });
+}
 
   // ------------------------------
   // Jobs Section
