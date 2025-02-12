@@ -337,89 +337,122 @@ code {
 /* --------------------------------------------------
    LEADERBOARD
 -------------------------------------------------- */
+/* ------------------------- */
+/* Generic Hover for Lower Ranks (4+) */
+/* ------------------------- */
 .leaderboard-item:not(:nth-child(-n+3)):hover {
-  background-color: var(--list-hover-bg);
-  transform: scale(1.02);
+  background-color: rgba(55, 60, 80, 1); /* Hover background only for lower ranks */
+  transform: scale(1.02);               /* Subtle zoom effect */
 }
 
+/* ------------------------- */
+/* Hover for Top 3 Items (Maintain Background) */
+/* ------------------------- */
 .leaderboard-item:nth-child(-n+3):hover {
-  transform: scale(1.02);
+  transform: scale(1.02);  /* Only scale, background remains unchanged */
 }
 
+/* ------------------------- */
+/* User Link Styling */
+/* ------------------------- */
 .leaderboard-item a {
-  color: var(--text-primary);
+  color: #E0E0E0; /* Light gray for visibility */
   font-weight: 600;
   text-decoration: none;
-  font-size: 0.9rem;
-  padding-bottom: 8px;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9);
+  font-size: 1rem;
+  padding-bottom: 10px;
+  text-shadow: 3px 3px 7px rgba(0, 0, 0, 0.9);
   transition: color 0.3s ease, text-shadow 0.3s ease;
 }
 
+/* Link Hover Effect */
 .leaderboard-item a:hover {
-  color: var(--text-primary);
-  text-shadow: 4px 4px 8px rgba(0, 0, 0, 1);
+  color: #FFD700; /* Bright gold on hover */
+  text-shadow: 7px 7px 11px rgba(0, 0, 0, 1);
 }
 
+/* ------------------------- */
+/* Information Details */
+/* ------------------------- */
 .leaderboard-item span {
-  font-size: 0.8rem;
-  color: var(--text-primary);
-  margin-left: 8px;
+  font-size: 0.9rem;
+  color: #f4f4f9;
+  margin-left: 10px;
 }
 
+/* Ensure smooth transitions for all top-three effects */
 .leaderboard-item:nth-child(-n+3) {
   transition: background-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
 }
 
-/* Top 3 Items with distinct styling */
+/* ------------------------- */
+/* Top Three Items Styling */
+/* ------------------------- */
+
+/* 1st Place Styling */
 .leaderboard-item:nth-child(1) {
-  background-color: var(--accent);
-  color: var(--black);
+  background-color: #ddbc00; /* Gold for 1st place */
+  color: #000; /* Black text for contrast */
   font-weight: bold;
 }
+
+/* 1st Place Hover - Brighter Gold with Fun Effects */
 .leaderboard-item:nth-child(1):hover {
-  background-color: var(--highlight);
-  color: var(--black);
-  transform: scale(1.03) rotate(1deg);
-  box-shadow: 0 0 15px 4px rgba(242, 162, 75, 0.5);
+  background-color: #ffd700; /* Brighter gold on hover */
+  color: #000;
+  transform: scale(1.03) rotate(1deg); /* Slightly larger & rotated */
+  box-shadow: 0 0 20px 5px rgba(255, 215, 0, 0.5); /* Glowing gold shadow */
 }
 
+/* 2nd Place */
 .leaderboard-item:nth-child(2) {
-  background-color: var(--text-primary);
-  color: var(--black);
+  background-color: #c0c0c0; /* Silver */
+  color: #000;
   font-weight: bold;
 }
+
+/* 2nd Place Hover - Brighter Silver with Fun Effects */
 .leaderboard-item:nth-child(2):hover {
-  background-color: var(--accent);
-  color: var(--black);
-  transform: scale(1.03) rotate(-1deg);
-  box-shadow: 0 0 15px 4px rgba(242, 162, 75, 0.5);
+  background-color: #dcdcdc; /* Brighter silver on hover */
+  color: #000;
+  transform: scale(1.03) rotate(-1deg); /* Slight scale & opposite rotation */
+  box-shadow: 0 0 20px 5px rgba(220, 220, 220, 0.5); /* Glowing silver shadow */
 }
 
+/* 3rd Place */
 .leaderboard-item:nth-child(3) {
-  background-color: var(--bg-content);
-  color: var(--text-primary);
+  background-color: #cd7f32; /* Bronze */
+  color: #000;
   font-weight: bold;
 }
+
+/* 3rd Place Hover - Brighter Bronze with Fun Effects */
 .leaderboard-item:nth-child(3):hover {
-  background-color: #3B455E;
-  color: var(--text-primary);
-  transform: scale(1.03) rotate(1deg);
-  box-shadow: 0 0 15px 4px rgba(64, 74, 94, 0.5);
+  background-color: #e2a56d; /* Brighter bronze on hover */
+  color: #000;
+  transform: scale(1.03) rotate(1deg); /* Slight scale & rotation */
+  box-shadow: 0 0 20px 5px rgba(226, 165, 109, 0.5); /* Glowing bronze shadow */
 }
 
-/* Responsive adjustments for Leaderboard */
+
+/* (Optional: Add a hover rule for 3rd place if needed) */
+
+/* ------------------------- */
+/* Responsive Design Adjustments */
+/* ------------------------- */
 @media (max-width: 600px) {
   .leaderboard-item {
     flex-direction: column;
     align-items: flex-start;
-    padding: 8px 12px;
+    padding: 10px 15px;
   }
+
   .leaderboard-item span {
     margin-left: 0;
-    margin-top: 4px;
+    margin-top: 5px;
   }
 }
+
 
 /* --------------------------------------------------
    REFRESH BUTTON
