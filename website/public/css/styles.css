@@ -1,108 +1,222 @@
-/* General styles for the page */
+/* --------------------------------------------------
+   IMPORT PIXEL FONT
+-------------------------------------------------- */
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+/* --------------------------------------------------
+   ROOT VARIABLES
+-------------------------------------------------- */
+:root {
+  /* 1) Overall page background (dusty navy/blue) */
+  --bg-dark: #424A65;
+
+  /* 2) Content boxes or panels (slightly lighter blue) */
+  --bg-content: #50597A;
+
+  /* 3) Primary text (light gray) */
+  --text-primary: #E2E2E2;
+
+  /* 4) Secondary text or placeholders (softer gray) */
+  --text-secondary: #B4B4B4;
+
+  /* 5) Accent color (warm orange) for primary buttons & highlights */
+  --accent: #F2A24B;
+
+  /* 6) Accent hover (darker orange for hover states) */
+  --accent-hover: #D8873F;
+
+  /* 7) “NEW” label or special highlight (slightly brighter orange) */
+  --highlight: #FFB347;
+
+  /* 8) Deep black for text shadows, outlines, or subtle contrasts */
+  --black: #000000;
+
+  /* Derived values for list items */
+  --list-bg: var(--bg-dark);
+  --list-text: var(--text-primary);
+  --list-hover-bg: var(--bg-content);
+}
+
+/* --------------------------------------------------
+   GLOBAL / BODY
+-------------------------------------------------- */
 body {
-  font-family: Arial, sans-serif;
   margin: 0;
   padding: 0;
-  background-color: #1A1D2F; /* Dark navy background */
-  color: #f4f4f9; /* Light text for contrast */
+  background-color: var(--bg-dark); /* Dusty navy/blue */
+  color: var(--text-primary);       /* Light gray for text */
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
   min-height: 100vh;
+
+  /* PIXEL FONT STYLING */
+  font-family: 'Press Start 2P', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  
+
+  /* BLACK OUTLINE AROUND TEXT (Pixel-Art Style) */
+  text-shadow: 
+    1px 1px 0 var(--black),
+    -1px 1px 0 var(--black),
+    1px -1px 0 var(--black),
+    -1px -1px 0 var(--black);
 }
 
-/* Global link styles */
+/* --------------------------------------------------
+   LINKS
+-------------------------------------------------- */
 a {
-  color: #FEDCA8;
+  color: var(--text-primary); /* Light gray for links */
   text-decoration: none;
   transition: color 0.3s ease;
-  text-shadow: 0px 0px 8px rgba(255, 255, 255, 0.8); /* Strong glowing effect */
+  /* If you prefer the same black outline for links, remove the glow & reuse the text-shadow. 
+     But here's a "glow" effect: */
+  text-shadow: 0px 0px 8px rgba(226, 226, 226, 0.8);
 }
-
-
 
 a:hover {
-  color: #E69349;; /* Slightly lighter blue on hover */
-  text-decoration: underline; /* Add underline on hover */
+  color: var(--accent); /* Warm orange on hover */
+  text-decoration: underline;
 }
 
-/* Header styles */
+/* --------------------------------------------------
+   HEADER
+-------------------------------------------------- */
 header {
   text-align: center;
   margin: 20px 0;
 }
 
 header h1 {
-  font-size: 3rem; /* Larger and bolder title */
-  color: #3399ff; /* Brighter blue for title */
+  font-size: 3rem;
+  color: var(--accent); /* Accent for the title */
   margin-bottom: 15px;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5); /* Subtle shadow for depth */
+  /* If you want an even bolder outline on the header, 
+     you can layer on an extra shadow, or leave as-is. */
+  text-shadow: 
+    2px 2px 0 var(--black),
+    -2px 2px 0 var(--black),
+    2px -2px 0 var(--black),
+    -2px -2px 0 var(--black);
 }
 
 header p {
   font-size: 1rem;
-  color: #cfcfcf; /* Softer gray for description */
+  color: var(--text-primary); /* Light gray description */
 }
 
-/* Buttons */
-button {
-  padding: 12px 24px; /* Slightly larger buttons */
-  font-size: 1.1rem; /* Bigger font for buttons */
-  border-radius: 8px; /* More rounded corners */
-  cursor: pointer;
-  border: none;
-  margin: 8px; /* Increased spacing */
-  background-color: #007bff; /* Consistent blue buttons */
-  color: white;
-  font-weight: bold; /* Bold text for buttons */
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Shadow for depth */
-  transition: background-color 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease;
-}
-
-button:hover {
-  background-color: #0056b3; /* Darker blue on hover */
-  transform: translateY(-3px); /* More pronounced hover lift */
-  box-shadow: 0 6px 8px rgba(0, 0, 0, 0.3); /* Enhanced shadow on hover */
-}
-
+/* --------------------------------------------------
+   BUTTONS
+-------------------------------------------------- */
+button,
 .back-button {
-  background-color: #6c757d; /* Neutral gray for back buttons */
-  color: white;
+  /* Spacing and sizing */
+  padding: 12px 24px;
+  font-size: 1.1rem;
+  margin: 8px;
+  cursor: pointer;
+
+  /* SQUARE CORNERS */
+  border-radius: 0;
+
+  /* No border, warm orange background */
+  border: none;
+  background-color: var(--accent);
+
+  /* SOLID BLACK TEXT (no shadow) */
+  color: var(--black);
+  text-shadow: none;
+  font-weight: bold;
+  font-family: 'Press Start 2P', sans-serif;
+  text-transform: uppercase;
+  font-size: small;
+  /* Slight 3D effect */
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+
+  /* Hover and click transitions */
+  transition: background-color 0.3s ease,
+              transform 0.2s ease,
+              box-shadow 0.3s ease;
+}
+
+button:hover,
+back-button:hover {
+  /* Darker orange on hover */
+  background-color: var(--accent-hover);
+  transform: translateY(-3px);
+  box-shadow: 0 6px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* "Back" button variant 
+.back-button {
+  background-color: var(--bg-content);
+  color: var(--black);
+  text-shadow: none;
 }
 
 .back-button:hover {
-  background-color: #5a6268;
+  background-color: #3B455E;
 }
+*/
 
-/* Mobile Responsiveness */
+/* --------------------------------------------------
+   MOBILE RESPONSIVENESS
+-------------------------------------------------- */
 @media (max-width: 600px) {
   .button-container {
     display: flex;
-    flex-direction: column; /* Stack buttons vertically */
+    flex-direction: column;
     align-items: center;
-    padding: 0 5px; /* Minimal padding to maximize screen space */
+    padding: 0 5px;
   }
 
   button {
-    font-size: 0.8rem; /* Smaller font size for tight layouts */
-    margin: 5px 0; /* Minimal vertical spacing */
-    padding: 6px 10px; /* Compact padding */
-    width: 85%; /* Slightly smaller width for a clean look */
-    max-width: 250px; /* Smaller max width for compact screens */
+    font-size: 0.8rem;
+    margin: 5px 0;
+    padding: 6px 10px;
+    width: 85%;
+    max-width: 250px;
   }
 }
 
 
-
-/* General Content Styling */
+/* --------------------------------------------------
+   CONTENT SECTIONS
+-------------------------------------------------- */
 .content {
-  background-color: #27393F; /* Dark blue */
-  color: #FAFAFA; /* Light text */
-  padding: 2rem;
-  border-radius: 8px;
-  max-width: 800px;
-  margin: 0 auto;
+  text-align: center;
+  margin: 20px;
+  padding: 30px;
+  background-color: var(--bg-content); /* Slightly lighter blue */
+  color: var(--text-primary);           /* Light gray text */
+  border-radius: 15px;
+  box-shadow: 0 8px 12px rgba(0, 0, 0, 0.2);
+  display: none; /* Hidden by default */
+}
+
+#landingPage {
+  display: block; /* Visible by default */
+}
+
+.content h2 {
+  font-size: 2rem;
+  margin-bottom: 20px;
+  color: var(--text-primary);
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.content ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+.content ul li {
+  margin: 10px 0;
+  font-size: 1.1rem;
+  color: var(--text-primary);
 }
 
 /* Section Title */
@@ -110,12 +224,12 @@ button:hover {
   font-size: 1.5rem;
   font-weight: bold;
   margin-bottom: 1rem;
-  border-bottom: 2px solid #FEDCA8; /* Orange */
+  border-bottom: 2px solid var(--text-primary);
   padding-bottom: 0.5rem;
   text-align: center;
 }
 
-/* Info List Styling */
+/* Info List */
 .info-list {
   list-style: none;
   padding: 0;
@@ -125,88 +239,48 @@ button:hover {
 .info-list li {
   display: flex;
   align-items: flex-start;
-  gap: 1rem; /* Space between star and text */
+  gap: 1rem;
   margin-bottom: 1.5rem;
 }
 
 .icon {
-  color: #E69349; /* Orange */
+  color: var(--accent); /* Accent for icons */
   font-size: 1.5rem;
   flex-shrink: 0;
 }
 
 code {
-  background-color: #111;
-  color: #FAFAFA;
+  background-color: var(--black);
+  color: var(--text-primary);
   padding: 0.2rem 0.4rem;
   border-radius: 4px;
   font-family: 'Courier New', Courier, monospace;
 }
 
-
-/* Content sections */
-.content {
-  text-align: center;
-  margin: 20px;
-  padding: 30px; /* Increased padding */
-  background-color: #2b2f47; /* Slightly lighter background */
-  border-radius: 15px; /* More rounded corners */
-  box-shadow: 0 8px 12px rgba(0, 0, 0, 0.2); /* Deeper shadow for cards */
-  display: none; /* Hidden by default */
-}
-
-#landingPage {
-  display: block; /* Ensure landing page is visible */
-}
-
-.content h2 {
-  font-size: 2rem; /* Larger headings */
-  margin-bottom: 20px;
-  color: #f4f4f9; /* Light text for headings */
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5); /* Subtle shadow for text */
-}
-
-.content ul {
-  list-style-type: none;
-  padding: 0;
-}
-
-.content ul li {
-  margin: 10px 0; /* Increased spacing */
-  font-size: 1.1rem; /* Slightly larger text */
-  color: #d1d5db; /* Softer gray for list items */
-}
-
-
-
-
-/* Admin item styles */
+/* --------------------------------------------------
+   ADMIN ITEM
+-------------------------------------------------- */
 .admin-item span {
   margin-right: 8px;
   font-weight: bold;
-  color: #63baff; 
+  color: var(--accent); /* Accent for admin labels */
 }
 
-/* ------------------------- */
-/* Generic Hover for Lower Ranks (4+) */
-/* ------------------------- */
+/* --------------------------------------------------
+   LEADERBOARD
+-------------------------------------------------- */
 .leaderboard-item:not(:nth-child(-n+3)):hover {
-  background-color: rgba(55, 60, 80, 1); /* Hover background only for lower ranks */
-  transform: scale(1.02);               /* Subtle zoom effect */
+  background-color: var(--list-hover-bg);
+  transform: scale(1.02);
 }
 
-/* ------------------------- */
-/* Hover for Top 3 Items (Maintain Background) */
-/* ------------------------- */
 .leaderboard-item:nth-child(-n+3):hover {
-  transform: scale(1.02);  /* Only scale, background remains unchanged */
+  transform: scale(1.02);
 }
 
-/* ------------------------- */
-/* User Link Styling */
-/* ------------------------- */
+/* Leaderboard links */
 .leaderboard-item a {
-  color: #E0E0E0; /* Light gray for visibility */
+  color: var(--text-primary);
   font-weight: 600;
   text-decoration: none;
   font-size: 1rem;
@@ -215,135 +289,105 @@ code {
   transition: color 0.3s ease, text-shadow 0.3s ease;
 }
 
-/* Link Hover Effect */
 .leaderboard-item a:hover {
-  color: #FFD700; /* Bright gold on hover */
+  color: var(--text-primary);
   text-shadow: 7px 7px 11px rgba(0, 0, 0, 1);
 }
 
-/* ------------------------- */
-/* Information Details */
-/* ------------------------- */
+/* Leaderboard item details */
 .leaderboard-item span {
   font-size: 0.9rem;
-  color: #f4f4f9;
+  color: var(--text-primary);
   margin-left: 10px;
 }
 
-/* Ensure smooth transitions for all top-three effects */
 .leaderboard-item:nth-child(-n+3) {
   transition: background-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
 }
 
-/* ------------------------- */
-/* Top Three Items Styling */
-/* ------------------------- */
-
-/* 1st Place Styling */
+/* Top 3 Items (distinct styling for top ranks) */
 .leaderboard-item:nth-child(1) {
-  background-color: #ddbc00; /* Gold for 1st place */
-  color: #000; /* Black text for contrast */
+  background-color: var(--accent); /* Warm orange */
+  color: var(--black);
   font-weight: bold;
 }
-
-/* 1st Place Hover - Brighter Gold with Fun Effects */
 .leaderboard-item:nth-child(1):hover {
-  background-color: #ffd700; /* Brighter gold on hover */
-  color: #000;
-  transform: scale(1.03) rotate(1deg); /* Slightly larger & rotated */
-  box-shadow: 0 0 20px 5px rgba(255, 215, 0, 0.5); /* Glowing gold shadow */
+  background-color: var(--highlight); /* Slightly brighter orange on hover */
+  color: var(--black);
+  transform: scale(1.03) rotate(1deg);
+  box-shadow: 0 0 20px 5px rgba(242, 162, 75, 0.5);
 }
 
-/* 2nd Place */
 .leaderboard-item:nth-child(2) {
-  background-color: #c0c0c0; /* Silver */
-  color: #000;
+  background-color: var(--text-primary); /* Light gray */
+  color: var(--black);
   font-weight: bold;
 }
-
-/* 2nd Place Hover - Brighter Silver with Fun Effects */
 .leaderboard-item:nth-child(2):hover {
-  background-color: #dcdcdc; /* Brighter silver on hover */
-  color: #000;
-  transform: scale(1.03) rotate(-1deg); /* Slight scale & opposite rotation */
-  box-shadow: 0 0 20px 5px rgba(220, 220, 220, 0.5); /* Glowing silver shadow */
+  background-color: var(--accent);
+  color: var(--black);
+  transform: scale(1.03) rotate(-1deg);
+  box-shadow: 0 0 20px 5px rgba(242, 162, 75, 0.5);
 }
 
-/* 3rd Place */
 .leaderboard-item:nth-child(3) {
-  background-color: #cd7f32; /* Bronze */
-  color: #000;
+  background-color: var(--bg-content); /* Slightly lighter blue */
+  color: var(--text-primary);
   font-weight: bold;
 }
-
-/* 3rd Place Hover - Brighter Bronze with Fun Effects */
 .leaderboard-item:nth-child(3):hover {
-  background-color: #e2a56d; /* Brighter bronze on hover */
-  color: #000;
-  transform: scale(1.03) rotate(1deg); /* Slight scale & rotation */
-  box-shadow: 0 0 20px 5px rgba(226, 165, 109, 0.5); /* Glowing bronze shadow */
+  /* A manually chosen darker blue for hover state */
+  background-color: #3B455E;
+  color: var(--text-primary);
+  transform: scale(1.03) rotate(1deg);
+  box-shadow: 0 0 20px 5px rgba(64, 74, 94, 0.5);
 }
 
-
-/* (Optional: Add a hover rule for 3rd place if needed) */
-
-/* ------------------------- */
-/* Responsive Design Adjustments */
-/* ------------------------- */
+/* Responsive Leaderboard */
 @media (max-width: 600px) {
   .leaderboard-item {
     flex-direction: column;
     align-items: flex-start;
     padding: 10px 15px;
   }
-  
   .leaderboard-item span {
     margin-left: 0;
     margin-top: 5px;
   }
 }
 
-
-
-/* Refresh Button Styles */
+/* --------------------------------------------------
+   REFRESH BUTTON
+-------------------------------------------------- */
 .refresh-button {
   display: inline-block;
-  width: 150px; /* Set the button width */
-  height: 40px; /* Set the button height */
-  line-height: 40px; /* Align text vertically */
-  font-size: 1rem; /* Set font size */
+  width: 150px;
+  height: 40px;
+  line-height: 40px;
+  font-size: 1rem;
   font-weight: bold;
   text-align: center;
-  background-color: #4e97d8;
-  color: #fafafa;
+  background-color: var(--accent);
+  color: var(--black);
   border: none;
   border-radius: 5px;
   cursor: pointer;
-  padding: 0; /* Remove padding if using line-height */
-  text-decoration: none; /* Remove underline from text */
-  margin: 0 auto; /* Center the button horizontally */
-  margin-bottom: 15px; /* Add space below the button */
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); /* Raised effect */
-  transition: all 0.3s ease; /* Smooth transition for hover effect */
+  padding: 0;
+  text-decoration: none;
+  margin: 0 auto;
+  margin-bottom: 15px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
 }
 
 .refresh-button:hover {
-  background-color: #3b81b6; /* Slightly darker shade on hover */
-  box-shadow: 0 6px 10px rgba(0, 0, 0, 0.4); /* More pronounced raised effect */
-  transform: translateY(-2px); /* Slight lift */
+  background-color: var(--accent-hover);
+  box-shadow: 0 6px 10px rgba(0, 0, 0, 0.4);
+  transform: translateY(-2px);
 }
 
 /* --------------------------------------------------
-   CSS Variables for List Sections
--------------------------------------------------- */
-:root {
-  --list-bg: #27393F;       /* Background for list items */
-  --list-text: #fafafa;     /* Text color for list items */
-  --list-hover-bg: #405D67; /* Hover background for list items */
-}
-
-/* --------------------------------------------------
-   General List Containers (Leaderboard, Admin, Shop, Job, Giveaway)
+   GENERAL LIST CONTAINERS
 -------------------------------------------------- */
 #leaderboardList,
 .admin-list,
@@ -351,219 +395,203 @@ code {
 .shop-list,
 .job-list {
   display: flex;
-  flex-direction: column; /* Stack items vertically */
-  gap: 15px;              /* Consistent spacing between items */
-  align-items: center;    /* Center items horizontally */
-  width: 100%;            /* Full container width */
-  max-width: 600px;       /* Limit container width */
-  margin: 0 auto;         /* Center the container */
-  padding: 15px;          /* Add padding inside the container */
-  box-sizing: border-box; /* Include padding in total width */
+  flex-direction: column;
+  gap: 15px;
+  align-items: center;
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 15px;
+  box-sizing: border-box;
 }
 
 /* --------------------------------------------------
-   General Item Styles (Leaderboard, Admin, Shop, Job, Giveaway)
+   GENERAL ITEM STYLES
 -------------------------------------------------- */
 .leaderboard-item,
 .admin-item,
 .shop-item,
 .giveaway-item,
 .job-item {
-  display: flex;                /* Flexbox layout */
-  flex-direction: column;       /* Stack children vertically */
-  align-items: center;          /* Center content horizontally */
-  justify-content: center;      /* Center content vertically */
-  background-color: var(--list-bg); /* Dark navy background */
-  color: var(--list-text);          /* Light text color */
-  padding: 20px;                /* Uniform padding */
-  margin-bottom: 15px;          /* Spacing between items */
-  border-radius: 10px;          /* Rounded corners */
-  text-align: center;           /* Center all text */
-  font-size: 1rem;              /* Standard font size */
-  word-break: break-word;       /* Ensure text wraps if too long */
-  cursor: pointer;              /* Pointer cursor on hover */
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Subtle shadow */
-  transition: background-color 0.3s ease, transform 0.2s ease; /* Smooth hover effects */
-  max-width: 500px;             /* Limit item width */
-  width: 100%;                  /* Full width for responsiveness */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--list-bg);
+  color: var(--list-text);
+  padding: 20px;
+  margin-bottom: 15px;
+  border-radius: 10px;
+  text-align: center;
+  font-size: 1rem;
+  word-break: break-word;
+  cursor: pointer;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+  transition: background-color 0.3s ease, transform 0.2s ease;
+  max-width: 500px;
+  width: 100%;
 }
 
-/* Even Slimmer Job List Items */
-.admin-item,
-.job-item {
-  padding: 5px 10px;        /* Further reduce padding */
-  margin-bottom: 5px;       /* Minimize gap between items */
-  font-size: 0.85rem;       /* Maintain readability */
-  max-width: 380px;         /* Reduce max width for a slimmer look */
-  width: 85%;               /* Maintain responsiveness */
-  min-height: auto;         /* Ensure no extra height */
-  line-height: 1.2;         /* Reduce line spacing */
-  border-radius: 5px;       /* Less rounded corners */
-}
-
-/* Reduce spacing in the job list container */
-.admin-item,
-.job-list {
-  gap: 5px;                 /* Reduce spacing between list items */
-  padding: 5px;             /* Decrease padding inside the container */
-}
-
-/* Reduce space between text elements inside the job item */
-.admin-item,
-.job-item p {
-  margin: 2px 0;            /* Tighten spacing between paragraphs */
-  padding: 0;               /* Remove extra padding */
-}
-/* --------------------------------------------------
-   Hover Effects for Items
--------------------------------------------------- */
 .leaderboard-item:hover,
 .admin-item:hover,
 .shop-item:hover,
 .giveaway-item:hover,
 .job-item:hover {
-  background-color: var(--list-hover-bg); /* Brighter background on hover */
-  transform: scale(1.02);                 /* Subtle zoom effect */
+  background-color: var(--list-hover-bg);
+  transform: scale(1.02);
 }
 
+/* Slimmer Admin/Job Items */
+.admin-item,
+.job-item {
+  padding: 5px 10px;
+  margin-bottom: 5px;
+  font-size: 0.85rem;
+  max-width: 380px;
+  width: 85%;
+  min-height: auto;
+  line-height: 1.2;
+  border-radius: 5px;
+}
 
+.admin-item,
+.job-list {
+  gap: 5px;
+  padding: 5px;
+}
 
-/* Specific Giveaway Item Styles */
+.admin-item p,
+.job-item p {
+  margin: 2px 0;
+  padding: 0;
+}
+
+/* --------------------------------------------------
+   GIVEAWAY ITEM
+-------------------------------------------------- */
 .giveaway-item {
-  display: flex; /* Use flexbox for layout */
-  flex-direction: column; /* Stack content vertically */
-  align-items: flex-start; /* Align content to the left */
-  gap: 10px; /* Add spacing between elements */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
 }
 
-/* Giveaway Name */
 .giveaway-name {
-  color: #63baff;
-  font-size: 1.2rem; /* Slightly smaller font size */
-  font-weight: bold; /* Bold text */
-  margin: 5px 0; /* Reduce space above and below */
-  text-align: center; /* Center-align text */
-  width: 100%; /* Make the name span full width */
-  margin-top: -15px; /* Adjust spacing above the name */
+  color: var(--accent); /* Warm orange for giveaway names */
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin: 5px 0;
+  text-align: center;
+  width: 100%;
+  margin-top: -15px;
 }
 
-/* Giveaway Content (Details like link, time, prize) */
 .giveaway-content {
-  display: flex; /* Flexbox for horizontal layout */
-  justify-content: space-between; /* Space between content sections */
-  align-items: center; /* Align items vertically */
-  width: 100%; /* Full width */
-  gap: 10px; /* Add spacing between sections */
-  text-align: left; /* Align text to the left */
-  margin-top: -10px; /* Fine-tune spacing for compact layout */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  gap: 10px;
+  text-align: left;
+  margin-top: -10px;
 }
 
-
-/* Link and Details Styling */
 .giveaway-content a {
-  flex: 1; /* Allow link to take equal space */
-  text-decoration: none; /* Remove underline from link */
+  flex: 1;
+  text-decoration: none;
+  color: var(--list-text);
 }
 
 .giveaway-content p {
-  margin: 0; /* Remove default margin for paragraphs */
-  flex: 1; /* Allow sections to stretch evenly */
-  text-align: left; /* Align text to the left */
+  margin: 0;
+  flex: 1;
+  text-align: left;
 }
 
-/* Additional Giveaway Info Section */
 .giveaway-info {
-  padding-top: 20px; /* Space above additional info */
-  text-align: center; /* Center align info section */
-  font-size: 0.9rem; /* Slightly smaller font size */
+  padding-top: 20px;
+  text-align: center;
+  font-size: 0.9rem;
 }
 
-/* Responsive Design */
 @media (max-width: 600px) {
   .giveaway-content {
-    flex-direction: column; /* Stack content vertically on smaller screens */
-    gap: 10px; /* Reduce spacing for smaller screens */
-    align-items: flex-start; /* Align to the left */
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
   }
 }
 
-
-
-
-
-
-/*timer*/
+/* --------------------------------------------------
+   COUNTDOWN / TIMER
+-------------------------------------------------- */
 .countdown-container {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background-color: #27393F; /* Dark theme for the background */
+  background-color: var(--bg-dark);
   padding: 0.8rem;
-  border-radius: 6px; /* Rounded corners */
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2); /* Light shadow for depth */
-  color: #fafafa;
-  width: 80%; /* Compact width */
-  margin: 0 auto; /* Center alignment */
+  border-radius: 6px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  color: var(--text-primary);
+  width: 80%;
+  margin: 0 auto;
 }
 
 .countdown-container h3 {
-  font-family: 'Poppins', sans-serif; /* Consistent font family */
-  font-size: 1.2rem; /* Slightly smaller heading size */
+  font-family: 'Poppins', sans-serif;
+  font-size: 1.2rem;
   margin: 0;
-  color: #E69349; /* Accent color */
+  color: var(--accent);
   text-align: center;
 }
 
 .countdown-timer {
   font-family: 'Poppins', sans-serif;
-  font-size: 1.6rem; /* Compact and readable */
+  font-size: 1.6rem;
   font-weight: bold;
-  color:  #27393F;
-  background: linear-gradient(90deg, #FEDCA8, #E69349); /* Gradient effect */
-  padding: 0.4rem 0.8rem; /* Compact padding */
+  color: var(--bg-dark);
+  background: linear-gradient(90deg, var(--text-primary), var(--accent));
+  padding: 0.4rem 0.8rem;
   border-radius: 4px;
   text-align: center;
-  box-shadow: 0 0 10px rgba(239, 163, 70, 0.8); /* Glow effect */
+  box-shadow: 0 0 10px rgba(242, 162, 75, 0.8);
 }
 
-.countdown-container h3, .countdown-timer {
-  margin: 0.2rem 0; /* Reduce spacing between elements */
+.countdown-container h3,
+.countdown-timer {
+  margin: 0.2rem 0;
 }
-
 
 @keyframes pulse {
   0%, 100% {
-    box-shadow: 0 0 10px rgba(239, 163, 70, 0.8);
+    box-shadow: 0 0 10px rgba(242, 162, 75, 0.8);
   }
   50% {
-    box-shadow: 0 0 20px rgba(239, 163, 70, 1);
+    box-shadow: 0 0 20px rgba(242, 162, 75, 1);
   }
 }
 
-
-
-/*
-
-CONSOLE SECTION
-
-*/
+/* --------------------------------------------------
+   CONSOLE SECTION
+-------------------------------------------------- */
 .console-box {
   width: 100%;
   max-width: 700px;
   height: 350px;
   overflow-y: auto;
   overflow-x: hidden;
-  background: #1a2733; /* Dark blue background */
-  color: #66b3ff; /* Soft neon blue text */
-  border: 2px solid #3388cc; /* Blue border */
+  background: var(--bg-dark);
+  color: var(--text-primary);
+  border: 2px solid var(--bg-content);
   border-radius: 8px;
   padding: 8px;
   margin: 10px auto;
   font-family: 'Courier New', Courier, monospace;
   font-size: 12px;
   line-height: 1.4;
-  box-shadow: 0px 0px 10px rgba(51, 136, 204, 0.6); /* Softer blue glow */
+  box-shadow: 0px 0px 10px rgba(64, 74, 94, 0.6);
   white-space: normal;
   word-wrap: break-word;
   display: flex;
@@ -576,16 +604,16 @@ CONSOLE SECTION
 }
 
 .console-box::-webkit-scrollbar-thumb {
-  background: #3388cc;
+  background: var(--bg-content);
   border-radius: 10px;
 }
 
 .console-box::-webkit-scrollbar-thumb:hover {
-  background: #226699; /* Darker blue on hover */
+  background: #3B455E;
 }
 
 .console-box::-webkit-scrollbar-track {
-  background: #12202d; /* Blends with dark blue theme */
+  background: var(--black);
 }
 
 .console-list {
@@ -596,9 +624,9 @@ CONSOLE SECTION
 
 .log-item {
   padding: 4px 6px;
-  border-bottom: 1px solid rgba(102, 179, 255, 0.3);
+  border-bottom: 1px solid rgba(226, 226, 226, 0.3);
   font-size: 12px;
-  background: rgba(51, 136, 204, 0.1); /* Subtle blue tint */
+  background: rgba(80, 89, 122, 0.1);
   line-height: 1.4;
   white-space: normal;
   word-wrap: break-word;
@@ -618,13 +646,13 @@ CONSOLE SECTION
     max-height: 60vh !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
-    font-size: 14px !important; /* Increase for readability */
+    font-size: 14px !important;
     padding: 12px !important;
     word-wrap: break-word !important;
-    white-space: pre-wrap !important; /* Ensures text flows normally */
+    white-space: pre-wrap !important;
     text-align: left !important;
-    line-height: 1.6 !important; /* More breathing room */
-    display: block !important; /* Prevents flexbox interference */
+    line-height: 1.6 !important;
+    display: block !important;
   }
 
   .log-item {
@@ -646,24 +674,24 @@ CONSOLE SECTION
   }
 }
 
-
-
+/* --------------------------------------------------
+   FOOTER
+-------------------------------------------------- */
 footer {
-  background-color: #27393F;
-  color: #fafafa;
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
   text-align: center;
   padding: 1rem 0;
-  font-size: 0.9rem;
+  font-size: small;
   width: 100vw;
   position: relative;
   left: 0;
 }
-
 
 footer p {
   margin: 0.5rem 0;
 }
 
 footer p strong {
-  color: #E69349; /* Accent color for the "Disclaimer" text */
+  color: var(--accent);
 }
