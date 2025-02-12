@@ -680,6 +680,18 @@ code {
   }
 }
 
+/* ---------------------------------------------
+   Daily Tasks Section - Smaller Text for Task List
+--------------------------------------------- */
+#dailyTasksList,
+#dailyTasksList li,
+#dailyTasksList li a,
+#dailyTasksList li code {
+  font-size: 0.5rem !important;  /* Adjust the size as desired */
+  line-height: 1.2 !important;   /* Optional: adjust line spacing if needed */
+}
+
+
 /* --------------------------------------------------
    CONSOLE SECTION
 -------------------------------------------------- */
