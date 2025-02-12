@@ -419,16 +419,31 @@ function saveMessageCounts() {
 }
 
 // ==========================
+// 🗓️ Helper: Get today's date in EST (without DST handling)
+// ==========================
+function getESTDateString() {
+  // 5 hours behind UTC for standard EST (not accounting for DST)
+  const now = new Date();
+  const estTime = new Date(now.getTime() - (5 * 60 * 60 * 1000));
+  // Convert to YYYY-MM-DD string
+  return estTime.toISOString().split('T')[0];
+}
+
+// ==========================
 // ⏳ SCHEDULE MIDNIGHT EST RESET
 // ==========================
 function scheduleMidnightReset() {
   const now = new Date();
-  const estOffset = -5 * 60 * 60 * 1000; // EST offset in milliseconds
-  const estMidnight = new Date(now.toISOString().split('T')[0] + 'T05:00:00.000Z'); // Midnight EST
+  // We'll keep the approach of resetting at 05:00 UTC for "EST midnight" (no DST)
+  // If you need DST logic, use a timezone library.
+  
+  // This line calculates "today's midnight in EST" as 05:00 UTC
+  // (Manually ignoring DST changes.)
+  const estMidnight = new Date(now.toISOString().split('T')[0] + 'T05:00:00.000Z');
 
   let timeUntilMidnight = estMidnight.getTime() - now.getTime();
   if (timeUntilMidnight < 0) {
-    // If past midnight EST, schedule for the next day
+    // If it's already past 05:00 UTC, schedule for the next day
     timeUntilMidnight += 24 * 60 * 60 * 1000;
   }
 
@@ -455,7 +470,8 @@ client.on('messageCreate', async (message) => {
   if (!(await userHasAllowedRole(message.author, message.guild))) return;
 
   const userId = message.author.id;
-  const today = new Date().toISOString().split('T')[0];
+  // Use EST-based date here
+  const today = getESTDateString();
 
   // Get or initialize user message data
   if (!userMessageCounts.has(userId)) {
@@ -464,7 +480,7 @@ client.on('messageCreate', async (message) => {
 
   const userData = userMessageCounts.get(userId);
 
-  // Reset data if it's a new day
+  // Reset data if it's a new day (based on EST date)
   if (userData.date !== today) {
     userData.date = today;
     userData.count = 0;
@@ -510,20 +526,22 @@ client.on('messageReactionAdd', async (reaction, user) => {
   if (reaction.message.channel.id !== REACTION_REWARD_CHANNEL) return;
 
   const userId = user.id;
-  const today = new Date().toISOString().split('T')[0];
+  // Use EST-based date here
+  const today = getESTDateString();
 
   // Get or initialize user data
   if (!userMessageCounts.has(userId)) {
-    userMessageCounts.set(userId, { date: today, count: 0, reacted: false });
+    userMessageCounts.set(userId, { date: today, count: 0, reacted: false, firstMessage: false });
   }
 
   const userData = userMessageCounts.get(userId);
 
-  // Reset reaction reward eligibility if it's a new day
+  // Reset reaction reward eligibility if it's a new day (EST)
   if (userData.date !== today) {
     userData.date = today;
     userData.count = 0;
     userData.reacted = false; // Reset daily reaction eligibility
+    userData.firstMessage = false; // If needed, though not strictly required for reaction logic
   }
 
   // If the user has already received a reaction reward today, deny it
