@@ -705,8 +705,8 @@ code {
 #dailyTasksList li,
 #dailyTasksList li a,
 #dailyTasksList li code {
-  font-size: 0.5rem !important;  /* Adjust the size as desired */
-  line-height: 1.2 !important;   /* Optional: adjust line spacing if needed */
+  font-size: 0.66rem !important;  /* Adjust the size as desired */
+  line-height: 1.6 !important;   /* Optional: adjust line spacing if needed */
 }
 
 
