@@ -268,12 +268,33 @@ async function fetchGiveaways() {
   try {
     const res = await fetch('/api/giveaways/active');
     const giveaways = await res.json();
+
     if (!giveaways.length) {
       giveawayItems.innerHTML = '<p>No active giveaways at the moment.</p>';
     } else {
+      // Create a refresh button and build HTML for each giveaway.
       let html = `<button id="refreshGiveaways" class="refresh-button">🔄 Refresh</button>`;
+
+      // Formatting options: Month (full), Day (numeric), Hour & Minute (12-hour clock)
+      const options = {
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: true,
+      };
+
+      // Reverse the list if you want the newest first.
       giveaways.reverse().forEach((g) => {
-        const endTime = new Date(parseInt(g.end_time)).toLocaleString();
+        // Ensure the end_time is in milliseconds.
+        let timestamp = parseInt(g.end_time, 10);
+        if (timestamp.toString().length === 10) {
+          timestamp *= 1000;
+        }
+
+        // Format the date in the user's local time zone.
+        const endTime = new Date(timestamp).toLocaleString(undefined, options);
+
         const giveawayLink = `https://discord.com/channels/${SERVER_ID}/${g.channel_id}/${g.message_id}`;
         html += `
           <div class="giveaway-item">
@@ -291,8 +312,14 @@ async function fetchGiveaways() {
           </div>
         `;
       });
+
       giveawayItems.innerHTML = html;
-      document.getElementById('refreshGiveaways').addEventListener('click', fetchGiveaways);
+      
+      // Attach the refresh event to the refresh button.
+      const refreshButton = document.getElementById('refreshGiveaways');
+      if (refreshButton) {
+        refreshButton.addEventListener('click', fetchGiveaways);
+      }
     }
   } catch (error) {
     console.error('Error fetching giveaways:', error);
@@ -303,7 +330,7 @@ async function fetchGiveaways() {
 if (showGiveawayListButton) {
   showGiveawayListButton.addEventListener('click', () => {
     fetchGiveaways();
-    showSection('giveawayList');  // Assumes showSection() is defined elsewhere
+    showSection('giveawayList'); // Assumes showSection() is defined elsewhere
   });
 }
 
