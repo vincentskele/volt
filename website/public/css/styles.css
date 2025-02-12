@@ -638,7 +638,7 @@ code {
   width: 90%;
   max-width: 400px;
   margin: 10px auto;
-  font-family: 'Press Start 2P';
+  font-family: 'VT323';
   size:small;
 }
 
@@ -651,16 +651,20 @@ code {
 }
 
 .countdown-timer {
-
-  font-size: 1.2rem;
+  font-family: 'Press Start 2P', cursive;
+  font-size: 1.5rem;
   font-weight: bold;
-  color: black;
+  color: #404A65; /* Extracted from image */
   background: linear-gradient(90deg, var(--text-primary), var(--accent));
-  padding: 0.3rem 0.6rem;
-  border-radius: 4px;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
   text-align: center;
   box-shadow: 0 0 8px rgba(242, 162, 75, 0.8);
+  letter-spacing: 1px;
 }
+
+
+
 
 .countdown-container h3,
 .countdown-timer {
