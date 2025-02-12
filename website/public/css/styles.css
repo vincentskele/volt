@@ -249,28 +249,32 @@ button:hover,
 /* --------------------------------------------------
    CONTENT SECTIONS
 -------------------------------------------------- */
+#quickSteps {
+  display: block;
+}
+
+
 .content {
   text-align: center;
-  margin: 15px;
+  margin: 15px auto; /* Centering */
   padding: 20px;
-  background-color: var(--bg-content);
+  background-color: var(--bg-content); /* Ensure background is present */
   color: var(--text-primary);
-  border-radius: 10px;
-  box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
-  display: none;  /* Hidden by default */
+  border-radius: 10px; /* Ensure rounded corners */
+  box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2); /* Add shadow to match */
   width: 90%;
   max-width: 600px;
+  display: block; /* Make sure it's visible */
 }
+
+
 
 #landingPage {
   display: block; /* Visible by default */
 }
 
 .content h2 {
-  font-size: 1.5rem;        /* Reduced heading size */
-  margin-bottom: 15px;
-  color: var(--text-primary);
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+  font-size: 1.6rem !important;
 }
 
 .content ul {
@@ -279,10 +283,11 @@ button:hover,
 }
 
 .content ul li {
-  margin: 8px 0;
-  font-size: 1rem;          /* Slightly smaller list items */
-  color: var(--text-primary);
+  font-size: 0.8rem !important;
+  padding: 2px;
 }
+
+
 
 /* Section Title */
 .section-title {
@@ -319,11 +324,17 @@ button:hover,
 code {
   background-color: var(--black);
   color: var(--text-primary);
-  padding: 0.1rem 0.3rem;
-  border-radius: 4px;
+  padding: 0.05rem 0.2rem; /* Slimmer padding */
+  border-radius: 2px;
   font-family: 'Courier New', Courier, monospace;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
+  line-height: 1;
+  vertical-align: middle; /* Aligns better with surrounding text */
+  position: relative;
+  top: -2px; /* Moves it up slightly */
 }
+
+
 
 /* --------------------------------------------------
    ADMIN ITEM
@@ -562,6 +573,8 @@ code {
   margin: 2px 0;
 }
 
+
+
 /* --------------------------------------------------
    GIVEAWAY ITEM
 -------------------------------------------------- */
@@ -797,7 +810,7 @@ code {
 -------------------------------------------------- */
 footer {
   background-color: #537ADE;
-  font-size: 0.6rem;
+  font-size: 0.5rem;
   color: var(--text-primary);
   text-align: center;
   padding: 0.8rem 0;
