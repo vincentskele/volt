@@ -27,7 +27,7 @@ module.exports = {
             name: '**Volt System**',
             value:
               `⚡ **volts** [@user]: Check Solarians Volts.\n` +
-              `⚡ **leaderboard**: Shows top 10 most well charged Solarians.\n` +
+              `⚡ **leaderboard**: Shows top 10 most charged Solarians.\n` +
               `⚡ **give** [@user]: transfers Volts to a user.\n` +
               `⚡ **deposit <amount>**: Trasnfer Volts into your battery bank.\n` +
               `⚡ **withdraw <amount>**: Trasnfer Volts from your battery bank.`,
@@ -46,7 +46,7 @@ module.exports = {
             name: '**Jobs and Giveaway**',
             value:
               `💼 **work**: Get assigned a random task from the joblist.\n` +
-              `💼 **joblist**: Show the current list of jobs with asignees.\n` +
+              `💼 **tasklist**: Show the current list of jobs with asignees.\n` +
               `🛍️ **giveaway**: View the list of giveaways and see which ones youre entered in.`,
             inline: false,
           },
@@ -54,9 +54,9 @@ module.exports = {
             name: '**Admin Commands**',
             value:
               `💻🔑 **giveaway-create <name> <duration> <time unit> <winners> <prize> <repeat #>**: Create a new giveaway.\n` +
-              `💻🔑 **add-job <description>**: Add to the joblist.\n` +
-              `💻🔑 **remove-job <JobID>**: Remove from the joblist.\n` +
-              `💻🔑 **complete-job @user <amount>**: Mark users job as complete and gives Volts.\n` +
+              `💻🔑 **add-task <description>**: Add to the task list.\n` +
+              `💻🔑 **remove-task <JobID>**: Remove from the task list.\n` +
+              `💻🔑 **complete-task @user <amount>**: Mark users task as complete and gives Volts.\n` +
               `💻🔑 **remove-item <name>**: Remove shop item.\n` +
               `💻🔑 **add-item <price> <name> - <desc>**: Add a shop item.`,
             inline: false,

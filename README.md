@@ -47,7 +47,7 @@ Follow these steps to set up PizzaBot on your server:
 ## Commands Overview
 
 ### Point system
-- **`balance`**: Check point balances.
+- **`volts`**: Check Volt balances.
 - **`deposit <amount>`**: Move Volts from Solarian to their battery bank.
 - **`withdraw <amount>`**: Move Volts from battery bank to Solarian.
 - **`drain @username`**: Attempt to drain another Solarian's Volts.
@@ -58,19 +58,21 @@ Follow these steps to set up PizzaBot on your server:
 - **`shop`**: View items available for sale.
 - **`buy <item>`**: Purchase an item.
 - **`inventory`**: Check your or another Solarians's inventory.
-- **`remove-item <name>`**: Remove an item (Admin).
+
 
 ### Jobs and Giveaway
-- **`joblist`**: View all jobs.
-- **`work`**: Assign yourself a random job.
+- **`tasklist`**: View all jobs (with task selection).
+- **`work`**: Assign yourself a random task.
 - **`giveaway`**: View the list of giveaways and see which ones youre entered in.
+- **`quit`**: Abandon your assigned task. 
 
 ### Admin Commands
 - **`give-item @Solarian <item>`**: Send an item to another Solarian.
 - **`redeem <item>`**: Redeem an item from your inventory.
-- **`add-job <desc>`**: Create a job.
+- **`add-task <desc>`**: Create a task.
 - **`add-item <price> <name> - <desc>`**: Add an item.
 - **`complete-job @username <jobID> <point amount>`**: Mark a job as complete.
+- **`remove-item <name>`**: Remove an item (Admin).
 
 ## License
 This project is open-source and available under the MIT License.

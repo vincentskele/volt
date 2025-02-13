@@ -4,7 +4,7 @@ const db = require('../../db');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('add-job')
+    .setName('add-task')
     .setDescription('Add a new job to the job list (Admin Only).')
     .addStringOption(option =>
       option.setName('description')

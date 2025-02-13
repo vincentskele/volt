@@ -3,12 +3,12 @@ const db = require('../../db'); // Adjust the path if needed
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('removejob')
-    .setDescription('Admin command: Remove a job from the job list.')
+    .setName('remove-task')
+    .setDescription('Admin command: Remove a task from the list.')
     .addIntegerOption(option =>
       option
         .setName('jobid')
-        .setDescription('The ID of the job to remove.')
+        .setDescription('The ID of the task to remove.')
         .setRequired(true)
     ),
 
@@ -32,11 +32,11 @@ module.exports = {
 
     const jobId = interaction.options.getInteger('jobid');
     if (!jobId) {
-      return interaction.reply({ content: "Job ID is required.", ephemeral: true });
+      return interaction.reply({ content: "Task ID is required.", ephemeral: true });
     }
 
     try {
-      // First, remove any job assignments for this job.
+      // First, remove any job assignments for this Task.
       await new Promise((resolve, reject) => {
         db.db.run(
           `DELETE FROM job_assignees WHERE jobID = ?`,

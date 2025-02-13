@@ -5,8 +5,8 @@ const { points, formatCurrency } = require('../../points'); // Import points mod
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('complete-job')
-    .setDescription('Complete a job and charge up a user’s Solarian (Admin Only).')
+    .setName('complete-task')
+    .setDescription('Complete a task and charge up a user’s Solarian (Admin Only).')
     .addUserOption(option =>
       option.setName('user')
         .setDescription('The user to charge up')
