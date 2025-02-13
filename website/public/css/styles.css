@@ -611,12 +611,12 @@ code {
   margin-top: -8px;
 }
 
-.giveaway-content a {
+/*.giveaway-content a {
   flex: 1;
   font-family: 'Courier New', Courier, monospace;
   text-decoration: none;
   color: var(--list-text);
-}
+}*/
 
 .giveaway-content p {
   margin: 0;
