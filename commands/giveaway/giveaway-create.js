@@ -1,4 +1,5 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require('discord.js');
+const path = require('path');
 const {
   saveGiveaway,
   updateWallet,
@@ -81,14 +82,21 @@ module.exports = {
     const startGiveaway = async (repeatCount) => {
       console.log(`[INFO] Giveaway "${giveawayName}" started! Remaining repeats: ${repeatCount}`);
 
-      // Announce the giveaway.
-      const announcement = `🎉 **GIVEAWAY: ${giveawayName}** 🎉\n\n` +
-        `React with 🎉 to participate!\n` +
-        `**Duration:** ${duration} ${timeUnit}\n` +
-        `**Winners:** ${winners}\n` +
-        `**Prize:** ${prizeInput}`;
+      // Resolve the banner image path relative to this file.
+      const bannerPath = path.join(__dirname, '../banner.png');
+      const bannerAttachment = new AttachmentBuilder(bannerPath, { name: 'banner.png' });
+      
+      // Create an embed for the giveaway announcement.
+      const giveawayEmbed = new EmbedBuilder()
+        .setTitle(`🎉 GIVEAWAY: ${giveawayName} 🎉`)
+        .setDescription(`React with 🎉 to participate!\n\n**Duration:** ${duration} ${timeUnit}\n**Winners:** ${winners}\n**Prize:** ${prizeInput}`)
+        .setImage('attachment://banner.png')
+        .setColor(0xffa500); // You can change the color as needed
 
-      const giveawayMessage = await interaction.channel.send(announcement);
+      const giveawayMessage = await interaction.channel.send({
+        embeds: [giveawayEmbed],
+        files: [bannerAttachment]
+      });
       await giveawayMessage.react('🎉');
 
       const endTime = Date.now() + durationMs;
@@ -186,7 +194,7 @@ module.exports = {
     // Start the first giveaway.
     startGiveaway(repeat);
 
-    // Confirm the giveaway creation to the command user.
+    // Confirm the giveaway creation to the command user (private reply).
     await interaction.reply({
       content: `✅ Giveaway "${giveawayName}" started! It will end in ${duration} ${timeUnit}. ${repeat > 0 ? `It will repeat ${repeat} time(s).` : ''}`,
       ephemeral: true
