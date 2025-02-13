@@ -464,7 +464,6 @@ scheduleMidnightReset();
 // 📩 MESSAGE-BASED REWARDS + FIRST MESSAGE BONUS
 // ==========================
 client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
   if (!message.guild) return;
   // Allowed roles filter check:
   if (!(await userHasAllowedRole(message.author, message.guild))) return;
