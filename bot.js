@@ -355,10 +355,26 @@ client.on('messageCreate', async (message) => {
 });
 
 // ==========================
-// HANDLE SLASH COMMANDS
+// HANDLE SLASH COMMANDS & AUTOCOMPLETE
 // ==========================
 client.on('interactionCreate', async (interaction) => {
+  // First, handle autocomplete interactions
+  if (interaction.isAutocomplete()) {
+    const command = client.commands.get(interaction.commandName);
+    if (command && typeof command.autocomplete === 'function') {
+      try {
+        await command.autocomplete(interaction);
+      } catch (error) {
+        console.error(`Error handling autocomplete for ${interaction.commandName}:`, error);
+      }
+    }
+    return; // Exit after processing autocomplete
+  }
+
+  // Then, handle slash commands
   if (!interaction.isCommand()) return;
+
+  // Check for allowed roles in guild channels
   if (interaction.guild && !(await userHasAllowedRole(interaction.user, interaction.guild))) {
     return interaction.reply({ content: '🚫 You do not have permission to use this command.', ephemeral: true });
   }
@@ -383,6 +399,7 @@ client.on('interactionCreate', async (interaction) => {
     }
   }
 });
+
 
 // ==========================
 // 🎁 DAILY REWARDS SYSTEM SETUP
