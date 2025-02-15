@@ -26,12 +26,11 @@ module.exports = {
         .setTimestamp();
 
       inventory.forEach(item => {
-        embed.addFields({
-          name: `• ${item.name}`,
-          value: `Quantity: ${item.quantity}`,
+          embed.addFields({            name: `• ${item.name}`,
+          value: `**Quantity:** ${item.quantity}\n**Description:** ${item.description || 'No description available'}`,
           inline: false,
         });
-      });
+      });        
 
       return interaction.reply({ embeds: [embed] });
     } catch (err) {
