@@ -127,53 +127,71 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ------------------------------
-// Shop Section
-// ------------------------------
-const showShopButton = document.getElementById('showShopButton');
-if (showShopButton) {
-  showShopButton.addEventListener('click', async () => {
-    let shopItems = document.getElementById('shopItems');
-    if (!shopItems) {
-      shopItems = document.createElement('div');
-      shopItems.id = 'shopItems';
-      shopItems.className = 'shop-list';
-      document.body.appendChild(shopItems);
-    }
-    try {
-      const response = await fetch('/api/shop');
-      const data = await response.json();
-      shopItems.innerHTML = ''; // Clear any existing content
-
-      data.forEach((item) => {
-        // Create a container for each shop item.
-        const itemContainer = document.createElement('div');
-        itemContainer.className = 'shop-item';
-
-        // Create a span for the item details (name, price, and quantity)
-        const detailsSpan = document.createElement('span');
-        detailsSpan.textContent = `${item.name} - ⚡${item.price} | Qty: ${item.quantity} `;
-        itemContainer.appendChild(detailsSpan);
-
-        // Create a span for the description and replace markdown links with HTML anchors.
-        const descriptionSpan = document.createElement('span');
-        const descriptionHTML = item.description.replace(
-          /\[([^\]]+)\]\(([^)]+)\)/g,
-          '<a href="$2" target="_blank" class="link">$1</a>'
-        );
-        descriptionSpan.innerHTML = descriptionHTML;
-        itemContainer.appendChild(descriptionSpan);
-
-        // Append the shop item container to the main shop list.
-        shopItems.appendChild(itemContainer);
-      });
-
-      showSection('shop');
-    } catch (error) {
-      console.error('Error fetching shop data:', error);
-    }
-  });
-}
+  const showShopButton = document.getElementById('showShopButton');
+  if (showShopButton) {
+    showShopButton.addEventListener('click', async () => {
+      let shopItems = document.getElementById('shopItems');
+      if (!shopItems) {
+        shopItems = document.createElement('div');
+        shopItems.id = 'shopItems';
+        shopItems.className = 'shop-list';
+        document.body.appendChild(shopItems);
+      }
+      try {
+        const response = await fetch('/api/shop');
+        const data = await response.json();
+        shopItems.innerHTML = ''; // Clear any existing content
+  
+        data.forEach((item) => {
+          // Create a container for each shop item.
+          const itemContainer = document.createElement('div');
+          itemContainer.className = 'shop-item';
+          itemContainer.style.cursor = 'pointer'; // Make it clear it's clickable
+  
+          // Create a span for the item details
+          const detailsSpan = document.createElement('span');
+          detailsSpan.textContent = `${item.name} - ⚡${item.price} | Qty: ${item.quantity} `;
+          itemContainer.appendChild(detailsSpan);
+  
+          // Create a span for the description with markdown support
+          const descriptionSpan = document.createElement('span');
+          const descriptionHTML = item.description.replace(
+            /\[([^\]]+)\]\(([^)]+)\)/g,
+            '<a href="$2" target="_blank" class="link">$1</a>'
+          );
+          descriptionSpan.innerHTML = descriptionHTML;
+          itemContainer.appendChild(descriptionSpan);
+  
+          // Add a click event to copy command and open Discord
+          itemContainer.addEventListener('click', async () => {
+            const command = `/buy "${item.name}"`;
+  
+            try {
+              await navigator.clipboard.writeText(command);
+              console.log(`Command copied: ${command}`);
+              alert(`Copied to clipboard: ${command}`);
+            } catch (err) {
+              console.error('Clipboard copy failed:', err);
+              alert('Failed to copy to clipboard. Please copy manually.');
+            }
+  
+            // Open Discord in a new tab
+            const discordURL = 'https://discord.com/channels/1014872741846974514/1336779333641179146';
+            console.log(`Opening Discord: ${discordURL}`);
+            window.open(discordURL, '_blank');
+          });
+  
+          // Append to shop list
+          shopItems.appendChild(itemContainer);
+        });
+  
+        showSection('shop');
+      } catch (error) {
+        console.error('Error fetching shop data:', error);
+      }
+    });
+  }
+  
 
   // ------------------------------
   // Jobs Section
