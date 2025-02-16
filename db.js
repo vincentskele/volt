@@ -218,6 +218,43 @@ function initializeDatabase() {
     console.log('Database initialization complete.');
   });
 }
+
+    // Raffle table
+    db.run(`
+      CREATE TABLE IF NOT EXISTS raffles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        channel_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        prize TEXT NOT NULL,
+        cost INTEGER NOT NULL,
+        quantity INTEGER NOT NULL,
+        winners INTEGER NOT NULL,
+        end_time INTEGER NOT NULL
+      )
+    `, (err) => {
+      if (err) {
+        console.error('Error creating raffles table:', err);
+      } else {
+        console.log('Raffles table is ready.');
+      }
+    });
+    
+    db.run(`
+      CREATE TABLE IF NOT EXISTS raffle_entries (
+        entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        raffle_id INTEGER NOT NULL,
+        user_id TEXT NOT NULL,
+        FOREIGN KEY (raffle_id) REFERENCES raffles(id) ON DELETE CASCADE
+      )
+    `, (err) => {
+      if (err) {
+        console.error('Error creating raffle_entries table:', err);
+      } else {
+        console.log('Raffle entries table is ready.');
+      }
+    });
+    
+
 // =========================================================================
 // Core Economy Functions
 // =========================================================================
@@ -827,34 +864,59 @@ function getInventory(userID) {
   });
 }
 
-function addItemToInventory(userID, itemID, quantity = 1) {
+async function addItemToInventory(userID, itemID, quantity = 1) {
   return new Promise((resolve, reject) => {
-    db.get(`SELECT quantity FROM inventory WHERE userID = ? AND itemID = ?`, [userID, itemID], (err, row) => {
+    db.get(`SELECT name FROM items WHERE itemID = ?`, [itemID], (err, row) => {
       if (err) {
         console.error('Error finding existing inventory row:', err);
         return reject(new Error('Failed to find existing inventory.'));
       }
-      if (!row) {
-        db.run(`INSERT INTO inventory (userID, itemID, quantity) VALUES (?, ?, ?)`, [userID, itemID, quantity], (insertErr) => {
-          if (insertErr) {
-            console.error('Error inserting new inventory row:', insertErr);
-            return reject(new Error('Failed to add item to inventory.'));
-          }
-          resolve();
-        });
-      } else {
-        const newQuantity = row.quantity + quantity;
-        db.run(`UPDATE inventory SET quantity = ? WHERE userID = ? AND itemID = ?`, [newQuantity, userID, itemID], (updateErr) => {
-          if (updateErr) {
-            console.error('Error updating inventory quantity:', updateErr);
-            return reject(new Error('Failed to update inventory quantity.'));
-          }
-          resolve();
-        });
-      }
+
+      if (!row) return reject(new Error('Item does not exist.'));
+      const itemName = row.name;
+
+      // Add the item to inventory
+      db.get(`SELECT quantity FROM inventory WHERE userID = ? AND itemID = ?`, [userID, itemID], (err, invRow) => {
+        if (err) {
+          console.error('Error finding existing inventory row:', err);
+          return reject(new Error('Failed to find existing inventory.'));
+        }
+
+        if (!invRow) {
+          db.run(`INSERT INTO inventory (userID, itemID, quantity) VALUES (?, ?, ?)`, [userID, itemID, quantity], (insertErr) => {
+            if (insertErr) {
+              console.error('Error inserting new inventory row:', insertErr);
+              return reject(new Error('Failed to add item to inventory.'));
+            }
+
+            // ✅ If the item is a raffle ticket, auto-enter the user
+            if (itemName.includes('Ticket')) {
+              autoEnterRaffle(userID, itemName);
+            }
+
+            resolve();
+          });
+        } else {
+          const newQuantity = invRow.quantity + quantity;
+          db.run(`UPDATE inventory SET quantity = ? WHERE userID = ? AND itemID = ?`, [newQuantity, userID, itemID], (updateErr) => {
+            if (updateErr) {
+              console.error('Error updating inventory quantity:', updateErr);
+              return reject(new Error('Failed to update inventory quantity.'));
+            }
+
+            // ✅ If the item is a raffle ticket, auto-enter the user
+            if (itemName.includes('Ticket')) {
+              autoEnterRaffle(userID, itemName);
+            }
+
+            resolve();
+          });
+        }
+      });
     });
   });
 }
+
 
 function redeemItem(userID, itemName) {
   return new Promise((resolve, reject) => {
@@ -1066,6 +1128,382 @@ async function clearGiveawayEntries(giveawayId) {
   });
 }
 
+//================
+// 🎟️ Raffles
+//================
+
+/**
+ * TABLE SETUP (for reference):
+ *
+ * CREATE TABLE IF NOT EXISTS raffles (
+ *   id INTEGER PRIMARY KEY AUTOINCREMENT,
+ *   channel_id TEXT NOT NULL,
+ *   name TEXT NOT NULL,
+ *   prize TEXT NOT NULL,
+ *   cost INTEGER NOT NULL,
+ *   quantity INTEGER NOT NULL,
+ *   winners INTEGER NOT NULL,
+ *   end_time INTEGER NOT NULL
+ * );
+ *
+ * CREATE TABLE IF NOT EXISTS raffle_entries (
+ *   entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
+ *   raffle_id INTEGER NOT NULL,
+ *   user_id TEXT NOT NULL,
+ *   FOREIGN KEY (raffle_id) REFERENCES raffles(id) ON DELETE CASCADE
+ * );
+ *
+ * CREATE TABLE IF NOT EXISTS items (
+ *   itemID INTEGER PRIMARY KEY AUTOINCREMENT,
+ *   name TEXT UNIQUE NOT NULL,
+ *   description TEXT,
+ *   price INTEGER NOT NULL,
+ *   isAvailable INTEGER NOT NULL DEFAULT 1,
+ *   quantity INTEGER NOT NULL DEFAULT 1
+ * );
+ *
+ * CREATE TABLE IF NOT EXISTS inventory (
+ *   userID TEXT NOT NULL,
+ *   itemID INTEGER NOT NULL,
+ *   FOREIGN KEY (itemID) REFERENCES items(itemID)
+ * );
+ *
+ * (Plus any other tables you use for wallet, etc.)
+ */
+
+//--------------------------------------
+// 1) Raffle Entry Methods
+//--------------------------------------
+
+/**
+ * getRaffleParticipants(raffleId)
+ * Returns an array of row objects for each ticket:
+ * [{ entry_id, raffle_id, user_id }, ...].
+ *
+ * This is more future-proof if you need to remove
+ * a single winning ticket while keeping the user's other tickets.
+ */
+async function getRaffleParticipants(raffleId) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT entry_id, raffle_id, user_id
+       FROM raffle_entries
+       WHERE raffle_id = ?`,
+      [raffleId],
+      (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows || []);
+      }
+    );
+  });
+}
+
+/**
+ * addRaffleEntry(raffleId, userId)
+ * Inserts a new row for each ticket purchased.
+ * Allows multiple entries per user for the same raffle.
+ */
+async function addRaffleEntry(raffleId, userId) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `INSERT INTO raffle_entries (raffle_id, user_id) VALUES (?, ?)`,
+      [raffleId, userId],
+      (err) => {
+        if (err) return reject(err);
+        resolve();
+      }
+    );
+  });
+}
+
+/**
+ * clearRaffleEntries(raffleId)
+ * Removes all entries for a specific raffle.
+ */
+async function clearRaffleEntries(raffleId) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `DELETE FROM raffle_entries WHERE raffle_id = ?`,
+      [raffleId],
+      (err) => {
+        if (err) return reject(err);
+        resolve();
+      }
+    );
+  });
+}
+
+//--------------------------------------
+// 2) Creating & Fetching Raffles
+//--------------------------------------
+
+/**
+ * createRaffle(channelId, name, prize, cost, quantity, winners, endTime)
+ * Creates a new raffle in the "raffles" table,
+ * Also adds (or increments) a "RaffleName Ticket" to the shop.
+ */
+async function createRaffle(channelId, name, prize, cost, quantity, winners, endTime) {
+  return new Promise((resolve, reject) => {
+    // Ensure no other raffle with the same name is still active
+    db.get(
+      `SELECT * FROM raffles
+       WHERE name = ?
+       AND end_time > ?`,
+      [name, Date.now()],
+      (err, existingRaffle) => {
+        if (err) return reject(err);
+        if (existingRaffle) {
+          return reject(`🚫 A raffle named "${name}" is already running!`);
+        }
+
+        // Insert a new raffle row
+        db.run(
+          `INSERT INTO raffles (channel_id, name, prize, cost, quantity, winners, end_time)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [channelId, name, prize, cost, quantity, winners, endTime],
+          function (err) {
+            if (err) return reject(err);
+
+            const raffleId = this.lastID; // SQLite "last inserted row id"
+
+            // Add (or increment) the Raffle Ticket in the shop
+            // "ON CONFLICT(name)" ensures if it exists, we update quantity
+            db.run(
+              `INSERT INTO items (name, description, price, isAvailable, quantity)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(name) DO UPDATE SET quantity = quantity + ?`,
+              [
+                `${name} Ticket`,
+                `Entry ticket for the ${name} raffle. Buy as many as you want!`,
+                cost,
+                1, // isAvailable
+                quantity,
+                quantity // increment if it exists
+              ],
+              (err) => {
+                if (err) {
+                  console.error(`⚠️ Error adding raffle ticket item to shop:`, err);
+                  // Not a fatal error to reject, but you can decide
+                }
+              }
+            );
+
+            resolve(raffleId);
+          }
+        );
+      }
+    );
+  });
+}
+
+/**
+ * getRaffleByName(name)
+ * Fetches an active raffle by its name (end_time > now).
+ * Useful for auto-entering users when they buy a "RaffleName Ticket".
+ */
+async function getRaffleByName(name) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT * FROM raffles
+       WHERE name = ?
+       AND end_time > ?`,
+      [name, Date.now()],
+      (err, row) => {
+        if (err) return reject(err);
+        resolve(row || null);
+      }
+    );
+  });
+}
+
+/**
+ * getRaffleById(raffleId)
+ * Fetches a raffle by its ID (used during conclusion).
+ */
+async function getRaffleById(raffleId) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT * FROM raffles
+       WHERE id = ?`,
+      [raffleId],
+      (err, row) => {
+        if (err) return reject(err);
+        resolve(row || null);
+      }
+    );
+  });
+}
+
+/**
+ * getActiveRaffles()
+ * Returns all raffles that haven't ended yet (end_time > now).
+ */
+async function getActiveRaffles() {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT *
+       FROM raffles
+       WHERE end_time > ?`,
+      [Date.now()],
+      (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows || []);
+      }
+    );
+  });
+}
+
+//--------------------------------------
+// 3) Auto-Entering a Raffle
+//--------------------------------------
+
+/**
+ * autoEnterRaffle(userID, ticketName)
+ * Called when a user buys a "RaffleName Ticket" from the shop.
+ * Finds the raffle by name and calls addRaffleEntry.
+ */
+async function autoEnterRaffle(userID, ticketName) {
+  const raffleName = ticketName.replace(' Ticket', '').trim();
+
+  try {
+    const raffle = await getRaffleByName(raffleName);
+    if (!raffle) {
+      console.error(`❌ No active raffle found for ticket: ${ticketName}`);
+      return;
+    }
+
+    await addRaffleEntry(raffle.id, userID);
+    console.log(`✅ User ${userID} auto-entered into raffle "${raffleName}"`);
+  } catch (error) {
+    console.error(`❌ Error auto-entering user ${userID} into raffle:`, error);
+  }
+}
+
+//--------------------------------------
+// 4) Removing Raffle Shop Item
+//--------------------------------------
+
+/**
+ * removeRaffleShopItem(raffleName)
+ * Removes the "RaffleName Ticket" item from the shop,
+ * and clears that item from all user inventories.
+ */
+async function removeRaffleShopItem(raffleName) {
+  return new Promise((resolve, reject) => {
+    const ticketName = `${raffleName} Ticket`;
+
+    db.serialize(() => {
+      // 4a) Remove the item from the "items" table
+      db.run(`DELETE FROM items WHERE name = ?`, [ticketName], function (err) {
+        if (err) {
+          console.error(`⚠️ Error removing raffle shop item "${ticketName}":`, err);
+          return reject(`🚫 Failed to remove raffle item.`);
+        }
+        console.log(`✅ Raffle shop item "${ticketName}" removed successfully.`);
+
+        // 4b) Remove that ticket from user inventories
+        db.run(
+          `DELETE FROM inventory
+           WHERE itemID IN (
+             SELECT itemID FROM items WHERE name = ?
+           )`,
+          [ticketName],
+          function (err) {
+            if (err) {
+              console.error(`⚠️ Error clearing raffle tickets from inventories:`, err);
+              return reject(`🚫 Failed to remove raffle tickets from users.`);
+            }
+            console.log(`✅ All "${ticketName}" tickets removed from user inventories.`);
+            resolve();
+          }
+        );
+      });
+    });
+  });
+}
+
+//--------------------------------------
+// 5) Conclude a Raffle
+//--------------------------------------
+
+/**
+ * concludeRaffle(raffleId, channel)
+ * - Fetches the raffle by ID
+ * - Gets all participant "ticket" rows
+ * - Shuffles & picks winners
+ * - Awards currency or item
+ * - Removes ticket shop item & clears entries
+ */
+async function concludeRaffle(raffleId, channel) {
+  try {
+    const raffle = await getRaffleById(raffleId);
+    if (!raffle) {
+      console.error(`❌ Raffle ${raffleId} not found in DB.`);
+      return;
+    }
+
+    // 5a) Fetch participant rows
+    const participants = await getRaffleParticipants(raffleId);
+    if (participants.length === 0) {
+      await channel.send(`🚫 The **${raffle.name}** raffle ended, but no one entered.`);
+      await removeRaffleShopItem(raffle.name);
+      await clearRaffleEntries(raffleId);
+      return;
+    }
+
+    console.log(`🎟️ Raffle "${raffle.name}" has ${participants.length} total tickets.`);
+
+    // 5b) Shuffle & pick winners (limit by raffle.winners)
+    //     If raffle.winners > participants.length, we'll just pick them all.
+    const shuffled = participants.sort(() => Math.random() - 0.5);
+    const winningEntries = shuffled.slice(0, raffle.winners);
+
+    if (winningEntries.length === 0) {
+      console.error(`❌ No winners selected for raffle "${raffle.name}"`);
+      return;
+    }
+
+    // 5c) Award the prizes
+    if (!isNaN(raffle.prize)) {
+      // Prize is numeric currency (e.g., coins/points)
+      const prizeAmount = parseInt(raffle.prize, 10);
+      for (const ticket of winningEntries) {
+        await db.updateWallet(ticket.user_id, prizeAmount);
+        console.log(`💰 ${ticket.user_id} won ${prizeAmount} coins!`);
+      }
+    } else {
+      // Prize is a shop item
+      const shopItem = await db.getShopItemByName(raffle.prize);
+      if (shopItem) {
+        for (const ticket of winningEntries) {
+          await db.addItemToInventory(ticket.user_id, shopItem.itemID);
+          console.log(`🎁 ${ticket.user_id} won "${shopItem.name}"!`);
+        }
+      } else {
+        console.error(`❌ Could not find shop item "${raffle.prize}"`);
+      }
+    }
+
+    // 5d) Announce winners in the channel
+    //     Use <@ID> mention so Discord displays the username
+    const winnerMentions = winningEntries.map(entry => `<@${entry.user_id}>`).join(', ');
+    await channel.send(
+      `🎉 The **${raffle.name}** raffle has ended! Congratulations to: ${winnerMentions}`
+    );
+
+    // 5e) Clean up: remove the raffle shop item & clear entries
+    await removeRaffleShopItem(raffle.name);
+    await clearRaffleEntries(raffleId);
+
+    console.log(`✅ Raffle "${raffle.name}" concluded and cleaned up.`);
+  } catch (err) {
+    console.error(`❌ Error concluding raffle ${raffleId}:`, err);
+  }
+}
+
+
+
+
 
 // =========================================================================
 // Exports
@@ -1095,6 +1533,17 @@ module.exports = {
   getInventory,
   addItemToInventory,
   redeemItem,
+  getRaffleParticipants,
+  addRaffleEntry,
+  clearRaffleEntries,
+  getActiveRaffles,
+  createRaffle,
+  getRaffleByName,
+  getRaffleById,
+  getActiveRaffles,
+  autoEnterRaffle,
+  removeRaffleShopItem,
+  concludeRaffle,
 
   // Jobs
   getActiveJob,

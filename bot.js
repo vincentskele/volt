@@ -577,6 +577,129 @@ client.on('messageReactionAdd', async (reaction, user) => {
 });
 
 // ==========================
+// 🎟️ RAFFLES
+// ==========================
+
+const {
+  addShopItem,
+  getRaffleParticipants,
+  addRaffleEntry,
+  removeRaffleEntry,
+  clearRaffleEntries
+} = require('./db');
+
+client.on('messageReactionAdd', async (reaction, user) => {
+  if (user.bot || reaction.emoji.name !== '🎟️') return;
+  if (reaction.message.guild && !(await userHasAllowedRole(user, reaction.message.guild))) return;
+
+  try {
+    if (reaction.partial) await reaction.fetch();
+    const raffle = await getRaffleParticipants(reaction.message.id);
+    if (!raffle) return;
+
+    await addRaffleEntry(raffle.id, user.id);
+    console.log(`📌 User ${user.id} entered raffle ${raffle.id}`);
+  } catch (err) {
+    console.error('⚠️ Error recording raffle entry:', err);
+  }
+});
+
+client.on('messageReactionRemove', async (reaction, user) => {
+  if (user.bot || reaction.emoji.name !== '🎟️') return;
+  if (reaction.message.guild && !(await userHasAllowedRole(user, reaction.message.guild))) return;
+
+  try {
+    if (reaction.partial) await reaction.fetch();
+    const raffle = await getRaffleParticipants(reaction.message.id);
+    if (!raffle) return;
+
+    await removeRaffleEntry(raffle.id, user.id);
+    console.log(`📌 User ${user.id} left raffle ${raffle.id}`);
+  } catch (err) {
+    console.error('⚠️ Error removing raffle entry:', err);
+  }
+});
+
+async function concludeRaffle(raffle) {
+  try {
+    console.log(`🎟️ Concluding raffle: ${raffle.name}`);
+    const channel = await client.channels.fetch(raffle.channel_id);
+    if (!channel) {
+      console.error(`❌ Channel ${raffle.channel_id} not found.`);
+      return;
+    }
+
+    const message = await channel.messages.fetch(raffle.message_id);
+    if (!message) {
+      console.error(`❌ Raffle message ${raffle.message_id} not found.`);
+      return;
+    }
+
+    const reaction = message.reactions.cache.get('🎟️');
+    if (!reaction) {
+      await channel.send(`🚫 No participants for the raffle **${raffle.name}**.`);
+      return;
+    }
+
+    const usersReacted = await reaction.users.fetch();
+    const participants = usersReacted.filter(user => !user.bot);
+
+    if (participants.size === 0) {
+      await channel.send(`🚫 No valid participants for raffle **${raffle.name}**.`);
+      return;
+    }
+
+    const winners = [];
+    const shuffled = participants.sort(() => 0.5 - Math.random());
+
+    for (let i = 0; i < Math.min(raffle.winners, shuffled.length); i++) {
+      winners.push(shuffled[i]);
+    }
+
+    if (!isNaN(raffle.prize)) {
+      const prizeAmount = parseInt(raffle.prize, 10);
+      for (const winner of winners) {
+        await updateWallet(winner.id, prizeAmount);
+        await channel.send(`🎉 <@${winner.id}> won **${raffle.name}** and received **${prizeAmount}${VOLT_SYMBOL}**!`);
+      }
+    } else {
+      const shopItem = await getShopItemByName(raffle.prize);
+      if (!shopItem) {
+        console.error(`⚠️ Shop item "${raffle.prize}" not found.`);
+        await channel.send(`🚫 Error: Shop item "**${raffle.prize}**" not found.`);
+        return;
+      }
+
+      for (const winner of winners) {
+        await addItemToInventory(winner.id, shopItem.itemID);
+        await channel.send(`🎉 <@${winner.id}> won **${raffle.name}** and received **${shopItem.name}**!`);
+      }
+    }
+
+    await clearRaffleEntries(raffle.id);
+    console.log(`✅ Raffle ${raffle.id} resolved and entries cleared.`);
+  } catch (err) {
+    console.error('⚠️ Error concluding raffle:', err);
+  }
+}
+
+// Restore active raffles on bot startup
+client.once('ready', async () => {
+  console.log('🔄 Restoring active raffles...');
+  const activeRaffles = await getActiveGiveaways(); // Reuse function for raffles
+  for (const raffle of activeRaffles) {
+    const remainingTime = raffle.end_time - Date.now();
+    if (remainingTime > 0) {
+      setTimeout(() => concludeRaffle(raffle), remainingTime);
+      console.log(`📅 Scheduled raffle ${raffle.id} to conclude in ${remainingTime}ms.`);
+    } else {
+      await concludeRaffle(raffle);
+    }
+  }
+});
+
+
+// ==========================
 // EXPORT THE CLIENT
 // ==========================
 module.exports = { client };
