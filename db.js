@@ -1236,6 +1236,9 @@ async function createRaffle(channelId, name, prize, cost, quantity, winners, end
         const raffleId = this.lastID; 
         const ticketName = `${name} Raffle Ticket`;
 
+        // ✅ Description now includes the number of winners
+        const ticketDesc = `Entry ticket for the ${name} raffle. Buy as many as you want! 🏆 ${winners} winner(s) will be selected!`;
+
         // ✅ Single "upsert" query for the raffle ticket
         const insertUpsert = `
           INSERT INTO items (name, description, price, isAvailable, quantity)
@@ -1243,7 +1246,6 @@ async function createRaffle(channelId, name, prize, cost, quantity, winners, end
           ON CONFLICT(name) 
           DO UPDATE SET quantity = items.quantity + excluded.quantity
         `;
-        const ticketDesc = `Entry ticket for the ${name} raffle. Buy as many as you want!`;
         
         db.run(insertUpsert, [ticketName, ticketDesc, cost, quantity], (err2) => {
           if (err2) {
@@ -1257,6 +1259,7 @@ async function createRaffle(channelId, name, prize, cost, quantity, winners, end
     );
   });
 }
+
 
 
 
