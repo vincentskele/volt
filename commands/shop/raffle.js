@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
-const { EmbedBuilder, PermissionsBitField } = require('discord.js');
+const { EmbedBuilder, PermissionsBitField, AutocompleteInteraction } = require('discord.js');
 const db = require('../../db');
 const { points, formatCurrency } = require('../../points');
 
@@ -13,8 +13,9 @@ module.exports = {
         .setRequired(true))
     .addStringOption(option =>
       option.setName('prize')
-        .setDescription('The prize (either a shop item or a Volt amount)')
-        .setRequired(true))
+        .setDescription('Enter a Volt amount (number) or select a shop item')
+        .setRequired(true)
+        .setAutocomplete(true)) // ✅ Enables autocomplete for shop items
     .addIntegerOption(option =>
       option.setName('cost')
         .setDescription(`Ticket cost in ${points.symbol}`)
@@ -41,6 +42,9 @@ module.exports = {
           { name: 'Days', value: 'days' }
         )),
 
+  /**
+   * Handles the raffle command execution.
+   */
   async execute(interaction) {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
       return interaction.reply({ content: '🚫 Only admins can start raffles.', ephemeral: true });
@@ -63,7 +67,15 @@ module.exports = {
     }
 
     const endTime = Date.now() + durationMs;
-    const raffleTicketName = `${raffleName} Raffle Ticket`; // Ensures format
+    const raffleTicketName = `${raffleName} Raffle Ticket`;
+
+    // ✅ Ensure prize is either a number (for Volt) or a valid shop item
+    if (!/^\d+$/.test(prizeInput)) {
+      const shopItem = await db.getShopItemByName(prizeInput);
+      if (!shopItem) {
+        return interaction.reply({ content: '🚫 Invalid prize. Enter a Volt amount (number) or a valid shop item.', ephemeral: true });
+      }
+    }
 
     if (ticketCost <= 0 || ticketQuantity <= 0 || winnersCount <= 0 || durationValue <= 0) {
       return interaction.reply({ content: '🚫 Invalid values. Ensure all inputs are positive.', ephemeral: true });
@@ -98,6 +110,19 @@ module.exports = {
       console.error('⚠️ Raffle Creation Error:', err);
       return interaction.reply({ content: `🚫 Failed to start raffle: ${err.message || err}`, ephemeral: true });
     }
+  },
+
+  /**
+   * Handles autocomplete for available shop items.
+   */
+  async autocomplete(interaction) {
+    const focusedValue = interaction.options.getFocused();
+    const shopItems = await db.getShopItems(); // Fetch available items
+    const filtered = shopItems
+      .map(item => ({ name: item.name, value: item.name }))
+      .filter(choice => choice.name.toLowerCase().includes(focusedValue.toLowerCase()));
+
+    await interaction.respond(filtered.slice(0, 25)); // Discord supports max 25 options
   },
 };
 
