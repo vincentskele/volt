@@ -173,7 +173,7 @@ if (showShopButton) {
           try {
             await navigator.clipboard.writeText(command);
             console.log(`Command copied: ${command}`);
-            alert(`Copied to clipboard: ${command} - Click okay to go to Discord and then paste in your command to buy the item.`);
+            alert(`Copied to clipboard: ${command} - Click OK to go to the discord command, hit paste and send to buy.`);
           } catch (err) {
             console.error('Clipboard copy failed:', err);
             alert('Failed to copy to clipboard. Please copy manually.');
@@ -453,7 +453,7 @@ if (showGiveawayListButton) {
           const command = `%buy "${item.originalName}"`;
           try {
             await navigator.clipboard.writeText(command);
-            alert(`Copied to clipboard: ${command}\n\nClick OK to open Discord and paste the command.`);
+            alert(`Copied to clipboard: ${command}\n\nClick OK to go to the discord command, hit paste and send to buy.`);
           } catch (err) {
             alert("Failed to copy. Please copy manually.");
           }
