@@ -520,7 +520,8 @@ code {
 .admin-item,
 .shop-item,
 .giveaway-item,
-.job-item {
+.job-item,
+.raffle-item {
   font-family: 'Courier New', Courier, monospace;
   display: flex;
   flex-direction: column;
@@ -816,6 +817,24 @@ code {
   body {
     overflow-x: hidden;
   }
+}
+
+.raffle-item-wrapper {
+  display: flex;
+  justify-content: center; /* ✅ Centers horizontally */
+  width: 100%;
+}
+/* Adjust text */
+.raffle-item span {
+  text-align: center;
+  display: block;
+  padding: 5px 0;
+  line-height: 1.4;
+}
+/* Hover effects */
+.raffle-item:hover {
+  background-color: var(--list-hover-bg);
+  transform: scale(1.02);
 }
 
 /* --------------------------------------------------

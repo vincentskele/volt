@@ -127,71 +127,74 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  const showShopButton = document.getElementById('showShopButton');
-  if (showShopButton) {
-    showShopButton.addEventListener('click', async () => {
-      let shopItems = document.getElementById('shopItems');
-      if (!shopItems) {
-        shopItems = document.createElement('div');
-        shopItems.id = 'shopItems';
-        shopItems.className = 'shop-list';
-        document.body.appendChild(shopItems);
-      }
-      try {
-        const response = await fetch('/api/shop');
-        const data = await response.json();
-        shopItems.innerHTML = ''; // Clear any existing content
-  
-        data.forEach((item) => {
-          // Create a container for each shop item.
-          const itemContainer = document.createElement('div');
-          itemContainer.className = 'shop-item';
-          itemContainer.style.cursor = 'pointer'; // Make it clear it's clickable
-  
-          // Create a span for the item details
-          const detailsSpan = document.createElement('span');
-          detailsSpan.textContent = `${item.name} - ⚡${item.price} | Qty: ${item.quantity} `;
-          itemContainer.appendChild(detailsSpan);
-  
-          // Create a span for the description with markdown support
-          const descriptionSpan = document.createElement('span');
-          const descriptionHTML = item.description.replace(
-            /\[([^\]]+)\]\(([^)]+)\)/g,
-            '<a href="$2" target="_blank" class="link">$1</a>'
-          );
-          descriptionSpan.innerHTML = descriptionHTML;
-          itemContainer.appendChild(descriptionSpan);
-  
-          // Add a click event to copy command and open Discord
-          itemContainer.addEventListener('click', async () => {
-            const command = `/buy "${item.name}"`;
-  
-            try {
-              await navigator.clipboard.writeText(command);
-              console.log(`Command copied: ${command}`);
-              alert(`Copied to clipboard: ${command} - Click okay to go to Discord and then paste in your command to buy the item.`);
-            } catch (err) {
-              console.error('Clipboard copy failed:', err);
-              alert('Failed to copy to clipboard. Please copy manually.');
-            }
-  
-            // Open Discord in a new tab
-            const discordURL = 'https://discord.com/channels/1014872741846974514/1336779333641179146';
-            console.log(`Opening Discord: ${discordURL}`);
-            window.open(discordURL, '_blank');
-          });
-  
-          // Append to shop list
-          shopItems.appendChild(itemContainer);
+//===================
+// SHOP SECTION
+//======================
+
+const showShopButton = document.getElementById('showShopButton');
+if (showShopButton) {
+  showShopButton.addEventListener('click', async () => {
+    let shopItems = document.getElementById('shopItems');
+    if (!shopItems) {
+      shopItems = document.createElement('div');
+      shopItems.id = 'shopItems';
+      shopItems.className = 'shop-list';
+      document.body.appendChild(shopItems);
+    }
+    try {
+      const response = await fetch('/api/shop');
+      const data = await response.json();
+      shopItems.innerHTML = ''; // Clear any existing content
+
+      data.forEach((item) => {
+        // Create a container for each shop item.
+        const itemContainer = document.createElement('div');
+        itemContainer.className = 'shop-item';
+        itemContainer.style.cursor = 'pointer'; // Make it clear it's clickable
+
+        // Create a span for the item details
+        const detailsSpan = document.createElement('span');
+        detailsSpan.textContent = `${item.name} - ⚡${item.price} | Qty: ${item.quantity} `;
+        itemContainer.appendChild(detailsSpan);
+
+        // Create a span for the description with markdown support
+        const descriptionSpan = document.createElement('span');
+        const descriptionHTML = item.description.replace(
+          /\[([^\]]+)\]\(([^)]+)\)/g,
+          '<a href="$2" target="_blank" class="link">$1</a>'
+        );
+        descriptionSpan.innerHTML = descriptionHTML;
+        itemContainer.appendChild(descriptionSpan);
+
+        // Add a click event to copy command and open Discord
+        itemContainer.addEventListener('click', async () => {
+          const command = `/buy "${item.name}"`;
+
+          try {
+            await navigator.clipboard.writeText(command);
+            console.log(`Command copied: ${command}`);
+            alert(`Copied to clipboard: ${command} - Click okay to go to Discord and then paste in your command to buy the item.`);
+          } catch (err) {
+            console.error('Clipboard copy failed:', err);
+            alert('Failed to copy to clipboard. Please copy manually.');
+          }
+
+          // Open Discord in a new tab
+          const discordURL = 'https://discord.com/channels/1014872741846974514/1336779333641179146';
+          console.log(`Opening Discord: ${discordURL}`);
+          window.open(discordURL, '_blank');
         });
-  
-        showSection('shop');
-      } catch (error) {
-        console.error('Error fetching shop data:', error);
-      }
-    });
-  }
-  
+
+        // Append to shop list
+        shopItems.appendChild(itemContainer);
+      });
+
+      showSection('shop');
+    } catch (error) {
+      console.error('Error fetching shop data:', error);
+    }
+  });
+}
 
   // ------------------------------
   // Jobs Section
@@ -358,6 +361,123 @@ if (showGiveawayListButton) {
     showSection('giveawayList'); // Assumes showSection() is defined elsewhere
   });
 }
+
+
+//========================
+// Raffles
+//========================
+(function () {
+  // Utility: Show only the specified section
+  const sections = ["landingPage", "rafflesSection"];
+  function showSection(sectionId) {
+    sections.forEach((id) => {
+      document.getElementById(id).style.display = id === sectionId ? "block" : "none";
+    });
+  }
+
+  const showRafflesButton = document.getElementById("showRafflesButton");
+  const rafflesSection = document.getElementById("rafflesSection");
+  const rafflesList = document.getElementById("rafflesList");
+  const rafflesBackButton = rafflesSection.querySelector(".back-button");
+
+  // Prevent multiple API calls
+  let isRaffleListLoading = false;
+
+  // Ensure only one event listener exists
+  showRafflesButton.removeEventListener("click", handleShowRaffles);
+  showRafflesButton.addEventListener("click", handleShowRaffles);
+
+  async function handleShowRaffles() {
+    showSection("rafflesSection");
+    await populateRaffleList();
+  }
+
+  rafflesBackButton.addEventListener("click", () => {
+    showSection("landingPage");
+  });
+
+  async function populateRaffleList() {
+    if (isRaffleListLoading) return;
+    isRaffleListLoading = true;
+
+    rafflesList.innerHTML = ""; // Clears old items before rendering
+
+    try {
+      const response = await fetch("/api/shop");
+      const data = await response.json();
+
+      // Group by name and sum quantities
+      const raffleMap = new Map();
+      data.forEach((item) => {
+        if (item.name.toLowerCase().includes("raffle ticket")) {
+          const normalizedName = item.name.trim().toLowerCase(); // Normalize names
+
+          if (raffleMap.has(normalizedName)) {
+            raffleMap.get(normalizedName).quantity += item.quantity; // Merge quantities
+          } else {
+            raffleMap.set(normalizedName, { ...item, originalName: item.name }); // Store with original name
+          }
+        }
+      });
+
+      const groupedRaffles = Array.from(raffleMap.values());
+
+      if (groupedRaffles.length === 0) {
+        rafflesList.innerHTML =
+          "<p style='text-align: center;'>No raffle tickets available at the moment.</p>";
+        return;
+      }
+
+      // Render unique grouped items
+      groupedRaffles.forEach((item) => {
+        const itemWrapper = document.createElement("div");
+        itemWrapper.className = "raffle-item-wrapper";
+
+        const itemContainer = document.createElement("div");
+        itemContainer.className = "raffle-item";
+        itemContainer.style.cursor = "pointer";
+
+        const detailsSpan = document.createElement("span");
+        detailsSpan.innerHTML = `<strong>${item.originalName}</strong> - ⚡${item.price} | QTY: ${item.quantity}`;
+        itemContainer.appendChild(detailsSpan);
+
+        const descriptionSpan = document.createElement("span");
+        descriptionSpan.innerHTML = item.description.replace(
+          /\[([^\]]+)\]\(([^)]+)\)/g,
+          '<a href="$2" target="_blank" class="link">$1</a>'
+        );
+        itemContainer.appendChild(descriptionSpan);
+
+        // Click event: copy buy command and open Discord
+        itemContainer.addEventListener("click", async () => {
+          const command = `/buy "${item.originalName}"`;
+          try {
+            await navigator.clipboard.writeText(command);
+            alert(`Copied to clipboard: ${command}\n\nClick OK to open Discord and paste the command.`);
+          } catch (err) {
+            alert("Failed to copy. Please copy manually.");
+          }
+          window.open("https://discord.com/channels/1014872741846974514/1336779333641179146", "_blank");
+        });
+
+        itemWrapper.appendChild(itemContainer);
+        rafflesList.appendChild(itemWrapper);
+      });
+    } catch (error) {
+      console.error("Error fetching raffle tickets:", error);
+      rafflesList.innerHTML =
+        "<p style='text-align: center;'>Failed to load raffle tickets. Please try again later.</p>";
+    } finally {
+      isRaffleListLoading = false;
+    }
+  }
+})();
+
+
+
+
+
+
 
 
 // Daily Tasks Countdown Timer (Resets at Midnight EST/EDT)

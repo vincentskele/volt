@@ -42,13 +42,16 @@
 <div id="landingPage" class="content">
   <h2>Welcome to the Vol<span style="margin-left: -6px;"></span>t Dashboard!</h2>
   <div class="buttons">
+    
+    <button id="showGiveawayListButton" class="btn">Giveaway List</button>
+    <button id="showRafflesButton" class="btn">Raffles</button>
+    <button id="showShopButton" class="btn">Shop</button>
+    <button id="showDailyTasksButton" class="btn">Daily Tasks</button>
+    <button id="showJobListButton" class="btn">Task List</button>
     <button id="showLeaderboardButton" class="btn">Leaderboard</button>
     <button id="showAdminListButton" class="btn">Admin List</button>
-    <button id="showShopButton" class="btn">Shop</button>
-    <button id="showJobListButton" class="btn">Task List</button>
-    <button id="showGiveawayListButton" class="btn">Giveaway List</button>
-    <button id="showDailyTasksButton" class="btn">Daily Tasks</button>
     <button id="showConsoleButton" class="btn">Console</button>
+
   </div>
 
 
@@ -70,6 +73,19 @@
 
 
   
+</div>
+
+
+<!-- Raffles Section -->
+<div id="rafflesSection" class="content" style="display: none;">
+  <h2>🎟️ Raffles</h2>
+  <p>Enter raffles and stand a chance to win exclusive prizes!</p>
+
+  <ul id="rafflesList" class="raffles-list">
+    <!-- Raffle items will be dynamically inserted here -->
+  </ul>
+
+  <button class="back-button">Back</button>
 </div>
 
 
@@ -192,6 +208,8 @@
 
   <button class="back-button">Back</button>
 </div>
+
+
 
 <!-- Console Section -->
 <div id="consoleSection" class="content" style="display: none;">
