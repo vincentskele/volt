@@ -1224,6 +1224,8 @@ async function upsertShopItem(price, name, description, quantity) {
  * Creates a new raffle in the "raffles" table,
  * Also adds (or increments) a "RaffleName Ticket" to the shop.
  */
+const { format } = require('date-fns'); // ✅ Import date-fns for formatting
+
 async function createRaffle(channelId, name, prize, cost, quantity, winners, endTime) {
   return new Promise((resolve, reject) => {
     db.run(
@@ -1236,8 +1238,11 @@ async function createRaffle(channelId, name, prize, cost, quantity, winners, end
         const raffleId = this.lastID; 
         const ticketName = `${name} Raffle Ticket`;
 
-        // ✅ Description now includes the number of winners
-        const ticketDesc = `Entry ticket for the ${name} raffle. Buy as many as you want! 🏆 ${winners} winner(s) will be selected!`;
+        // ✅ Format the end date nicely (e.g., "Feb 25 at 3:30 PM")
+        const formattedEndTime = format(new Date(endTime), "MMM d 'at' h:mm a");
+
+        // ✅ Description now includes number of winners AND raffle end time
+        const ticketDesc = `Entry ticket for the ${name} raffle. 🏆 ${winners} winner(s) will be selected! ⏳ Ends on ${formattedEndTime}.`;
 
         // ✅ Single "upsert" query for the raffle ticket
         const insertUpsert = `
