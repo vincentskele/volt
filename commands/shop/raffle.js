@@ -96,7 +96,7 @@ module.exports = {
 
       const embed = new EmbedBuilder()
         .setTitle(`🎟️ Raffle Started: ${raffleName}`)
-        .setDescription(`Prize: **${prizeInput}**\nTicket Cost: **${formatCurrency(ticketCost)}**\nTotal Tickets: **${ticketQuantity}**\n🎉 Ends in **${durationValue} ${timeUnit}**`)
+        .setDescription(`Prize: **${prizeInput}**\nTicket Cost: **${formatCurrency(ticketCost)}**\nTotal Tickets: **${ticketQuantity}**\n🎉 Ends in **${durationValue} ${timeUnit}**\n🏆 Winners: **${winnersCount}**`) // ✅ Winners count added
         .setColor(0xFFD700)
         .setTimestamp();
 
