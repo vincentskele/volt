@@ -168,7 +168,7 @@ if (showShopButton) {
 
         // Add a click event to copy command and open Discord
         itemContainer.addEventListener('click', async () => {
-          const command = `/buy "${item.name}"`;
+          const command = `%buy "${item.name}"`;
 
           try {
             await navigator.clipboard.writeText(command);
@@ -450,7 +450,7 @@ if (showGiveawayListButton) {
 
         // Click event: copy buy command and open Discord
         itemContainer.addEventListener("click", async () => {
-          const command = `/buy "${item.originalName}"`;
+          const command = `%buy "${item.originalName}"`;
           try {
             await navigator.clipboard.writeText(command);
             alert(`Copied to clipboard: ${command}\n\nClick OK to open Discord and paste the command.`);
