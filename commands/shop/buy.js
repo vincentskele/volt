@@ -1,24 +1,8 @@
-// commands/shop/buy.js
-
-// 1) Dependencies / Debug Helpers
-const path = require('path');
-
-// Clear the entire require cache to ensure you get the most recent version of all modules.
-Object.keys(require.cache).forEach(key => delete require.cache[key]);
-
-// Use the absolute path to load the db.js file
-const dbPath = path.join(__dirname, '..', '..', 'db.js');
-const db = require(dbPath);
-
-console.log('DEBUG: Loaded db from =>', require.resolve(dbPath));
-console.log('DEBUG: db object keys =>', Object.keys(db)); // Verify that addItemToInventory appears
-
-// 2) Other imports for the slash command
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { EmbedBuilder } = require('discord.js');
+const db = require('../../db');
 const { points, formatCurrency } = require('../../points');
 
-// 3) Export the Slash Command
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('buy')
@@ -28,25 +12,42 @@ module.exports = {
         .setName('item')
         .setDescription('The name of the item to buy')
         .setRequired(true)
+        .setAutocomplete(true) // Enable autofill for available items
     ),
 
-  // 4) Command Logic
-  async execute(interaction) {
-    // Get the item name provided by the user
-    const itemName = interaction.options.getString('item');
-    if (!itemName) {
-      return interaction.reply({
-        content: '🚫 Item name is required.',
-        ephemeral: true,
-      });
+  async autocomplete(interaction) {
+    const focusedValue = interaction.options.getFocused().toLowerCase();
+    try {
+      const items = await db.getShopItems();
+      const choices = items
+        .filter(item => item.quantity > 0) // Only show in-stock items
+        .map(item => item.name);
+      
+      const filtered = choices.filter(choice => choice.toLowerCase().includes(focusedValue));
+      await interaction.respond(filtered.slice(0, 25).map(choice => ({ name: choice, value: choice })));
+    } catch (err) {
+      console.error('Autocomplete Error:', err);
+      await interaction.respond([]);
     }
+  },
+
+  async execute(interaction) {
+    const itemName = interaction.options.getString('item');
 
     try {
-      // Look up the shop item by name
+      // Retrieve the shop item
       const shopItem = await db.getShopItemByName(itemName);
       if (!shopItem) {
         return interaction.reply({
-          content: `🚫 "${itemName}" not found in the shop.`,
+          content: `🚫 "${itemName}" is not available in the shop.`,
+          ephemeral: true,
+        });
+      }
+
+      // Check if the item is in stock
+      if (shopItem.quantity <= 0) {
+        return interaction.reply({
+          content: `🚫 "${shopItem.name}" is out of stock.`,
           ephemeral: true,
         });
       }
@@ -60,16 +61,16 @@ module.exports = {
         });
       }
 
-      console.log('DEBUG: Buying item =>', shopItem.name);
-      console.log('DEBUG: typeof db.addItemToInventory =>', typeof db.addItemToInventory);
-
-      // Deduct the item price from the user's wallet
+      // Deduct item price from the user's wallet
       await db.updateWallet(interaction.user.id, -shopItem.price);
 
       // Add the purchased item to the user's inventory
       await db.addItemToInventory(interaction.user.id, shopItem.itemID, 1);
 
-      // Build and send a success embed
+      // Decrease shop quantity
+      await db.updateShopItemQuantity(shopItem.itemID, shopItem.quantity - 1);
+
+      // Send success message
       const embed = new EmbedBuilder()
         .setTitle(`✅ Purchased ${shopItem.name}`)
         .setDescription(`You have bought **${shopItem.name}** for ${formatCurrency(shopItem.price)}.`)

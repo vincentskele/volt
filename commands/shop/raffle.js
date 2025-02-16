@@ -63,6 +63,7 @@ module.exports = {
     }
 
     const endTime = Date.now() + durationMs;
+    const raffleTicketName = `${raffleName} Raffle Ticket`; // Ensures format
 
     if (ticketCost <= 0 || ticketQuantity <= 0 || winnersCount <= 0 || durationValue <= 0) {
       return interaction.reply({ content: '🚫 Invalid values. Ensure all inputs are positive.', ephemeral: true });
@@ -77,6 +78,9 @@ module.exports = {
       const raffleId = await db.createRaffle(
         interaction.channelId, raffleName, prizeInput, ticketCost, ticketQuantity, winnersCount, endTime
       );
+
+      // ✅ Ensure ticket is upserted properly to avoid duplicates
+      await db.upsertShopItem(ticketCost, raffleTicketName, `Entry ticket for ${raffleName}`, ticketQuantity);
 
       const embed = new EmbedBuilder()
         .setTitle(`🎟️ Raffle Started: ${raffleName}`)
@@ -100,64 +104,50 @@ module.exports = {
 /**
  * Concludes the raffle, picks winners, removes shop item, and clears entries.
  */
-async function concludeRaffle(raffleId, channel) {
-    try {
-      const raffle = await db.getRaffleById(raffleId);
-      if (!raffle) {
-        console.error(`❌ Raffle ${raffleId} not found.`);
-        return;
+async function concludeRaffle(raffle_id, channel) {
+  try {
+    const raffle = await db.getRaffleById(raffle_id);
+    if (!raffle) {
+      console.error(`❌ Raffle ${raffle_id} not found.`);
+      return;
+    }
+
+    const participants = await db.getRaffleParticipants(raffle_id);
+    if (participants.length === 0) {
+      await channel.send(`🚫 The **${raffle.name}** raffle ended, but no one entered.`);
+      await db.removeRaffleShopItem(raffle.name);
+      await db.clearRaffleEntries(raffle_id);
+      return;
+    }
+
+    const shuffled = participants.sort(() => 0.5 - Math.random());
+    const winners = shuffled.slice(0, raffle.winners);
+
+    if (!isNaN(raffle.prize)) {
+      for (const winner of winners) {
+        await db.updateWallet(winner.user_id, parseInt(raffle.prize));
+        console.log(`💰 ${winner.user_id} won ${raffle.prize} coins!`);
       }
-  
-      // Fetch participants
-      const participants = await db.getRaffleParticipants(raffleId);
-      if (!participants || participants.length === 0) {
-        await channel.send(`🚫 The **${raffle.name}** raffle ended, but no one entered.`);
-        await db.removeRaffleShopItem(raffle.name);
-        await db.clearRaffleEntries(raffleId);
-        return;
-      }
-  
-      console.log(`🎟️ Raffle "${raffle.name}" has ${participants.length} participants.`);
-  
-      // Shuffle and pick winners
-      const shuffled = participants.sort(() => Math.random() - 0.5);
-      const winners = shuffled.slice(0, Math.min(raffle.winners, participants.length));
-  
-      if (winners.length === 0) {
-        console.error(`❌ No winners could be selected for raffle ${raffle.name}.`);
-        return;
-      }
-  
-      // Determine if prize is a currency amount or a shop item
-      if (!isNaN(raffle.prize)) {
-        const prizeAmount = parseInt(raffle.prize);
+    } else {
+      const shopItem = await db.getShopItemByName(raffle.prize);
+      if (shopItem) {
         for (const winner of winners) {
-          await db.updateWallet(winner.user_id, prizeAmount);
-          console.log(`💰 ${winner.user_id} won ${prizeAmount} coins!`);
+          await db.addItemToInventory(winner.user_id, shopItem.itemID);
+          console.log(`🎁 ${winner.user_id} won "${shopItem.name}"!`);
         }
       } else {
-        const shopItem = await db.getShopItemByName(raffle.prize);
-        if (shopItem) {
-          for (const winner of winners) {
-            await db.addItemToInventory(winner.user_id, shopItem.itemID);
-            console.log(`🎁 ${winner.user_id} won "${shopItem.name}"!`);
-          }
-        } else {
-          console.error(`❌ Could not find shop item "${raffle.prize}"`);
-        }
+        console.error(`❌ Could not find shop item "${raffle.prize}"`);
       }
-  
-      // Announce winners
-      const winnerMentions = winners.map(w => `<@${w.user_id}>`).join(', ');
-      await channel.send(`🎉 The **${raffle.name}** raffle has ended! Congratulations to: ${winnerMentions}`);
-  
-      // Clean up the raffle shop item and entries
-      await db.removeRaffleShopItem(raffle.name);
-      await db.clearRaffleEntries(raffleId);
-  
-      console.log(`✅ Raffle "${raffle.name}" concluded and cleaned up.`);
-    } catch (error) {
-      console.error(`❌ Error concluding raffle ${raffleId}:`, error);
     }
+
+    const winnerMentions = winners.map(w => `<@${w.user_id}>`).join(', ');
+    await channel.send(`🎉 The **${raffle.name}** raffle has ended! Congratulations to: ${winnerMentions}`);
+
+    await db.removeRaffleShopItem(raffle.name);
+    await db.clearRaffleEntries(raffle_id);
+
+    console.log(`✅ Raffle ${raffle_id} concluded and cleaned up.`);
+  } catch (error) {
+    console.error(`❌ Error concluding raffle ${raffle_id}:`, error);
   }
-  
+}
