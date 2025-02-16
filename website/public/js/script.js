@@ -169,7 +169,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
               await navigator.clipboard.writeText(command);
               console.log(`Command copied: ${command}`);
-              alert(`Copied to clipboard: ${command}`);
+              alert(`Copied to clipboard: ${command} - Click okay to go to Discord and then paste in your command to buy the item.`);
             } catch (err) {
               console.error('Clipboard copy failed:', err);
               alert('Failed to copy to clipboard. Please copy manually.');
