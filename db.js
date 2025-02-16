@@ -1242,7 +1242,7 @@ async function createRaffle(channelId, name, prize, cost, quantity, winners, end
         const formattedEndTime = format(new Date(endTime), "MMM d 'at' h:mm a");
 
         // ✅ Description now includes number of winners AND raffle end time
-        const ticketDesc = `Entry ticket for the ${name} raffle. 🏆 ${winners} winner(s) will be selected! ⏳ Ends on ${formattedEndTime}.`;
+        const ticketDesc = `Entry ticket for the ${name} raffle. 🏆 ${winners} winner(s) will be selected! ⏳ Ends on ${formattedEndTime} UTC.`;
 
         // ✅ Single "upsert" query for the raffle ticket
         const insertUpsert = `
