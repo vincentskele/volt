@@ -504,39 +504,45 @@ if (loginButton) {
 }
 
 /**
- * Replace the login form with 2 stacked buttons (MY INVENTORY + LOGOUT).
+ * Replace the login form with 2 stacked buttons (INVENTORY + LOGOUT).
  */
 function showPostLoginButtons() {
-  console.log('🔄 Replacing login form with MY INVENTORY + LOGOUT buttons...');
+  console.log('🔄 Replacing login form with INVENTORY + LOGOUT buttons...');
 
   // Hide login inputs & labels
-  usernameInput.style.display = 'none';
-  passwordInput.style.display = 'none';
+  const usernameInput = document.getElementById('loginUsername');
+  const passwordInput = document.getElementById('loginPassword');
+  const loginButton = document.getElementById('submitLogin');
+  const usernameLabel = document.querySelector('label[for="loginUsername"]');
+  const passwordLabel = document.querySelector('label[for="loginPassword"]');
+  const voltMenuContainer = document.getElementById('voltMenuContainer');
+
+  if (usernameInput) usernameInput.style.display = 'none';
+  if (passwordInput) passwordInput.style.display = 'none';
   if (usernameLabel) usernameLabel.style.display = 'none';
   if (passwordLabel) passwordLabel.style.display = 'none';
-
-  // Hide the original login button
-  loginButton.style.display = 'none';
+  if (loginButton) loginButton.style.display = 'none';
 
   // Create a container for the two buttons, top-right corner
   const userActionContainer = document.createElement('div');
+  userActionContainer.id = 'userButtons';
   userActionContainer.style.position = 'absolute';
   userActionContainer.style.top = '10px';
   userActionContainer.style.right = '10px';
   userActionContainer.style.display = 'flex';
   userActionContainer.style.flexDirection = 'column';
   userActionContainer.style.alignItems = 'flex-end';
+  userActionContainer.style.gap = '4px'; // Keep spacing between buttons
 
-  // ========== ITEMS BUTTON ==========
+  // ========== INVENTORY BUTTON ==========
   const inventoryButton = document.createElement('button');
-  inventoryButton.textContent = 'Inventory';
-  // Match your button styling
-  inventoryButton.className = 'btn text-sm font-bold h-6 px-3';
-  inventoryButton.style.height = '19px';
-  inventoryButton.style.minHeight = '19px';
-  inventoryButton.style.lineHeight = '19px';
+  inventoryButton.textContent = 'INVENTORY';
+  inventoryButton.className = 'btn text-sm font-bold';
+  inventoryButton.style.height = '24px';
+  inventoryButton.style.width = '110px'; // Ensure consistent width
+  inventoryButton.style.lineHeight = '24px';
   inventoryButton.style.padding = '0 12px';
-  inventoryButton.style.marginBottom = '6px'; // spacing above logout
+  inventoryButton.style.textAlign = 'center';
 
   // On click, fetch inventory & show the inventory page
   inventoryButton.addEventListener('click', () => {
@@ -551,11 +557,12 @@ function showPostLoginButtons() {
   // ========== LOGOUT BUTTON ==========
   const logoutButton = document.createElement('button');
   logoutButton.textContent = 'LOGOUT';
-  logoutButton.className = 'btn text-sm font-bold h-6 px-3';
-  logoutButton.style.height = '19px';
-  logoutButton.style.minHeight = '19px';
-  logoutButton.style.lineHeight = '19px';
+  logoutButton.className = 'btn text-sm font-bold';
+  logoutButton.style.height = '24px';
+  logoutButton.style.width = '110px'; // Matches Inventory button width
+  logoutButton.style.lineHeight = '24px';
   logoutButton.style.padding = '0 12px';
+  logoutButton.style.textAlign = 'center';
 
   logoutButton.addEventListener('click', () => {
     console.log('🚪 Logging out...');
@@ -567,7 +574,7 @@ function showPostLoginButtons() {
   userActionContainer.appendChild(inventoryButton);
   userActionContainer.appendChild(logoutButton);
 
-  // Finally, attach to the DOM
+  // Attach to the DOM
   document.body.appendChild(userActionContainer);
 
   // ✅ Show the Volt menu only after login
@@ -577,8 +584,8 @@ function showPostLoginButtons() {
   fetchVoltBalance();
 }
 
-
 document.addEventListener('DOMContentLoaded', () => {
+  const voltMenuContainer = document.getElementById('voltMenuContainer');
   const voltMenu = document.getElementById('voltMenu');
   const toggleVoltMenu = document.getElementById('toggleVoltMenu');
 
@@ -633,6 +640,7 @@ async function fetchVoltBalance() {
     document.getElementById('voltBalance').textContent = 'Error loading';
   }
 }
+
 
 
 
