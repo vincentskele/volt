@@ -298,6 +298,124 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
+
+// Secret key for JWT authentication (Use an environment variable in production)
+const SECRET_KEY = process.env.JWT_SECRET || "your-very-secure-secret";
+
+// Ensure users table exists
+db.run(
+  `CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL
+  )`
+);
+
+// ------------------------------
+// User Registration (Sign Up)
+// ------------------------------
+app.post("/api/register", async (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ message: "Username and password are required." });
+  }
+
+  try {
+    // Hash the password before storing
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Insert new user into database
+    db.run(
+      `INSERT INTO users (username, password) VALUES (?, ?)`,
+      [username, hashedPassword],
+      function (err) {
+        if (err) {
+          console.error("Error registering user:", err.message);
+          return res.status(500).json({ message: "Username already exists." });
+        }
+        res.json({ message: "Registration successful!" });
+      }
+    );
+  } catch (error) {
+    console.error("Registration error:", error);
+    res.status(500).json({ message: "Internal server error." });
+  }
+});
+
+// ------------------------------
+// User Login
+// ------------------------------
+app.post("/api/login", (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ message: "Username and password are required." });
+  }
+
+  // Fetch user from database
+  db.get(`SELECT * FROM users WHERE username = ?`, [username], async (err, user) => {
+    if (err) {
+      console.error("❌ Database error:", err);
+      return res.status(500).json({ message: "Database error. Please try again." });
+    }
+
+    if (!user) {
+      console.warn(`⚠️ Login failed: Username '${username}' not found.`);
+      return res.status(401).json({ message: "Invalid username or password." });
+    }
+
+    try {
+      // Compare passwords
+      const isMatch = await bcrypt.compare(password, user.password);
+      console.log(`🔍 Password match for ${username}:`, isMatch);
+
+      if (!isMatch) {
+        console.warn(`⚠️ Login failed: Incorrect password for '${username}'.`);
+        return res.status(401).json({ message: "Invalid username or password." });
+      }
+
+      // Generate JWT token
+      const token = jwt.sign(
+        { userId: user.id, username: user.username },
+        SECRET_KEY,
+        { expiresIn: "1h" }
+      );
+
+      console.log(`✅ Login successful for ${username}`);
+      return res.json({ message: "Login successful!", token, username: user.username });
+
+    } catch (error) {
+      console.error("❌ Error during password verification:", error);
+      return res.status(500).json({ message: "Internal server error." });
+    }
+  });
+});
+
+// ------------------------------
+// Authenticated Route Example (Protected)
+// ------------------------------
+app.get("/api/protected", authenticateToken, (req, res) => {
+  res.json({ message: `Hello ${req.user.username}, this is a protected route!` });
+});
+
+// ------------------------------
+// Middleware to Verify JWT Token
+// ------------------------------
+function authenticateToken(req, res, next) {
+  const token = req.headers["authorization"];
+  if (!token) return res.status(403).json({ message: "Access denied." });
+
+  jwt.verify(token.split(" ")[1], SECRET_KEY, (err, user) => {
+    if (err) return res.status(401).json({ message: "Invalid token." });
+    req.user = user;
+    next();
+  });
+}
+
+
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);

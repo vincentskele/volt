@@ -6,36 +6,83 @@
   <title>Volt</title>
   <link rel="stylesheet" href="css/styles.css">
   <link rel="icon" href="./favicon.png" type="image/png">
-
 </head>
-<body>
+  
+<!-- Slim Login Modal with Form -->
+<div id="loginModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+  <div class="bg-white px-2 py-1 rounded shadow-lg flex items-center gap-2">
+    
+    <!-- Form Wrapper -->
+    <form id="loginForm" class="flex items-center gap-2" onsubmit="return false;">
+      
+      <label for="loginUsername" class="text-xs font-bold">USERNAME</label>
+      <input
+        type="text"
+        id="loginUsername"
+        class="p-1 border rounded h-8 text-sm w-32"
+        placeholder="Enter username"
+      />
+
+      <label for="loginPassword" class="text-xs font-bold">PASSWORD</label>
+      <input
+        type="password"
+        id="loginPassword"
+        class="p-1 border rounded h-8 text-sm w-32"
+        placeholder="Enter password"
+      />
+
+      <button
+        id="submitLogin"
+        class="btn text-sm font-bold h-6 px-3"
+        style="
+          height: 19px !important;
+          min-height: 19px !important;
+          max-height: 19px !important;
+          line-height: 19px !important;
+          padding: 0 12px !important;
+          width: auto !important;
+        "
+      >
+        LOGIN
+      </button>
+    </form>
+
+  </div>
+</div>
+
+
+
+
+
+
+
+
+
   <header>
     <h1 
-    onclick="this.style.transform=`rotate(5deg) scale(1.1)`; 
-             this.style.color=`#ffcc00`; 
-             this.style.textShadow=`0px 0px 10px rgba(255, 204, 0, 0.8)`; 
-             setTimeout(() => { 
-                 this.style.color=''; 
-                 this.style.textShadow=''; 
-             }, 300); 
-             setTimeout(() => location.reload(), 600);"
+      onclick="this.style.transform=`rotate(5deg) scale(1.1)`; 
+               this.style.color=`#ffcc00`; 
+               this.style.textShadow=`0px 0px 10px rgba(255, 204, 0, 0.8)`; 
+               setTimeout(() => { 
+                   this.style.color=''; 
+                   this.style.textShadow=''; 
+               }, 300); 
+               setTimeout(() => location.reload(), 600);"
     
-    onmouseover="this.style.transform=`rotate(5deg) scale(1.1)`; 
-                 this.style.color=`#ffcc00`; 
-                 this.style.textShadow=`0px 0px 10px rgba(255, 204, 0, 0.8)`;"
+      onmouseover="this.style.transform=`rotate(5deg) scale(1.1)`; 
+                   this.style.color=`#ffcc00`; 
+                   this.style.textShadow=`0px 0px 10px rgba(255, 204, 0, 0.8)`;"
     
-    onmouseout="this.style.transform=`none`; 
-                this.style.color=''; 
-                this.style.textShadow='';"
+      onmouseout="this.style.transform=`none`; 
+                  this.style.color=''; 
+                  this.style.textShadow='';"
     
-    style="cursor: pointer; 
-           transition: transform 0.2s ease, 
-                       color 0.3s ease, 
-                       text-shadow 0.3s ease;">
-    ⚡ Vol<span style="margin-left: -6px;"></span>t Dashboard
-</h1>
-
-
+      style="cursor: pointer; 
+             transition: transform 0.2s ease, 
+                         color 0.3s ease, 
+                         text-shadow 0.3s ease;">
+      ⚡ Vol<span style="margin-left: -6px;"></span>t Dashboard
+    </h1>
   </header>
 
 <!-- Landing Page Section -->

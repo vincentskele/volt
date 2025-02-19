@@ -17,57 +17,77 @@ const db = new SQLite.Database('./points.db', (err) => {
 // =========================================================================
 function initializeDatabase() {
   db.serialize(() => {
-    console.log('Initializing database tables...');
+    console.log('🔄 Initializing database tables...');
 
-    // Economy table
+    // Economy Table (Users, Wallet, Bank, Login Data)
     db.run(`
       CREATE TABLE IF NOT EXISTS economy (
         userID TEXT PRIMARY KEY,
+        username TEXT UNIQUE,
+        password TEXT,
         wallet INTEGER DEFAULT 0,
         bank INTEGER DEFAULT 0
       )
     `, (err) => {
-      if (err) console.error('Error creating economy table:', err);
-      else console.log('Economy table is ready.');
+      if (err) console.error('❌ Error creating economy table:', err);
+      else console.log('✅ Economy table is ready.');
     });
 
-    // Items table
+    // Ensure 'username' and 'password' columns exist
+    db.all("PRAGMA table_info(economy)", (err, columns) => {
+      if (err) {
+        console.error("❌ Error checking economy table structure:", err);
+      } else {
+        const hasUsername = columns.some(col => col.name === "username");
+        const hasPassword = columns.some(col => col.name === "password");
+
+        if (!hasUsername) {
+          db.all("PRAGMA table_info(economy)", (err, columns) => {
+            if (err) {
+              console.error("❌ Error checking economy table structure:", err);
+            } else {
+              const hasUsername = columns.some(col => col.name === "username");
+          
+              if (!hasUsername) {
+                console.log("➕ Adding missing 'username' column...");
+                db.run("ALTER TABLE economy ADD COLUMN username TEXT", (alterErr) => {
+                  if (alterErr) console.error("❌ Error adding 'username' column:", alterErr);
+                  else console.log("✅ 'username' column added successfully.");
+                });
+              } else {
+                console.log("✅ 'username' column already exists, skipping alteration.");
+              }
+            }
+          });
+          
+        }
+
+        if (!hasPassword) {
+          console.log("➕ Adding missing 'password' column...");
+          db.run("ALTER TABLE economy ADD COLUMN password TEXT", (alterErr) => {
+            if (alterErr) console.error("❌ Error adding 'password' column:", alterErr);
+            else console.log("✅ 'password' column added successfully.");
+          });
+        }
+      }
+    });
+
+    // Items Table
     db.run(`
       CREATE TABLE IF NOT EXISTS items (
         itemID INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT UNIQUE,
         description TEXT,
         price INTEGER,
-        isAvailable BOOLEAN DEFAULT 1
+        isAvailable BOOLEAN DEFAULT 1,
+        quantity INTEGER DEFAULT 1
       )
     `, (err) => {
-      if (err) {
-        console.error('Error creating items table:', err);
-      } else {
-        console.log('Items table is ready.');
-        // Migration: Check if the "quantity" column exists, add it if missing
-        db.all("PRAGMA table_info(items)", (err, columns) => {
-          if (err) {
-            console.error("Error retrieving items table info:", err);
-          } else {
-            const hasQuantity = columns.some(column => column.name === "quantity");
-            if (!hasQuantity) {
-              db.run("ALTER TABLE items ADD COLUMN quantity INTEGER DEFAULT 1", (alterErr) => {
-                if (alterErr && alterErr.message.includes("duplicate column name")) {
-                  console.log("Quantity column already exists, skipping migration.");
-                } else if (alterErr) {
-                  console.error("Error adding quantity column to items table:", alterErr);
-                } else {
-                  console.log("Quantity column added to items table.");
-                }
-              });
-            }
-          }
-        });
-      }
+      if (err) console.error('❌ Error creating items table:', err);
+      else console.log('✅ Items table is ready.');
     });
 
-    // Inventory table
+    // Inventory Table
     db.run(`
       CREATE TABLE IF NOT EXISTS inventory (
         userID TEXT,
@@ -77,36 +97,31 @@ function initializeDatabase() {
         FOREIGN KEY(itemID) REFERENCES items(itemID)
       )
     `, (err) => {
-      if (err) console.error('Error creating inventory table:', err);
-      else console.log('Inventory table is ready.');
+      if (err) console.error('❌ Error creating inventory table:', err);
+      else console.log('✅ Inventory table is ready.');
     });
 
-    // Admins table
+    // Admins Table
     db.run(`
       CREATE TABLE IF NOT EXISTS admins (
         userID TEXT PRIMARY KEY
       )
     `, (err) => {
-      if (err) console.error('Error creating admins table:', err);
-      else console.log('Admins table is ready.');
+      if (err) console.error('❌ Error creating admins table:', err);
+      else console.log('✅ Admins table is ready.');
     });
 
-
-    // Joblist table
+    // Job System Tables
     db.run(`
       CREATE TABLE IF NOT EXISTS joblist (
         jobID INTEGER PRIMARY KEY AUTOINCREMENT,
         description TEXT NOT NULL
       )
     `, (err) => {
-      if (err) {
-        console.error('Error creating joblist table:', err);
-      } else {
-        console.log('Joblist table is ready.');
-      }
+      if (err) console.error('❌ Error creating joblist table:', err);
+      else console.log('✅ Joblist table is ready.');
     });
 
-    // Job assignees table
     db.run(`
       CREATE TABLE IF NOT EXISTS job_assignees (
         jobID INTEGER,
@@ -114,38 +129,31 @@ function initializeDatabase() {
         PRIMARY KEY(jobID, userID)
       )
     `, (err) => {
-      if (err) console.error('Error creating job_assignees table:', err);
-      else console.log('Job assignees table is ready.');
+      if (err) console.error('❌ Error creating job_assignees table:', err);
+      else console.log('✅ Job assignees table is ready.');
     });
 
-    // Job cycle table for round-robin (cycled) job assignments
+    // Job Cycle (Round-Robin Assignments)
     db.run(`
       CREATE TABLE IF NOT EXISTS job_cycle (
         current_index INTEGER NOT NULL
       )
     `, (err) => {
-      if (err) {
-        console.error('Error creating job_cycle table:', err);
-      } else {
-        console.log('Job cycle table is ready.');
-        // Ensure the job_cycle table has an initial row with current_index = 0
-        db.get("SELECT current_index FROM job_cycle LIMIT 1", (err, row) => {
-          if (err) {
-            console.error("Error checking job_cycle table:", err);
-          } else if (!row) {
-            db.run("INSERT INTO job_cycle (current_index) VALUES (0)", (err) => {
-              if (err) {
-                console.error("Error inserting initial job_cycle value:", err);
-              } else {
-                console.log("Job cycle table initialized with current_index = 0.");
-              }
-            });
-          }
-        });
-      }
+      if (err) console.error('❌ Error creating job_cycle table:', err);
+      else console.log('✅ Job cycle table is ready.');
+
+      db.get("SELECT current_index FROM job_cycle LIMIT 1", (err, row) => {
+        if (err) console.error("❌ Error checking job_cycle table:", err);
+        else if (!row) {
+          db.run("INSERT INTO job_cycle (current_index) VALUES (0)", (err) => {
+            if (err) console.error("❌ Error inserting initial job_cycle value:", err);
+            else console.log("✅ Job cycle initialized with current_index = 0.");
+          });
+        }
+      });
     });
 
-    // Giveaways table
+    // Giveaways Table
     db.run(`
       CREATE TABLE IF NOT EXISTS giveaways (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -158,51 +166,11 @@ function initializeDatabase() {
         repeat INTEGER DEFAULT 0
       )
     `, (err) => {
-      if (err) {
-        console.error('Error creating giveaways table:', err);
-      } else {
-        console.log('Giveaways table is ready.');
-        // Ensure the "giveaway_name" column exists
-        db.all("PRAGMA table_info(giveaways)", (err, columns) => {
-          if (err) {
-            console.error("Error retrieving giveaways table info:", err);
-          } else {
-            const hasGiveawayName = columns.some(column => column.name === "giveaway_name");
-            if (!hasGiveawayName) {
-              console.log("Adding missing 'giveaway_name' column...");
-              db.run("ALTER TABLE giveaways ADD COLUMN giveaway_name TEXT NOT NULL DEFAULT 'Untitled Giveaway'", (alterErr) => {
-                if (alterErr) {
-                  console.error("Error adding giveaway_name column to giveaways table:", alterErr);
-                } else {
-                  console.log("Successfully added 'giveaway_name' column to giveaways table.");
-                }
-              });
-            }
-          }
-        });
-
-        // Ensure the "repeat" column exists
-        db.all("PRAGMA table_info(giveaways)", (err, columns) => {
-          if (err) {
-            console.error("Error retrieving giveaways table info:", err);
-          } else {
-            const hasRepeat = columns.some(column => column.name === "repeat");
-            if (!hasRepeat) {
-              console.log("Adding missing 'repeat' column...");
-              db.run("ALTER TABLE giveaways ADD COLUMN repeat INTEGER DEFAULT 0", (alterErr) => {
-                if (alterErr) {
-                  console.error("Error adding repeat column to giveaways table:", alterErr);
-                } else {
-                  console.log("Successfully added 'repeat' column to giveaways table.");
-                }
-              });
-            }
-          }
-        });
-      }
+      if (err) console.error('❌ Error creating giveaways table:', err);
+      else console.log('✅ Giveaways table is ready.');
     });
 
-    // Giveaway entries table
+    // Giveaway Entries
     db.run(`
       CREATE TABLE IF NOT EXISTS giveaway_entries (
         giveaway_id INTEGER NOT NULL,
@@ -211,15 +179,11 @@ function initializeDatabase() {
         FOREIGN KEY (giveaway_id) REFERENCES giveaways(id) ON DELETE CASCADE
       )
     `, (err) => {
-      if (err) console.error('Error creating giveaway_entries table:', err);
-      else console.log('Giveaway entries table is ready.');
+      if (err) console.error('❌ Error creating giveaway_entries table:', err);
+      else console.log('✅ Giveaway entries table is ready.');
     });
 
-    console.log('Database initialization complete.');
-  });
-}
-
-    // Raffle table
+    // Raffles Table
     db.run(`
       CREATE TABLE IF NOT EXISTS raffles (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -232,13 +196,11 @@ function initializeDatabase() {
         end_time INTEGER NOT NULL
       )
     `, (err) => {
-      if (err) {
-        console.error('Error creating raffles table:', err);
-      } else {
-        console.log('Raffles table is ready.');
-      }
+      if (err) console.error('❌ Error creating raffles table:', err);
+      else console.log('✅ Raffles table is ready.');
     });
-    
+
+    // Raffle Entries Table
     db.run(`
       CREATE TABLE IF NOT EXISTS raffle_entries (
         entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -247,13 +209,14 @@ function initializeDatabase() {
         FOREIGN KEY (raffle_id) REFERENCES raffles(id) ON DELETE CASCADE
       )
     `, (err) => {
-      if (err) {
-        console.error('Error creating raffle_entries table:', err);
-      } else {
-        console.log('Raffle entries table is ready.');
-      }
+      if (err) console.error('❌ Error creating raffle_entries table:', err);
+      else console.log('✅ Raffle entries table is ready.');
     });
-    
+
+    console.log('✅ Database initialization complete.');
+  });
+}
+
 
 // =========================================================================
 // Core Economy Functions
@@ -1507,6 +1470,142 @@ async function concludeRaffle(raffle_id, channel) {
   }
 }
 
+// =========================================================================
+// User Accounts (With Discord ID and Username Support)
+// =========================================================================
+const bcrypt = require('bcrypt');
+const saltRounds = 10;
+
+// Ensure the economy table has 'username' and 'password' columns
+db.all("PRAGMA table_info(economy)", (err, columns) => {
+  if (err) {
+    console.error("Error checking economy table structure:", err);
+  } else {
+    const hasUsername = columns.some(column => column.name === "username");
+    const hasPassword = columns.some(column => column.name === "password");
+
+    if (!hasUsername) {
+      console.log("Adding missing 'username' column to economy table...");
+      db.run("ALTER TABLE economy ADD COLUMN username TEXT UNIQUE", (alterErr) => {
+        if (alterErr) {
+          console.error("Error adding username column to economy table:", alterErr);
+        } else {
+          console.log("Successfully added 'username' column to economy table.");
+        }
+      });
+    }
+
+    if (!hasPassword) {
+      console.log("Adding missing 'password' column to economy table...");
+      db.run("ALTER TABLE economy ADD COLUMN password TEXT", (alterErr) => {
+        if (alterErr) {
+          console.error("Error adding password column to economy table:", alterErr);
+        } else {
+          console.log("Successfully added 'password' column to economy table.");
+        }
+      });
+    }
+  }
+});
+
+// =========================================================================
+// User Account Functions
+// =========================================================================
+
+/**
+ * Registers a user account with a username and password.
+ * Ensures username uniqueness at the application level.
+ * @param {string} discord_id - The Discord user ID.
+ * @param {string|null} username - The chosen username (null if resetting password).
+ * @param {string} password - The plain-text password.
+ * @returns {Promise<object>} - Resolves when the user is registered or updated.
+ */
+function registerUser(discord_id, username, password) {
+  return new Promise((resolve, reject) => {
+    bcrypt.hash(password, saltRounds, (hashErr, hash) => {
+      if (hashErr) return reject('Error hashing password');
+
+      // Check if username is already taken (excluding the current user)
+      db.get(`SELECT userID FROM economy WHERE username = ?`, [username], (err, existingUser) => {
+        if (err) return reject('Database error.');
+        if (existingUser && existingUser.userID !== discord_id) {
+          return reject('Username is already taken.');
+        }
+
+        // Insert or update user data
+        db.run(
+          `INSERT INTO economy (userID, username, password, wallet, bank)
+          VALUES (?, ?, ?, 0, 0)
+          ON CONFLICT(userID) DO UPDATE SET username = excluded.username, password = excluded.password`,
+          [discord_id, username, hash],
+          function (err) {
+            if (err) {
+              console.error('Error registering user:', err);
+              return reject('Failed to register user.');
+            }
+            resolve({ discord_id, username });
+          }
+        );
+      });
+    });
+  });
+}
+
+
+/**
+ * Authenticates a user using their username and password.
+ * @param {string} username - The username.
+ * @param {string} password - The plain-text password.
+ * @returns {Promise<object>} - Resolves if authentication is successful.
+ */
+function authenticateUser(username, password) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT userID, password FROM economy WHERE username = ?`,
+      [username],
+      (err, user) => {
+        if (err) return reject('Database error.');
+        if (!user || !user.password) return reject('No account found.');
+
+        bcrypt.compare(password, user.password, (compareErr, result) => {
+          if (compareErr) return reject('Error verifying password.');
+          if (!result) return reject('Invalid password.');
+          resolve(user);
+        });
+      }
+    );
+  });
+}
+
+/**
+ * Resets a user's password while keeping the existing username.
+ * @param {string} discord_id - The Discord user ID.
+ * @param {string} newPassword - The new plain-text password.
+ * @returns {Promise<object>} - Resolves when the password is updated.
+ */
+function resetPassword(discord_id, newPassword) {
+  return new Promise((resolve, reject) => {
+    bcrypt.hash(newPassword, saltRounds, (hashErr, hash) => {
+      if (hashErr) return reject('Error hashing password');
+
+      db.run(
+        `UPDATE economy SET password = ? WHERE userID = ?`,
+        [hash, discord_id],
+        function (err) {
+          if (err) {
+            console.error('Error updating password:', err);
+            return reject('Failed to reset password.');
+          }
+          if (this.changes === 0) {
+            return reject('No existing account found.');
+          }
+          resolve({ discord_id });
+        }
+      );
+    });
+  });
+}
+
 
 
 // =========================================================================
@@ -1574,4 +1673,8 @@ module.exports = {
   getGiveawayEntries,
   removeGiveawayEntry,
   clearGiveawayEntries,
+
+  // User Accounts
+  registerUser,
+  authenticateUser,
 };

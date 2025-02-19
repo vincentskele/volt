@@ -362,6 +362,95 @@ if (showGiveawayListButton) {
   });
 }
 
+// ------------------------------
+// Login Section & Authentication
+// ------------------------------
+document.addEventListener("DOMContentLoaded", () => {
+  console.log("✅ JavaScript Loaded");
+
+  // Grab references to modal & form elements
+  const loginModal = document.getElementById("loginModal");
+  const submitLoginButton = document.getElementById("submitLogin");
+  const usernameInput = document.getElementById("loginUsername");
+  const passwordInput = document.getElementById("loginPassword");
+
+  // Ensure all elements exist
+  if (!submitLoginButton || !usernameInput || !passwordInput) {
+    console.error("❌ Missing login elements in DOM!");
+    return;
+  }
+
+  // Debug click event (to confirm the button is recognized)
+  submitLoginButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    console.log("🔥 Login button clicked");
+  });
+
+  // Actual login logic
+  async function handleLogin(event) {
+    event.preventDefault(); // Stop form from refreshing the page
+    console.log("🚀 Handling login...");
+
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value.trim();
+
+    // Basic validation
+    if (!username || !password) {
+      console.warn("⚠️ Username or password is empty");
+      alert("Please enter both a username and a password.");
+      return;
+    }
+
+    console.log(`📡 Sending login request for: ${username}`);
+
+    try {
+      // Send POST to /api/login
+      const response = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+
+      console.log("📡 Login request sent...");
+
+      // Handle non-200 responses
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("❌ API Error:", errorData.message);
+        alert(`❌ Login Failed: ${errorData.message}`);
+        return;
+      }
+
+      // Successful login → parse JSON
+      const data = await response.json();
+      console.log("✅ Login successful:", data);
+
+      // Store the token & username (or do something else)
+      localStorage.setItem("userToken", data.token);
+      localStorage.setItem("username", data.username);
+
+      // Let user know they're in
+      alert(`✅ Welcome back, ${data.username}!`);
+
+      // Hide the login modal
+      loginModal.classList.add("hidden");
+
+      // Optionally redirect or show another section
+      // showSection("landingPage"); // If you have this function
+    } catch (error) {
+      console.error("❌ Login failed:", error);
+      alert("⚠️ Network error. Please try again.");
+    }
+  }
+
+  // Attach the login handler
+  submitLoginButton.addEventListener("click", handleLogin);
+});
+
+
+
+
+
 
 //========================
 // Raffles
