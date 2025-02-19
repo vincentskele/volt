@@ -843,6 +843,8 @@ async function fetchVoltBalance() {
         );
         itemContainer.appendChild(descriptionSpan);
 
+        // Attach purchase confirmation on click
+        itemContainer.addEventListener("click", () => showRaffleConfirmation(item));
 
         itemWrapper.appendChild(itemContainer);
         rafflesList.appendChild(itemWrapper);
@@ -855,7 +857,97 @@ async function fetchVoltBalance() {
       isRaffleListLoading = false;
     }
   }
+
+  /**
+   * Show a confirmation modal before purchasing a raffle ticket.
+   * @param {Object} item - Raffle item details.
+   */
+  function showRaffleConfirmation(item) {
+    const modalOverlay = document.createElement("div");
+    modalOverlay.className = "modal-overlay";
+
+    const modalBox = document.createElement("div");
+    modalBox.className = "modal-box";
+    modalBox.innerHTML = `
+      <h2>CONFIRM PURCHASE</h2>
+      <p>Are you sure you want to buy:</p>
+      <p><strong>${item.originalName}</strong> for ⚡${item.price}?</p>
+      <div class="modal-buttons">
+        <button class="confirm-button" id="confirmRafflePurchase">CONFIRM</button>
+        <button class="cancel-button" id="cancelRafflePurchase">CANCEL</button>
+      </div>
+    `;
+
+    modalOverlay.appendChild(modalBox);
+    document.body.appendChild(modalOverlay);
+
+    document.getElementById("confirmRafflePurchase").addEventListener("click", () => {
+      modalOverlay.remove();
+      buyRaffleTicket(item.originalName);
+    });
+
+    document.getElementById("cancelRafflePurchase").addEventListener("click", () => {
+      modalOverlay.remove();
+    });
+  }
+
+  /**
+   * Send purchase request for the raffle ticket.
+   * @param {string} itemName - Name of the raffle ticket to buy.
+   */
+  async function buyRaffleTicket(itemName) {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("You must be logged in to buy raffle tickets.");
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/buy", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ itemName }),
+      });
+
+      const result = await response.json();
+      if (response.ok) {
+        showConfirmationPopup(`✅ Purchase successful! You bought "${itemName}".`);
+      } else {
+        showConfirmationPopup(`❌ Purchase failed: ${result.error}`);
+      }
+    } catch (error) {
+      console.error("Error processing raffle purchase:", error);
+      showConfirmationPopup("❌ An error occurred while processing your purchase.");
+    }
+  }
+
+  /**
+   * Show a confirmation message popup after purchase.
+   * @param {string} message - The message to display.
+   */
+  function showConfirmationPopup(message) {
+    const modalOverlay = document.createElement("div");
+    modalOverlay.className = "modal-overlay";
+
+    const modalBox = document.createElement("div");
+    modalBox.className = "modal-box";
+    modalBox.innerHTML = `
+      <p>${message}</p>
+      <button class="confirm-button" id="closeModal">OK</button>
+    `;
+
+    modalOverlay.appendChild(modalBox);
+    document.body.appendChild(modalOverlay);
+
+    document.getElementById("closeModal").addEventListener("click", () => {
+      modalOverlay.remove();
+    });
+  }
 })();
+
 
 
 
