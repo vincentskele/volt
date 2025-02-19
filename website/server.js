@@ -301,6 +301,27 @@ app.get('/', (req, res) => {
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
+/**
+ * Middleware to Verify JWT Token
+ */
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(403).json({ message: "Access denied. No token provided." });
+  }
+
+  jwt.verify(token, SECRET_KEY, (err, user) => {
+    if (err) {
+      return res.status(401).json({ message: "Invalid token." });
+    }
+    req.user = user;
+    next();
+  });
+}
+
+
 // Secret key for JWT authentication (Use an environment variable in production)
 const SECRET_KEY = process.env.JWT_SECRET || "your-very-secure-secret";
 
@@ -393,6 +414,25 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+/**
+ * GET /api/volt-balance
+ * Fetch the user's Volt balance from the economy table.
+ */
+app.get('/api/volt-balance', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId; // Get user ID from JWT
+    const user = await dbGet(`SELECT wallet FROM economy WHERE userID = ?`, [userId]);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    res.json({ balance: user.wallet });
+  } catch (error) {
+    console.error("❌ Error fetching Volt balance:", error);
+    res.status(500).json({ message: "Internal server error." });
+  }
+});
 
 
 // Start the server

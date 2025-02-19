@@ -837,6 +837,34 @@ code {
   transform: scale(1.02);
 }
 
+
+/*------------------------------- User Info --------------------------------*/
+
+
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+#voltMenu {
+  font-family: 'Press Start 2P', sans-serif; /* Retro Pixel Font */
+  text-align: center;
+  min-width: 180px; /* Prevents weird wrapping */
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8); /* Subtle Glow */
+}
+
+#voltBalance {
+  display: block; /* Ensures it's on a new line */
+  margin-top: 5px;
+  text-shadow: 0px 0px 6px rgba(0, 255, 0, 0.8); /* Softer Green Glow */
+}
+
+.glow-text {
+  text-shadow: 0px 0px 6px rgba(0, 255, 0, 0.8), 
+               0px 0px 12px rgba(0, 255, 0, 0.6);
+}
+
+
+
+
+
 /* --------------------------------------------------
    FOOTER
 -------------------------------------------------- */

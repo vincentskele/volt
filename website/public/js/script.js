@@ -373,6 +373,10 @@ const usernameInput = document.getElementById('loginUsername');
 const passwordInput = document.getElementById('loginPassword');
 const usernameLabel = document.querySelector("label[for='loginUsername']");
 const passwordLabel = document.querySelector("label[for='loginPassword']");
+const voltMenuContainer = document.getElementById('voltMenuContainer');
+
+// Ensure Volt elements are hidden initially
+if (voltMenuContainer) voltMenuContainer.style.display = 'none';
 
 // Check if user is already logged in
 const token = localStorage.getItem('token');
@@ -417,8 +421,6 @@ if (loginButton) {
 
         // Hide login inputs & show logout button
         showLogoutButton();
-
-        
       } else {
         console.error('❌ Login failed:', data.message);
         alert(`Login failed: ${data.message}`);
@@ -458,7 +460,68 @@ function showLogoutButton() {
     localStorage.removeItem('token'); // Remove token
     location.reload(); // Reload page to reset UI
   });
+
+  // ✅ Show the Volt menu only after login
+  if (voltMenuContainer) voltMenuContainer.style.display = 'block';
+
+  fetchVoltBalance();
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+  const voltMenu = document.getElementById('voltMenu');
+  const toggleVoltMenu = document.getElementById('toggleVoltMenu');
+
+  // Hide Volt menu initially
+  if (voltMenuContainer) voltMenuContainer.style.display = 'none';
+
+  const token = localStorage.getItem('token');
+
+  if (token) {
+    console.log('✅ User is logged in, showing Volt menu.');
+
+    if (voltMenuContainer) voltMenuContainer.style.display = 'block';
+
+    if (toggleVoltMenu && voltMenu) {
+      toggleVoltMenu.addEventListener('click', () => {
+        console.log('🔄 Toggling Volt menu'); // Debugging log
+        voltMenu.style.display = voltMenu.style.display === 'block' ? 'none' : 'block';
+      });
+    }
+
+    fetchVoltBalance(); // Fetch balance after login
+  } else {
+    console.log('🔒 User is not logged in, hiding Volt menu.');
+  }
+});
+
+// 🔄 Fetch Volt Balance from API (only if logged in)
+async function fetchVoltBalance() {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    const response = await fetch('/api/volt-balance', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const data = await response.json();
+    if (response.ok) {
+      document.getElementById('voltBalance').textContent = data.balance || "0 Volts";
+    } else {
+      console.error('❌ Failed to fetch Volt balance:', data.message);
+      document.getElementById('voltBalance').textContent = "Error loading";
+    }
+  } catch (error) {
+    console.error('❌ Error fetching Volt balance:', error);
+    document.getElementById('voltBalance').textContent = "Error loading";
+  }
+}
+
+
 
 
 
