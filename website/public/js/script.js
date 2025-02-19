@@ -442,21 +442,24 @@ function showLogoutButton() {
   if (usernameLabel) usernameLabel.style.display = 'none';
   if (passwordLabel) passwordLabel.style.display = 'none';
 
-  // Keep button styling intact and change to logout
+  // Change button text & maintain styles
   loginButton.textContent = 'LOGOUT';
-  loginButton.style.width = 'auto';
-  loginButton.style.display = 'inline-block';
+  loginButton.style.position = 'absolute';
+  loginButton.style.top = '10px';
+  loginButton.style.right = '10px';
+  loginButton.style.minWidth = 'auto';
 
   // Remove existing login event listener
   loginButton.replaceWith(loginButton.cloneNode(true));
   const newLogoutButton = document.getElementById('submitLogin');
-  
+
   newLogoutButton.addEventListener('click', () => {
     console.log('🚪 Logging out...');
     localStorage.removeItem('token'); // Remove token
     location.reload(); // Reload page to reset UI
   });
 }
+
 
 
 
