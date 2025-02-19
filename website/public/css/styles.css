@@ -918,6 +918,66 @@ code {
   margin-top: 10px;
 }
 
+/* =====================================
+   Purchase Confirmation Modal
+====================================== */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+
+.modal-box {
+  background: var(--bg-content);
+  color: var(--text-primary);
+  padding: 20px;
+  border-radius: 10px;
+  text-align: center;
+  box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5);
+  max-width: 400px;
+}
+
+.modal-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.confirm-button,
+.cancel-button {
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.confirm-button {
+  background-color: var(--accent);
+  color: var(--black);
+}
+
+.cancel-button {
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
+}
+
+.confirm-button:hover {
+  background-color: var(--accent-hover);
+}
+
+.cancel-button:hover {
+  background-color: var(--list-hover-bg);
+}
 
 
 

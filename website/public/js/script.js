@@ -549,7 +549,7 @@ function showPostLoginButtons() {
 
   // ========== ITEMS BUTTON ==========
   const inventoryButton = document.createElement('button');
-  inventoryButton.textContent = 'Items';
+  inventoryButton.textContent = 'Inventory';
   // Match your button styling
   inventoryButton.className = 'btn text-sm font-bold h-6 px-3';
   inventoryButton.style.height = '19px';
@@ -971,6 +971,120 @@ document.querySelectorAll(".back-button").forEach(button => {
 function isMobileDevice() {
   return /Mobi|Android|iPhone|iPad|iPod/.test(navigator.userAgent);
 }
+
+
+
+
+
+
+
+
+
+
+//
+// SPECIAL RULES FOR LOGGED IN
+//
+// Function to handle inventory click events dynamically
+function handleInventoryClickEvents() {
+  const token = localStorage.getItem("token"); // Check if user is logged in
+
+  document.querySelectorAll(".inventory-item").forEach((itemElement) => {
+    const itemName = itemElement.getAttribute("data-name");
+
+    // Remove all existing event listeners by cloning & replacing
+    const clonedElement = itemElement.cloneNode(true);
+    itemElement.parentNode.replaceChild(clonedElement, itemElement);
+
+    if (token) {
+      // ✅ LOGGED IN: Remove click events completely
+      clonedElement.onclick = null;
+      clonedElement.removeAttribute("onclick");
+    } else {
+      // 🚀 NOT LOGGED IN: Add click event to copy command & open Discord
+      clonedElement.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(`%use "${itemName}"`);
+          alert(
+            `Copied to clipboard: %use "${itemName}"\n\nClick OK to go to Discord and use your item!`
+          );
+        } catch (err) {
+          console.error("Clipboard copy failed:", err);
+          alert("Failed to copy. Please copy manually.");
+        }
+
+        window.open(
+          "https://discord.com/channels/1014872741846974514/1336779333641179146",
+          "_blank"
+        );
+      });
+    }
+  });
+}
+
+// Call this function AFTER inventory is fetched and rendered
+async function fetchInventory() {
+  const token = localStorage.getItem("token");
+  if (!token) {
+    alert('Please log in first!');
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/inventory', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch inventory');
+    }
+
+    const data = await response.json();
+    const inventoryItems = document.getElementById('inventoryItems');
+    inventoryItems.innerHTML = ''; // Clear existing content
+
+    if (!data.length) {
+      inventoryItems.innerHTML = '<p class="no-items">You have no items in your inventory.</p>';
+      return;
+    }
+
+    data.forEach((item) => {
+      const itemContainer = document.createElement('div');
+      itemContainer.className = 'inventory-item raffle-item bg-content border border-accent rounded-lg p-3 my-2 shadow-md text-primary';
+      itemContainer.setAttribute("data-name", item.name);
+
+      // Item title
+      const itemTitle = document.createElement('h3');
+      itemTitle.className = 'font-bold text-highlight uppercase tracking-wide text-center';
+      itemTitle.textContent = `${item.name} (Qty: ${item.quantity})`;
+      itemContainer.appendChild(itemTitle);
+
+      // Item description
+      const descriptionSpan = document.createElement('p');
+      descriptionSpan.className = 'text-body text-primary';
+      descriptionSpan.innerHTML = item.description.replace(
+        /\[([^\]]+)\]\(([^)]+)\)/g,
+        '<a href="$2" target="_blank" class="link">$1</a>'
+      );
+      itemContainer.appendChild(descriptionSpan);
+
+      inventoryItems.appendChild(itemContainer);
+    });
+
+    // 🔥 Re-attach event listeners dynamically after items are added
+    handleInventoryClickEvents();
+  } catch (error) {
+    console.error('Error fetching inventory:', error);
+    inventoryItems.innerHTML = '<p class="error-text text-red-500">Error loading inventory.</p>';
+  }
+}
+
+
+
+
 
 
 
