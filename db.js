@@ -1043,17 +1043,22 @@ async function getGiveawayByMessageId(messageId) {
 
 // Record a giveaway entry (i.e. when a user reacts).
 async function addGiveawayEntry(giveawayId, userId) {
-  return new Promise((resolve, reject) => {
-    db.run(
-      'INSERT OR IGNORE INTO giveaway_entries (giveaway_id, user_id) VALUES (?, ?)',
-      [giveawayId, userId],
-      function (err) {
-        if (err) reject(err);
-        else resolve(this.lastID);
-      }
-    );
-  });
+  const existingEntry = await db.get(
+    'SELECT * FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?',
+    [giveawayId, userId]
+  );
+
+  if (existingEntry) {
+    console.log(`⚠️ User ${userId} already entered in giveaway ${giveawayId}. Skipping duplicate.`);
+    return;
+  }
+
+  await db.run(
+    'INSERT INTO giveaway_entries (giveaway_id, user_id) VALUES (?, ?)',
+    [giveawayId, userId]
+  );
 }
+
 
 // Get all giveaway entries (user IDs) for a specific giveaway.
 async function getGiveawayEntries(giveawayId) {

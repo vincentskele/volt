@@ -39,6 +39,7 @@ console.error = function (...args) {
 // Import the required database functions (adjust to your actual db.js exports).
 const {
   getActiveGiveaways,
+  getGiveawayEntries,
   deleteGiveaway,
   updateWallet,
   getShopItemByName,
@@ -175,16 +176,22 @@ async function syncGiveawayEntries(giveaway) {
       const usersReacted = await reaction.users.fetch();
       participantIDs = usersReacted.filter(u => !u.bot).map(u => u.id);
     }
-    // Clear existing DB entries and re-add
-    await clearGiveawayEntries(giveaway.id);
+
+    // Check existing DB entries and only add new ones
+    const existingEntries = await getGiveawayEntries(giveaway.id);
+    const existingUserIds = new Set(existingEntries.map(entry => entry.user_id));
+
     for (const userId of participantIDs) {
-      await addGiveawayEntry(giveaway.id, userId);
+      if (!existingUserIds.has(userId)) {
+        await addGiveawayEntry(giveaway.id, userId);
+        console.log(`✅ Added new giveaway entry for user ${userId} in giveaway ${giveaway.id}`);
+      }
     }
-    console.log(`Synced persistent entries for giveaway ${giveaway.id}`);
   } catch (error) {
     console.error('Error syncing giveaway entries:', error);
   }
-}
+}  // ✅ Make sure this closing bracket is here!
+
 
 /**
  * Reaction listener for adding a giveaway entry.
