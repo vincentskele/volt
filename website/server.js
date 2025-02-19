@@ -345,75 +345,54 @@ app.post("/api/register", async (req, res) => {
   }
 });
 
-// ------------------------------
-// User Login
-// ------------------------------
-app.post("/api/login", (req, res) => {
+const util = require('util');
+// Promisify the db.get method for easier async/await usage
+const dbGet = util.promisify(db.get).bind(db);
+
+/**
+ * POST /api/login
+ * Handles user login, verifies credentials, and returns a JWT.
+ */
+app.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
 
+  // Check for missing credentials
   if (!username || !password) {
     return res.status(400).json({ message: "Username and password are required." });
   }
 
-  // Fetch user from database
-  db.get(`SELECT * FROM users WHERE username = ?`, [username], async (err, user) => {
-    if (err) {
-      console.error("❌ Database error:", err);
-      return res.status(500).json({ message: "Database error. Please try again." });
-    }
+  try {
+    // Query the user from the economy table
+    const user = await dbGet(`SELECT userID, username, password FROM economy WHERE username = ? AND password IS NOT NULL`, [username]);
 
+    // If user is not found, send an error
     if (!user) {
       console.warn(`⚠️ Login failed: Username '${username}' not found.`);
       return res.status(401).json({ message: "Invalid username or password." });
     }
 
-    try {
-      // Compare passwords
-      const isMatch = await bcrypt.compare(password, user.password);
-      console.log(`🔍 Password match for ${username}:`, isMatch);
-
-      if (!isMatch) {
-        console.warn(`⚠️ Login failed: Incorrect password for '${username}'.`);
-        return res.status(401).json({ message: "Invalid username or password." });
-      }
-
-      // Generate JWT token
-      const token = jwt.sign(
-        { userId: user.id, username: user.username },
-        SECRET_KEY,
-        { expiresIn: "1h" }
-      );
-
-      console.log(`✅ Login successful for ${username}`);
-      return res.json({ message: "Login successful!", token, username: user.username });
-
-    } catch (error) {
-      console.error("❌ Error during password verification:", error);
-      return res.status(500).json({ message: "Internal server error." });
+    // Compare the provided password with the stored hashed password
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      console.warn(`⚠️ Login failed: Incorrect password for '${username}'.`);
+      return res.status(401).json({ message: "Invalid username or password." });
     }
-  });
+
+    // Generate a JWT token for the authenticated user
+    const token = jwt.sign(
+      { userId: user.userID, username: user.username },
+      SECRET_KEY,
+      { expiresIn: "1h" }
+    );
+
+    console.log(`✅ Login successful for ${username}`);
+    return res.json({ message: "Login successful!", token, username: user.username });
+  } catch (error) {
+    console.error("❌ Error during login:", error);
+    return res.status(500).json({ message: "Internal server error." });
+  }
 });
 
-// ------------------------------
-// Authenticated Route Example (Protected)
-// ------------------------------
-app.get("/api/protected", authenticateToken, (req, res) => {
-  res.json({ message: `Hello ${req.user.username}, this is a protected route!` });
-});
-
-// ------------------------------
-// Middleware to Verify JWT Token
-// ------------------------------
-function authenticateToken(req, res, next) {
-  const token = req.headers["authorization"];
-  if (!token) return res.status(403).json({ message: "Access denied." });
-
-  jwt.verify(token.split(" ")[1], SECRET_KEY, (err, user) => {
-    if (err) return res.status(401).json({ message: "Invalid token." });
-    req.user = user;
-    next();
-  });
-}
 
 
 // Start the server

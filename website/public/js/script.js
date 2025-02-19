@@ -365,87 +365,66 @@ if (showGiveawayListButton) {
 // ------------------------------
 // Login Section & Authentication
 // ------------------------------
-document.addEventListener("DOMContentLoaded", () => {
-  console.log("✅ JavaScript Loaded");
+console.log('⚡ script.js is being executed!');
 
-  // Grab references to modal & form elements
-  const loginModal = document.getElementById("loginModal");
-  const submitLoginButton = document.getElementById("submitLogin");
-  const usernameInput = document.getElementById("loginUsername");
-  const passwordInput = document.getElementById("loginPassword");
+const loginButton = document.getElementById('submitLogin');
 
-  // Ensure all elements exist
-  if (!submitLoginButton || !usernameInput || !passwordInput) {
-    console.error("❌ Missing login elements in DOM!");
-    return;
-  }
+if (loginButton) {
+  console.log('✅ Login button found:', loginButton);
 
-  // Debug click event (to confirm the button is recognized)
-  submitLoginButton.addEventListener("click", (event) => {
+  loginButton.addEventListener('click', async (event) => {
     event.preventDefault();
-    console.log("🔥 Login button clicked");
-  });
+    console.log('🚀 Login button clicked!');
 
-  // Actual login logic
-  async function handleLogin(event) {
-    event.preventDefault(); // Stop form from refreshing the page
-    console.log("🚀 Handling login...");
+    // Get username & password inputs
+    const username = document.getElementById('loginUsername').value.trim();
+    const password = document.getElementById('loginPassword').value;
 
-    const username = usernameInput.value.trim();
-    const password = passwordInput.value.trim();
-
-    // Basic validation
     if (!username || !password) {
-      console.warn("⚠️ Username or password is empty");
-      alert("Please enter both a username and a password.");
+      console.error('❌ Please enter both username and password.');
+      alert('Please enter both username and password.');
       return;
     }
 
-    console.log(`📡 Sending login request for: ${username}`);
-
     try {
-      // Send POST to /api/login
-      const response = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      console.log('🔄 Sending login request...');
+
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
 
-      console.log("📡 Login request sent...");
-
-      // Handle non-200 responses
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("❌ API Error:", errorData.message);
-        alert(`❌ Login Failed: ${errorData.message}`);
-        return;
-      }
-
-      // Successful login → parse JSON
       const data = await response.json();
-      console.log("✅ Login successful:", data);
 
-      // Store the token & username (or do something else)
-      localStorage.setItem("userToken", data.token);
-      localStorage.setItem("username", data.username);
+      if (response.ok) {
+        console.log('✅ Login successful:', data);
 
-      // Let user know they're in
-      alert(`✅ Welcome back, ${data.username}!`);
+        // Store JWT token in localStorage
+        localStorage.setItem('token', data.token);
 
-      // Hide the login modal
-      loginModal.classList.add("hidden");
+        // Display success message
+        alert('Login successful!');
 
-      // Optionally redirect or show another section
-      // showSection("landingPage"); // If you have this function
+        // Hide login modal (if applicable)
+        document.getElementById('loginModal')?.classList.add('hidden');
+
+        // Reload page or redirect
+        location.reload();
+      } else {
+        console.error('❌ Login failed:', data.message);
+        alert(`Login failed: ${data.message}`);
+      }
     } catch (error) {
-      console.error("❌ Login failed:", error);
-      alert("⚠️ Network error. Please try again.");
+      console.error('❌ Error during login:', error);
+      alert('An error occurred. Please try again.');
     }
-  }
+  });
+} else {
+  console.error('❌ Login button NOT found!');
+}
 
-  // Attach the login handler
-  submitLoginButton.addEventListener("click", handleLogin);
-});
+
 
 
 
