@@ -552,60 +552,61 @@ const voltMenuContainer = document.getElementById('voltMenuContainer');
 if (voltMenuContainer) voltMenuContainer.style.display = 'none';
 
 // Check if user is already logged in
-const token = localStorage.getItem('token');
+const token = localStorage.getItem("token");
 
 if (token) {
-  console.log('✅ User is already logged in');
+  console.log("✅ User is already logged in");
   showPostLoginButtons(); // Show inventory & logout buttons immediately
 }
 
 if (loginButton) {
-  console.log('✅ Login button found:', loginButton);
+  console.log("✅ Login button found:", loginButton);
 
-  loginButton.addEventListener('click', async (event) => {
+  loginButton.addEventListener("click", async (event) => {
     event.preventDefault();
-    console.log('🚀 Login button clicked!');
+    console.log("🚀 Login button clicked!");
 
-    const username = usernameInput.value.trim();
+    let username = usernameInput.value.trim().toLowerCase(); // Convert to lowercase
     const password = passwordInput.value;
 
     if (!username || !password) {
-      console.error('❌ Please enter both username and password.');
-      alert('Please enter both username and password.');
+      console.error("❌ Please enter both username and password.");
+      alert("Please enter both username and password.");
       return;
     }
 
     try {
-      console.log('🔄 Sending login request...');
+      console.log("🔄 Sending login request...");
 
-      const response = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        console.log('✅ Login successful:', data);
+        console.log("✅ Login successful:", data);
 
         // Store JWT token in localStorage
-        localStorage.setItem('token', data.token);
+        localStorage.setItem("token", data.token);
 
         // Show the post-login buttons (Inventory & Logout)
         showPostLoginButtons();
       } else {
-        console.error('❌ Login failed:', data.message);
+        console.error("❌ Login failed:", data.message);
         alert(`Login failed: ${data.message}`);
       }
     } catch (error) {
-      console.error('❌ Error during login:', error);
-      alert('An error occurred. Please try again.');
+      console.error("❌ Error during login:", error);
+      alert("An error occurred. Please try again.");
     }
   });
 } else {
-  console.error('❌ Login button NOT found!');
+  console.error("❌ Login button NOT found!");
 }
+
 
 /**
  * Replace the login form with 2 stacked buttons (INVENTORY + LOGOUT).

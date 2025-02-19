@@ -375,7 +375,10 @@ const dbGet = util.promisify(db.get).bind(db);
  * Handles user login, verifies credentials, and returns a JWT.
  */
 app.post("/api/login", async (req, res) => {
-  const { username, password } = req.body;
+  let { username, password } = req.body;
+
+  // Ensure username is lowercase for case-insensitive matching
+  username = username.trim().toLowerCase();
 
   // Check for missing credentials
   if (!username || !password) {
@@ -383,8 +386,8 @@ app.post("/api/login", async (req, res) => {
   }
 
   try {
-    // Query the user from the economy table
-    const user = await dbGet(`SELECT userID, username, password FROM economy WHERE username = ? AND password IS NOT NULL`, [username]);
+    // Query user from economy table with case-insensitive match
+    const user = await dbGet(`SELECT userID, username, password FROM economy WHERE LOWER(username) = ? AND password IS NOT NULL`, [username]);
 
     // If user is not found, send an error
     if (!user) {
@@ -406,7 +409,7 @@ app.post("/api/login", async (req, res) => {
       { expiresIn: "1h" }
     );
 
-    console.log(`✅ Login successful for ${username}`);
+    console.log(`✅ Login successful for ${user.username}`);
     return res.json({ message: "Login successful!", token, username: user.username });
   } catch (error) {
     console.error("❌ Error during login:", error);
