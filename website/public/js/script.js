@@ -368,6 +368,19 @@ if (showGiveawayListButton) {
 console.log('⚡ script.js is being executed!');
 
 const loginButton = document.getElementById('submitLogin');
+const loginForm = document.getElementById('loginForm');
+const usernameInput = document.getElementById('loginUsername');
+const passwordInput = document.getElementById('loginPassword');
+const usernameLabel = document.querySelector("label[for='loginUsername']");
+const passwordLabel = document.querySelector("label[for='loginPassword']");
+
+// Check if user is already logged in
+const token = localStorage.getItem('token');
+
+if (token) {
+  console.log('✅ User is already logged in');
+  showLogoutButton(); // Convert login to logout immediately
+}
 
 if (loginButton) {
   console.log('✅ Login button found:', loginButton);
@@ -376,9 +389,8 @@ if (loginButton) {
     event.preventDefault();
     console.log('🚀 Login button clicked!');
 
-    // Get username & password inputs
-    const username = document.getElementById('loginUsername').value.trim();
-    const password = document.getElementById('loginPassword').value;
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value;
 
     if (!username || !password) {
       console.error('❌ Please enter both username and password.');
@@ -403,14 +415,10 @@ if (loginButton) {
         // Store JWT token in localStorage
         localStorage.setItem('token', data.token);
 
-        // Display success message
-        alert('Login successful!');
+        // Hide login inputs & show logout button
+        showLogoutButton();
 
-        // Hide login modal (if applicable)
-        document.getElementById('loginModal')?.classList.add('hidden');
-
-        // Reload page or redirect
-        location.reload();
+        
       } else {
         console.error('❌ Login failed:', data.message);
         alert(`Login failed: ${data.message}`);
@@ -423,6 +431,33 @@ if (loginButton) {
 } else {
   console.error('❌ Login button NOT found!');
 }
+
+// 🔄 Function to replace login form with logout button
+function showLogoutButton() {
+  console.log('🔄 Replacing login form with logout button...');
+
+  // Hide login inputs & labels
+  usernameInput.style.display = 'none';
+  passwordInput.style.display = 'none';
+  if (usernameLabel) usernameLabel.style.display = 'none';
+  if (passwordLabel) passwordLabel.style.display = 'none';
+
+  // Keep button styling intact and change to logout
+  loginButton.textContent = 'LOGOUT';
+  loginButton.style.width = 'auto';
+  loginButton.style.display = 'inline-block';
+
+  // Remove existing login event listener
+  loginButton.replaceWith(loginButton.cloneNode(true));
+  const newLogoutButton = document.getElementById('submitLogin');
+  
+  newLogoutButton.addEventListener('click', () => {
+    console.log('🚪 Logging out...');
+    localStorage.removeItem('token'); // Remove token
+    location.reload(); // Reload page to reset UI
+  });
+}
+
 
 
 
