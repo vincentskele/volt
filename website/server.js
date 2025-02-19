@@ -453,6 +453,93 @@ app.get('/api/inventory', authenticateToken, (req, res) => {
   );
 });
 
+/**
+ * POST /api/buy
+ * Allows a user to buy an item from the shop.
+ */
+app.post('/api/buy', authenticateToken, async (req, res) => {
+  const userId = req.user.userId; // Get user ID from JWT
+  const { itemName } = req.body;
+
+  if (!itemName) {
+    return res.status(400).json({ error: 'Missing item name.' });
+  }
+
+  try {
+    // Get the item from the shop
+    db.get(`SELECT * FROM items WHERE name = ? AND isAvailable = 1`, [itemName], async (err, item) => {
+      if (err) {
+        console.error('Error fetching shop item:', err);
+        return res.status(500).json({ error: 'Database error. Please try again later.' });
+      }
+      if (!item) {
+        return res.status(404).json({ error: 'Item not found or unavailable.' });
+      }
+
+      // Check if item is in stock
+      if (item.quantity <= 0) {
+        return res.status(400).json({ error: `⚠️ "${itemName}" is out of stock.` });
+      }
+
+      // Get the user's balance
+      db.get(`SELECT wallet FROM economy WHERE userID = ?`, [userId], (err, user) => {
+        if (err) {
+          console.error('Error fetching user balance:', err);
+          return res.status(500).json({ error: 'Database error. Please try again later.' });
+        }
+        if (!user || user.wallet < item.price) {
+          return res.status(400).json({ error: `⚠️ You don't have enough funds to buy "${itemName}".` });
+        }
+
+        // Begin transaction
+        db.serialize(() => {
+          db.run('BEGIN TRANSACTION');
+
+          // Deduct the price from the user's wallet
+          db.run(`UPDATE economy SET wallet = wallet - ? WHERE userID = ?`, [item.price, userId], (err) => {
+            if (err) {
+              db.run('ROLLBACK');
+              console.error('Error deducting balance:', err);
+              return res.status(500).json({ error: 'Failed to process payment.' });
+            }
+
+            // Reduce item quantity in the shop
+            db.run(`UPDATE items SET quantity = quantity - 1 WHERE name = ?`, [itemName], (err) => {
+              if (err) {
+                db.run('ROLLBACK');
+                console.error('Error updating item quantity:', err);
+                return res.status(500).json({ error: 'Failed to update shop stock.' });
+              }
+
+              // Add item to user's inventory
+              db.run(
+                `INSERT INTO inventory (userID, itemID, quantity) 
+                 VALUES (?, ?, 1) 
+                 ON CONFLICT(userID, itemID) DO UPDATE SET quantity = quantity + 1`,
+                [userId, item.itemID],
+                (err) => {
+                  if (err) {
+                    db.run('ROLLBACK');
+                    console.error('Error adding item to inventory:', err);
+                    return res.status(500).json({ error: 'Failed to add item to inventory.' });
+                  }
+
+                  // Commit transaction
+                  db.run('COMMIT');
+                  console.log(`✅ User ${userId} bought "${itemName}".`);
+                  return res.json({ message: `✅ Purchase successful! You bought "${itemName}".` });
+                }
+              );
+            });
+          });
+        });
+      });
+    });
+  } catch (error) {
+    console.error('❌ Error in /api/buy route:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 
 // Start the server

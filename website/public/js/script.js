@@ -128,55 +128,159 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
 // ==================
-  // SHOP SECTION
-  // ==================
-  const showShopButton = document.getElementById('showShopButton');
-  if (showShopButton) {
-    showShopButton.addEventListener('click', async () => {
-      let shopItems = document.getElementById('shopItems');
-      if (!shopItems) {
-        shopItems = document.createElement('div');
-        shopItems.id = 'shopItems';
-        shopItems.className = 'shop-list';
-        document.body.appendChild(shopItems);
-      }
-      try {
-        const response = await fetch('/api/shop');
-        const data = await response.json();
-        shopItems.innerHTML = ''; // Clear any existing content
+  // SHOP SECTION - BUY ITEMS (With Modal)
+const showShopButton = document.getElementById('showShopButton');
+if (showShopButton) {
+  showShopButton.addEventListener('click', async () => {
+    let shopItems = document.getElementById('shopItems');
+    if (!shopItems) {
+      shopItems = document.createElement('div');
+      shopItems.id = 'shopItems';
+      shopItems.className = 'shop-list';
+      document.body.appendChild(shopItems);
+    }
+    try {
+      const response = await fetch('/api/shop');
+      const data = await response.json();
+      shopItems.innerHTML = ''; // Clear existing content
 
-        data.forEach((item) => {
-          // Create a container for each shop item.
-          const itemContainer = document.createElement('div');
-          itemContainer.className = 'shop-item';
-          itemContainer.style.cursor = 'pointer'; // Make it clear it's clickable
+      data.forEach((item) => {
+        const itemContainer = document.createElement('div');
+        itemContainer.className = 'shop-item';
+        itemContainer.style.cursor = 'pointer';
 
-          // Create a span for the item details
-          const detailsSpan = document.createElement('span');
-          detailsSpan.textContent = `${item.name} - ⚡${item.price} | Qty: ${item.quantity} `;
-          itemContainer.appendChild(detailsSpan);
+        const detailsSpan = document.createElement('span');
+        detailsSpan.innerHTML = `<strong>${item.name}</strong> - ⚡${item.price} | Qty: ${item.quantity}`;
+        itemContainer.appendChild(detailsSpan);
 
-          // Create a span for the description with markdown support
-          const descriptionSpan = document.createElement('span');
-          const descriptionHTML = item.description.replace(
-            /\[([^\]]+)\]\(([^)]+)\)/g,
-            '<a href="$2" target="_blank" class="link">$1</a>'
-          );
-          descriptionSpan.innerHTML = descriptionHTML;
-          itemContainer.appendChild(descriptionSpan);
+        const descriptionSpan = document.createElement('p');
+        descriptionSpan.innerHTML = item.description.replace(
+          /\[([^\]]+)\]\(([^)]+)\)/g,
+          '<a href="$2" target="_blank" class="link">$1</a>'
+        );
+        itemContainer.appendChild(descriptionSpan);
 
-        
-
-          // Append to shop list
-          shopItems.appendChild(itemContainer);
+        // Buy event listener - triggers modal
+        itemContainer.addEventListener('click', () => {
+          showPurchaseModal(item);
         });
 
-        showSection('shop');
-      } catch (error) {
-        console.error('Error fetching shop data:', error);
-      }
-    });
+        shopItems.appendChild(itemContainer);
+      });
+
+      showSection('shop');
+    } catch (error) {
+      console.error('Error fetching shop data:', error);
+    }
+  });
+}
+
+/**
+ * Show purchase confirmation modal.
+ * @param {Object} item - The item being purchased.
+ */
+function showPurchaseModal(item) {
+  const existingModal = document.getElementById('purchaseModal');
+  if (existingModal) existingModal.remove(); // Remove existing modal if any
+
+  // Create modal overlay
+  const modalOverlay = document.createElement('div');
+  modalOverlay.className = 'modal-overlay';
+  modalOverlay.id = 'purchaseModal';
+
+  // Create modal box
+  const modalBox = document.createElement('div');
+  modalBox.className = 'modal-box';
+
+  // Modal content
+  modalBox.innerHTML = `
+    <h3>Confirm Purchase</h3>
+    <p>Are you sure you want to buy:</p>
+    <p><strong>${item.name}</strong> for <strong>⚡${item.price}</strong>?</p>
+    <div class="modal-buttons">
+      <button class="confirm-button" id="confirmPurchase">Confirm</button>
+      <button class="cancel-button" id="cancelPurchase">Cancel</button>
+    </div>
+  `;
+
+  // Append modal to overlay
+  modalOverlay.appendChild(modalBox);
+  document.body.appendChild(modalOverlay);
+
+  // Add event listeners for buttons
+  document.getElementById('confirmPurchase').addEventListener('click', () => {
+    buyItem(item.name);
+    closeModal();
+  });
+
+  document.getElementById('cancelPurchase').addEventListener('click', closeModal);
+}
+
+/**
+ * Closes the purchase modal.
+ */
+function closeModal() {
+  const modal = document.getElementById('purchaseModal');
+  if (modal) modal.remove();
+}
+
+/**
+ * Send buy request to the server.
+ * @param {string} itemName - Name of the item to purchase.
+ */
+async function buyItem(itemName) {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    alert('You must be logged in to buy items.');
+    return;
   }
+
+  try {
+    const response = await fetch('/api/buy', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ itemName }),
+    });
+
+    const result = await response.json();
+    if (response.ok) {
+      showConfirmationPopup(`✅ Purchase successful! You bought "${itemName}".`);
+    } else {
+      showConfirmationPopup(`❌ Purchase failed: ${result.error}`);
+    }
+  } catch (error) {
+    console.error('Error processing purchase:', error);
+    showConfirmationPopup('❌ An error occurred while processing your purchase.');
+  }
+}
+
+/**
+ * Show a simple confirmation message popup.
+ * @param {string} message - The message to display.
+ */
+function showConfirmationPopup(message) {
+  const modalOverlay = document.createElement('div');
+  modalOverlay.className = 'modal-overlay';
+  
+  const modalBox = document.createElement('div');
+  modalBox.className = 'modal-box';
+  modalBox.innerHTML = `
+    <p>${message}</p>
+    <button class="confirm-button" id="closeModal">OK</button>
+  `;
+
+  modalOverlay.appendChild(modalBox);
+  document.body.appendChild(modalOverlay);
+
+  document.getElementById('closeModal').addEventListener('click', () => {
+    modalOverlay.remove();
+  });
+}
+
+
 
   // ================================================
 // INVENTORY SECTION (My Items)
