@@ -434,16 +434,14 @@ app.get('/api/volt-balance', authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/inventory
-// Return the items the currently logged-in user owns.
 app.get('/api/inventory', authenticateToken, (req, res) => {
-  const userId = req.user.userId; // from JWT
-  // Example query. Adjust table/column names as needed:
+  const userId = req.user.userId; // Get user ID from JWT
+
   db.all(
-    `SELECT i.itemID, i.name, i.description, ui.quantity
-       FROM user_items ui
-       JOIN items i ON ui.itemID = i.itemID
-       WHERE ui.userID = ?`,
+    `SELECT i.itemID, i.name, i.description, inv.quantity
+     FROM inventory inv
+     JOIN items i ON inv.itemID = i.itemID
+     WHERE inv.userID = ?`,
     [userId],
     (err, rows) => {
       if (err) {
@@ -454,6 +452,7 @@ app.get('/api/inventory', authenticateToken, (req, res) => {
     }
   );
 });
+
 
 
 // Start the server

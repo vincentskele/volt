@@ -207,7 +207,6 @@ const inventoryItems = document.getElementById('inventoryItems');
 
 // This function fetches the user’s inventory from /api/inventory
 async function fetchInventory() {
-  // You’ll need a valid token in localStorage
   const token = localStorage.getItem('token');
   if (!token) {
     alert('Please log in first!');
@@ -228,61 +227,54 @@ async function fetchInventory() {
     }
 
     const data = await response.json();
-    // data should be an array of items the user owns
-
-    inventoryItems.innerHTML = ''; // Clear existing
+    const inventoryItems = document.getElementById('inventoryItems');
+    inventoryItems.innerHTML = ''; // Clear existing content
 
     if (!data.length) {
-      inventoryItems.innerHTML = '<li>You have no items in your inventory.</li>';
+      inventoryItems.innerHTML = '<p class="no-items">You have no items in your inventory.</p>';
       return;
     }
 
-    // Render each item in the inventory
     data.forEach((item) => {
       const itemContainer = document.createElement('div');
-      itemContainer.className = 'inventory-item';
-      itemContainer.style.cursor = 'pointer';
+      itemContainer.className = 'inventory-item raffle-item bg-content border border-accent rounded-lg p-3 my-2 shadow-md text-primary';
 
-      // Item details
-      const detailsSpan = document.createElement('span');
-      detailsSpan.textContent = `${item.name} (Qty: ${item.quantity}) `;
-      itemContainer.appendChild(detailsSpan);
+      // Item title
+      const itemTitle = document.createElement('h3');
+      itemTitle.className = 'font-bold text-highlight uppercase tracking-wide text-center';
+      itemTitle.textContent = `${item.name} (Qty: ${item.quantity})`;
+      itemContainer.appendChild(itemTitle);
 
-      // Description with markdown
-      const descriptionSpan = document.createElement('span');
-      const descriptionHTML = item.description.replace(
+      // Item description
+      const descriptionSpan = document.createElement('p');
+      descriptionSpan.className = 'text-body text-primary';
+      descriptionSpan.innerHTML = item.description.replace(
         /\[([^\]]+)\]\(([^)]+)\)/g,
         '<a href="$2" target="_blank" class="link">$1</a>'
       );
-      descriptionSpan.innerHTML = descriptionHTML;
       itemContainer.appendChild(descriptionSpan);
 
-      // Click to copy /use command
+      // Click event for using the item
       itemContainer.addEventListener('click', async () => {
         const command = `%use "${item.name}"`;
         try {
           await navigator.clipboard.writeText(command);
-          alert(
-            `Copied to clipboard: ${command}\n\nClick OK to go to Discord. Paste and send to use your item!`
-          );
+          alert(`Copied to clipboard: ${command}\n\nClick OK to go to Discord and use your item!`);
         } catch (err) {
           console.error('Clipboard copy failed:', err);
           alert('Failed to copy. Please copy manually.');
         }
-        // Optionally open Discord
-        window.open(
-          'https://discord.com/channels/1014872741846974514/1336779333641179146',
-          '_blank'
-        );
+        window.open('https://discord.com/channels/1014872741846974514/1336779333641179146', '_blank');
       });
 
       inventoryItems.appendChild(itemContainer);
     });
   } catch (error) {
     console.error('Error fetching inventory:', error);
-    inventoryItems.innerHTML = '<li>Error loading inventory.</li>';
+    inventoryItems.innerHTML = '<p class="error-text text-red-500">Error loading inventory.</p>';
   }
 }
+
 
 if (showInventoryButton) {
   showInventoryButton.addEventListener('click', () => {
@@ -555,7 +547,7 @@ function showPostLoginButtons() {
   userActionContainer.style.flexDirection = 'column';
   userActionContainer.style.alignItems = 'flex-end';
 
-  // ========== MY INVENTORY BUTTON ==========
+  // ========== ITEMS BUTTON ==========
   const inventoryButton = document.createElement('button');
   inventoryButton.textContent = 'Items';
   // Match your button styling
