@@ -165,27 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
           descriptionSpan.innerHTML = descriptionHTML;
           itemContainer.appendChild(descriptionSpan);
 
-          // Add a click event to copy command and open Discord
-          itemContainer.addEventListener('click', async () => {
-            const command = `%buy "${item.name}"`;
-
-            try {
-              await navigator.clipboard.writeText(command);
-              console.log(`Command copied: ${command}`);
-              alert(
-                `Copied to clipboard: ${command}\n\nClick OK to go to Discord. Paste and send to buy!`
-              );
-            } catch (err) {
-              console.error('Clipboard copy failed:', err);
-              alert('Failed to copy to clipboard. Please copy manually.');
-            }
-
-            // Open Discord in a new tab
-            const discordURL =
-              'https://discord.com/channels/1014872741846974514/1336779333641179146';
-            console.log(`Opening Discord: ${discordURL}`);
-            window.open(discordURL, '_blank');
-          });
+        
 
           // Append to shop list
           shopItems.appendChild(itemContainer);
@@ -751,17 +731,6 @@ async function fetchVoltBalance() {
         );
         itemContainer.appendChild(descriptionSpan);
 
-        // Click event: copy buy command and open Discord
-        itemContainer.addEventListener("click", async () => {
-          const command = `%buy "${item.originalName}"`;
-          try {
-            await navigator.clipboard.writeText(command);
-            alert(`Copied to clipboard: ${command}\n\nClick OK to go to the discord command, hit paste and send to buy.`);
-          } catch (err) {
-            alert("Failed to copy. Please copy manually.");
-          }
-          window.open("https://discord.com/channels/1014872741846974514/1336779333641179146", "_blank");
-        });
 
         itemWrapper.appendChild(itemContainer);
         rafflesList.appendChild(itemWrapper);
