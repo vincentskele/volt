@@ -127,74 +127,171 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-//===================
-// SHOP SECTION
-//======================
+// ==================
+  // SHOP SECTION
+  // ==================
+  const showShopButton = document.getElementById('showShopButton');
+  if (showShopButton) {
+    showShopButton.addEventListener('click', async () => {
+      let shopItems = document.getElementById('shopItems');
+      if (!shopItems) {
+        shopItems = document.createElement('div');
+        shopItems.id = 'shopItems';
+        shopItems.className = 'shop-list';
+        document.body.appendChild(shopItems);
+      }
+      try {
+        const response = await fetch('/api/shop');
+        const data = await response.json();
+        shopItems.innerHTML = ''; // Clear any existing content
 
-const showShopButton = document.getElementById('showShopButton');
-if (showShopButton) {
-  showShopButton.addEventListener('click', async () => {
-    let shopItems = document.getElementById('shopItems');
-    if (!shopItems) {
-      shopItems = document.createElement('div');
-      shopItems.id = 'shopItems';
-      shopItems.className = 'shop-list';
-      document.body.appendChild(shopItems);
-    }
-    try {
-      const response = await fetch('/api/shop');
-      const data = await response.json();
-      shopItems.innerHTML = ''; // Clear any existing content
+        data.forEach((item) => {
+          // Create a container for each shop item.
+          const itemContainer = document.createElement('div');
+          itemContainer.className = 'shop-item';
+          itemContainer.style.cursor = 'pointer'; // Make it clear it's clickable
 
-      data.forEach((item) => {
-        // Create a container for each shop item.
-        const itemContainer = document.createElement('div');
-        itemContainer.className = 'shop-item';
-        itemContainer.style.cursor = 'pointer'; // Make it clear it's clickable
+          // Create a span for the item details
+          const detailsSpan = document.createElement('span');
+          detailsSpan.textContent = `${item.name} - ⚡${item.price} | Qty: ${item.quantity} `;
+          itemContainer.appendChild(detailsSpan);
 
-        // Create a span for the item details
-        const detailsSpan = document.createElement('span');
-        detailsSpan.textContent = `${item.name} - ⚡${item.price} | Qty: ${item.quantity} `;
-        itemContainer.appendChild(detailsSpan);
+          // Create a span for the description with markdown support
+          const descriptionSpan = document.createElement('span');
+          const descriptionHTML = item.description.replace(
+            /\[([^\]]+)\]\(([^)]+)\)/g,
+            '<a href="$2" target="_blank" class="link">$1</a>'
+          );
+          descriptionSpan.innerHTML = descriptionHTML;
+          itemContainer.appendChild(descriptionSpan);
 
-        // Create a span for the description with markdown support
-        const descriptionSpan = document.createElement('span');
-        const descriptionHTML = item.description.replace(
-          /\[([^\]]+)\]\(([^)]+)\)/g,
-          '<a href="$2" target="_blank" class="link">$1</a>'
-        );
-        descriptionSpan.innerHTML = descriptionHTML;
-        itemContainer.appendChild(descriptionSpan);
+          // Add a click event to copy command and open Discord
+          itemContainer.addEventListener('click', async () => {
+            const command = `%buy "${item.name}"`;
 
-        // Add a click event to copy command and open Discord
-        itemContainer.addEventListener('click', async () => {
-          const command = `%buy "${item.name}"`;
+            try {
+              await navigator.clipboard.writeText(command);
+              console.log(`Command copied: ${command}`);
+              alert(
+                `Copied to clipboard: ${command}\n\nClick OK to go to Discord. Paste and send to buy!`
+              );
+            } catch (err) {
+              console.error('Clipboard copy failed:', err);
+              alert('Failed to copy to clipboard. Please copy manually.');
+            }
 
-          try {
-            await navigator.clipboard.writeText(command);
-            console.log(`Command copied: ${command}`);
-            alert(`Copied to clipboard: ${command} - Click OK to go to the discord command, hit paste and send to buy.`);
-          } catch (err) {
-            console.error('Clipboard copy failed:', err);
-            alert('Failed to copy to clipboard. Please copy manually.');
-          }
+            // Open Discord in a new tab
+            const discordURL =
+              'https://discord.com/channels/1014872741846974514/1336779333641179146';
+            console.log(`Opening Discord: ${discordURL}`);
+            window.open(discordURL, '_blank');
+          });
 
-          // Open Discord in a new tab
-          const discordURL = 'https://discord.com/channels/1014872741846974514/1336779333641179146';
-          console.log(`Opening Discord: ${discordURL}`);
-          window.open(discordURL, '_blank');
+          // Append to shop list
+          shopItems.appendChild(itemContainer);
         });
 
-        // Append to shop list
-        shopItems.appendChild(itemContainer);
+        showSection('shop');
+      } catch (error) {
+        console.error('Error fetching shop data:', error);
+      }
+    });
+  }
+
+  // ================================================
+// INVENTORY SECTION (My Items)
+// ================================================
+const showInventoryButton = document.getElementById('showInventoryButton');
+const inventorySection = document.getElementById('inventorySection');
+const inventoryItems = document.getElementById('inventoryItems');
+
+// This function fetches the user’s inventory from /api/inventory
+async function fetchInventory() {
+  // You’ll need a valid token in localStorage
+  const token = localStorage.getItem('token');
+  if (!token) {
+    alert('Please log in first!');
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/inventory', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch inventory');
+    }
+
+    const data = await response.json();
+    // data should be an array of items the user owns
+
+    inventoryItems.innerHTML = ''; // Clear existing
+
+    if (!data.length) {
+      inventoryItems.innerHTML = '<li>You have no items in your inventory.</li>';
+      return;
+    }
+
+    // Render each item in the inventory
+    data.forEach((item) => {
+      const itemContainer = document.createElement('div');
+      itemContainer.className = 'inventory-item';
+      itemContainer.style.cursor = 'pointer';
+
+      // Item details
+      const detailsSpan = document.createElement('span');
+      detailsSpan.textContent = `${item.name} (Qty: ${item.quantity}) `;
+      itemContainer.appendChild(detailsSpan);
+
+      // Description with markdown
+      const descriptionSpan = document.createElement('span');
+      const descriptionHTML = item.description.replace(
+        /\[([^\]]+)\]\(([^)]+)\)/g,
+        '<a href="$2" target="_blank" class="link">$1</a>'
+      );
+      descriptionSpan.innerHTML = descriptionHTML;
+      itemContainer.appendChild(descriptionSpan);
+
+      // Click to copy /use command
+      itemContainer.addEventListener('click', async () => {
+        const command = `%use "${item.name}"`;
+        try {
+          await navigator.clipboard.writeText(command);
+          alert(
+            `Copied to clipboard: ${command}\n\nClick OK to go to Discord. Paste and send to use your item!`
+          );
+        } catch (err) {
+          console.error('Clipboard copy failed:', err);
+          alert('Failed to copy. Please copy manually.');
+        }
+        // Optionally open Discord
+        window.open(
+          'https://discord.com/channels/1014872741846974514/1336779333641179146',
+          '_blank'
+        );
       });
 
-      showSection('shop');
-    } catch (error) {
-      console.error('Error fetching shop data:', error);
-    }
+      inventoryItems.appendChild(itemContainer);
+    });
+  } catch (error) {
+    console.error('Error fetching inventory:', error);
+    inventoryItems.innerHTML = '<li>Error loading inventory.</li>';
+  }
+}
+
+if (showInventoryButton) {
+  showInventoryButton.addEventListener('click', () => {
+    fetchInventory();
+    // showSection('inventorySection') is your existing utility to display sections
+    showSection('inventorySection');
   });
 }
+
 
   // ------------------------------
   // Jobs Section
@@ -383,7 +480,7 @@ const token = localStorage.getItem('token');
 
 if (token) {
   console.log('✅ User is already logged in');
-  showLogoutButton(); // Convert login to logout immediately
+  showPostLoginButtons(); // Show inventory & logout buttons immediately
 }
 
 if (loginButton) {
@@ -419,8 +516,8 @@ if (loginButton) {
         // Store JWT token in localStorage
         localStorage.setItem('token', data.token);
 
-        // Hide login inputs & show logout button
-        showLogoutButton();
+        // Show the post-login buttons (Inventory & Logout)
+        showPostLoginButtons();
       } else {
         console.error('❌ Login failed:', data.message);
         alert(`Login failed: ${data.message}`);
@@ -434,9 +531,11 @@ if (loginButton) {
   console.error('❌ Login button NOT found!');
 }
 
-// 🔄 Function to replace login form with logout button
-function showLogoutButton() {
-  console.log('🔄 Replacing login form with logout button...');
+/**
+ * Replace the login form with 2 stacked buttons (MY INVENTORY + LOGOUT).
+ */
+function showPostLoginButtons() {
+  console.log('🔄 Replacing login form with MY INVENTORY + LOGOUT buttons...');
 
   // Hide login inputs & labels
   usernameInput.style.display = 'none';
@@ -444,28 +543,68 @@ function showLogoutButton() {
   if (usernameLabel) usernameLabel.style.display = 'none';
   if (passwordLabel) passwordLabel.style.display = 'none';
 
-  // Change button text & maintain styles
-  loginButton.textContent = 'LOGOUT';
-  loginButton.style.position = 'absolute';
-  loginButton.style.top = '10px';
-  loginButton.style.right = '10px';
-  loginButton.style.minWidth = 'auto';
+  // Hide the original login button
+  loginButton.style.display = 'none';
 
-  // Remove existing login event listener
-  loginButton.replaceWith(loginButton.cloneNode(true));
-  const newLogoutButton = document.getElementById('submitLogin');
+  // Create a container for the two buttons, top-right corner
+  const userActionContainer = document.createElement('div');
+  userActionContainer.style.position = 'absolute';
+  userActionContainer.style.top = '10px';
+  userActionContainer.style.right = '10px';
+  userActionContainer.style.display = 'flex';
+  userActionContainer.style.flexDirection = 'column';
+  userActionContainer.style.alignItems = 'flex-end';
 
-  newLogoutButton.addEventListener('click', () => {
+  // ========== MY INVENTORY BUTTON ==========
+  const inventoryButton = document.createElement('button');
+  inventoryButton.textContent = 'Items';
+  // Match your button styling
+  inventoryButton.className = 'btn text-sm font-bold h-6 px-3';
+  inventoryButton.style.height = '19px';
+  inventoryButton.style.minHeight = '19px';
+  inventoryButton.style.lineHeight = '19px';
+  inventoryButton.style.padding = '0 12px';
+  inventoryButton.style.marginBottom = '6px'; // spacing above logout
+
+  // On click, fetch inventory & show the inventory page
+  inventoryButton.addEventListener('click', () => {
+    if (typeof fetchInventory === 'function') {
+      fetchInventory();
+    }
+    if (typeof showSection === 'function') {
+      showSection('inventorySection');
+    }
+  });
+
+  // ========== LOGOUT BUTTON ==========
+  const logoutButton = document.createElement('button');
+  logoutButton.textContent = 'LOGOUT';
+  logoutButton.className = 'btn text-sm font-bold h-6 px-3';
+  logoutButton.style.height = '19px';
+  logoutButton.style.minHeight = '19px';
+  logoutButton.style.lineHeight = '19px';
+  logoutButton.style.padding = '0 12px';
+
+  logoutButton.addEventListener('click', () => {
     console.log('🚪 Logging out...');
     localStorage.removeItem('token'); // Remove token
     location.reload(); // Reload page to reset UI
   });
 
+  // Add both buttons to the container
+  userActionContainer.appendChild(inventoryButton);
+  userActionContainer.appendChild(logoutButton);
+
+  // Finally, attach to the DOM
+  document.body.appendChild(userActionContainer);
+
   // ✅ Show the Volt menu only after login
   if (voltMenuContainer) voltMenuContainer.style.display = 'block';
 
+  // Fetch the user's Volt balance
   fetchVoltBalance();
 }
+
 
 document.addEventListener('DOMContentLoaded', () => {
   const voltMenu = document.getElementById('voltMenu');
@@ -478,13 +617,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (token) {
     console.log('✅ User is logged in, showing Volt menu.');
-
     if (voltMenuContainer) voltMenuContainer.style.display = 'block';
 
     if (toggleVoltMenu && voltMenu) {
       toggleVoltMenu.addEventListener('click', () => {
-        console.log('🔄 Toggling Volt menu'); // Debugging log
-        voltMenu.style.display = voltMenu.style.display === 'block' ? 'none' : 'block';
+        console.log('🔄 Toggling Volt menu');
+        voltMenu.style.display =
+          voltMenu.style.display === 'block' ? 'none' : 'block';
       });
     }
 
@@ -494,7 +633,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// 🔄 Fetch Volt Balance from API (only if logged in)
+/**
+ * Fetch Volt Balance from API (only if logged in).
+ */
 async function fetchVoltBalance() {
   try {
     const token = localStorage.getItem('token');
@@ -503,23 +644,24 @@ async function fetchVoltBalance() {
     const response = await fetch('/api/volt-balance', {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
     });
 
     const data = await response.json();
     if (response.ok) {
-      document.getElementById('voltBalance').textContent = data.balance || "0 Volts";
+      document.getElementById('voltBalance').textContent = data.balance || '0 Volts';
     } else {
       console.error('❌ Failed to fetch Volt balance:', data.message);
-      document.getElementById('voltBalance').textContent = "Error loading";
+      document.getElementById('voltBalance').textContent = 'Error loading';
     }
   } catch (error) {
     console.error('❌ Error fetching Volt balance:', error);
-    document.getElementById('voltBalance').textContent = "Error loading";
+    document.getElementById('voltBalance').textContent = 'Error loading';
   }
 }
+
 
 
 

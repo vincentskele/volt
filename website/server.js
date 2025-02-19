@@ -434,6 +434,27 @@ app.get('/api/volt-balance', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/inventory
+// Return the items the currently logged-in user owns.
+app.get('/api/inventory', authenticateToken, (req, res) => {
+  const userId = req.user.userId; // from JWT
+  // Example query. Adjust table/column names as needed:
+  db.all(
+    `SELECT i.itemID, i.name, i.description, ui.quantity
+       FROM user_items ui
+       JOIN items i ON ui.itemID = i.itemID
+       WHERE ui.userID = ?`,
+    [userId],
+    (err, rows) => {
+      if (err) {
+        console.error('Error fetching inventory:', err);
+        return res.status(500).json({ error: 'Failed to fetch inventory.' });
+      }
+      res.json(rows);
+    }
+  );
+});
+
 
 // Start the server
 app.listen(PORT, () => {
