@@ -642,6 +642,22 @@ code {
 }
 
 /* --------------------------------------------------
+   GLOW EFFECT FOR ENTERED GIVEAWAYS
+-------------------------------------------------- */
+.giveaway-item.glowing {
+  border: 2px solid gold;
+  box-shadow: 0 0 15px 5px rgba(255, 223, 0, 0.8);
+  animation: glow 1.5s infinite alternate;
+}
+
+@keyframes glow {
+  0% { box-shadow: 0 0 5px 2px rgba(255, 223, 0, 0.5); }
+  50% { box-shadow: 0 0 15px 5px rgba(255, 223, 0, 0.8); }
+  100% { box-shadow: 0 0 5px 2px rgba(255, 223, 0, 0.5); }
+}
+
+
+/* --------------------------------------------------
    COUNTDOWN / TIMER
 -------------------------------------------------- */
 .countdown-container {

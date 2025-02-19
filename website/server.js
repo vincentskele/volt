@@ -544,6 +544,102 @@ app.post('/api/buy', authenticateToken, async (req, res) => {
   }
 });
 
+app.get('/api/giveaways/active', authenticateToken, async (req, res) => {
+  const userId = req.user.userId; // Get logged-in user ID
+
+  try {
+    const now = Date.now();
+    db.all(
+      `SELECT g.id, g.name, g.prize, g.end_time,
+        (SELECT COUNT(*) FROM giveaway_entries ge WHERE ge.giveaway_id = g.id) AS entryCount,
+        EXISTS(SELECT 1 FROM giveaway_entries ge WHERE ge.giveaway_id = g.id AND ge.user_id = ?) AS isEntered
+      FROM giveaways g
+      WHERE g.end_time > ?`,
+      [userId, now],
+      (err, rows) => {
+        if (err) {
+          console.error('Error fetching active giveaways:', err);
+          return res.status(500).json({ error: 'Failed to fetch active giveaways.' });
+        }
+        res.json(rows);
+      }
+    );
+  } catch (error) {
+    console.error("❌ Error fetching giveaways:", error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
+
+app.post('/api/giveaway/toggle', authenticateToken, async (req, res) => {
+  const { giveawayId } = req.body;
+  const userId = req.user.userId;
+
+  if (!giveawayId) {
+    return res.status(400).json({ error: "Missing giveaway ID." });
+  }
+
+  try {
+    // Check if the user is already entered
+    const userEntry = await dbGet(
+      `SELECT 1 FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?`,
+      [giveawayId, userId]
+    );
+
+    if (userEntry) {
+      // User is entered → Remove them
+      await db.run(`DELETE FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?`, [giveawayId, userId]);
+      console.log(`🛑 User ${userId} left giveaway ${giveawayId}`);
+      return res.json({ success: true, action: "left" });
+    } else {
+      // User is not entered → Add them
+      await db.run(`INSERT INTO giveaway_entries (giveaway_id, user_id) VALUES (?, ?)`, [giveawayId, userId]);
+      console.log(`✅ User ${userId} joined giveaway ${giveawayId}`);
+      return res.json({ success: true, action: "joined" });
+    }
+  } catch (error) {
+    console.error("❌ Error toggling giveaway entry:", error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
+
+/**
+ * POST /api/giveaways/enter
+ * Allows a user to enter a giveaway (one-time entry).
+ */
+app.post('/api/giveaways/enter', authenticateToken, async (req, res) => {
+  const { giveawayId } = req.body;
+  const userId = req.user.userId; // Get user ID from JWT
+
+  if (!giveawayId) {
+    return res.status(400).json({ error: "Missing giveaway ID." });
+  }
+
+  try {
+    // Check if the user is already entered
+    const userEntry = await dbGet(
+      `SELECT 1 FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?`,
+      [giveawayId, userId]
+    );
+
+    if (userEntry) {
+      // User is already entered → Remove them
+      await db.run(`DELETE FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?`, [giveawayId, userId]);
+      console.log(`🛑 User ${userId} left giveaway ${giveawayId}`);
+      return res.json({ success: true, joined: false }); // Explicitly return joined: false
+    } else {
+      // User is not entered → Add them
+      await db.run(`INSERT INTO giveaway_entries (giveaway_id, user_id) VALUES (?, ?)`, [giveawayId, userId]);
+      console.log(`✅ User ${userId} joined giveaway ${giveawayId}`);
+      return res.json({ success: true, joined: true }); // Explicitly return joined: true
+    }
+  } catch (error) {
+    console.error("❌ Error toggling giveaway entry:", error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
+
+
+
 
 // Start the server
 app.listen(PORT, () => {

@@ -467,11 +467,15 @@ if (showInventoryButton) {
   }
 
 // ------------------------------
-// Giveaways Section
+// Giveaways Section (Clickable Entry)
 // ------------------------------
 const showGiveawayListButton = document.getElementById('showGiveawayListButton');
 const giveawayItems = document.getElementById('giveawayItems');
 
+/**
+ * Fetches active giveaways from the API and renders them.
+ * Users can click on a giveaway to enter.
+ */
 async function fetchGiveaways() {
   try {
     const res = await fetch('/api/giveaways/active');
@@ -479,61 +483,121 @@ async function fetchGiveaways() {
 
     if (!giveaways.length) {
       giveawayItems.innerHTML = '<p>No active giveaways at the moment.</p>';
-    } else {
-      let html = ''; // No refresh button
+      return;
+    }
 
-      // Formatting options: Month (full), Day (numeric), Hour & Minute (12-hour clock)
-      const options = {
-        month: 'long',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: 'numeric',
-        hour12: true,
-      };
+    giveawayItems.innerHTML = ''; // Clear previous content
 
-      // Reverse the list if you want the newest first.
-      giveaways.reverse().forEach((g) => {
-        // Ensure the end_time is in milliseconds.
-        let timestamp = parseInt(g.end_time, 10);
-        if (timestamp.toString().length === 10) {
-          timestamp *= 1000;
-        }
+    const options = { month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric', hour12: true };
 
-        // Format the date in the user's local time zone.
-        const endTime = new Date(timestamp).toLocaleString(undefined, options);
+    giveaways.reverse().forEach((g) => {
+      const timestamp = g.end_time.toString().length === 10 ? g.end_time * 1000 : g.end_time;
+      const endTime = new Date(timestamp).toLocaleString(undefined, options);
 
-        const giveawayLink = `https://discord.com/channels/${SERVER_ID}/${g.channel_id}/${g.message_id}`;
-        html += `
-          <div class="giveaway-item">
-            <p class="giveaway-name">${g.giveaway_name}</p>
-            <div class="giveaway-content">
-              <p>
-                <a href="${giveawayLink}" target="_blank">
-                  Click here and react to enter giveaway!
-                </a>
-              </p>
-              <p><strong>End Time:</strong> ${endTime}</p>
-              <p><strong>Prize:</strong> ${g.prize}</p>
-              <p><strong>Winners:</strong> ${g.winners}</p>
-            </div>
-          </div>
-        `;
+      // Giveaway container
+      const giveawayDiv = document.createElement('div');
+      giveawayDiv.className = 'giveaway-item';
+      giveawayDiv.setAttribute('data-giveaway-id', g.id);
+
+      // Giveaway name
+      const namePara = document.createElement('p');
+      namePara.className = 'giveaway-name';
+      namePara.textContent = g.giveaway_name;
+      giveawayDiv.appendChild(namePara);
+
+      // Giveaway details
+      const detailsDiv = document.createElement('div');
+      detailsDiv.className = 'giveaway-content';
+      detailsDiv.innerHTML = `
+        <p><strong>Prize:</strong> ${g.prize}</p>
+        <p><strong>Winners:</strong> ${g.winners}</p>
+        <p><strong>End Time:</strong> ${endTime}</p>
+      `;
+      giveawayDiv.appendChild(detailsDiv);
+
+      // Click event: Enter the giveaway
+      giveawayDiv.addEventListener('click', async () => {
+        await enterGiveaway(g.id);
       });
 
-      giveawayItems.innerHTML = html;
-    }
+      giveawayItems.appendChild(giveawayDiv);
+    });
   } catch (error) {
     console.error('Error fetching giveaways:', error);
     giveawayItems.innerHTML = '<p>Error loading giveaways.</p>';
   }
 }
 
+/**
+ * Sends a request to enter the giveaway.
+ * @param {number} giveawayId - The ID of the giveaway.
+ */
+async function enterGiveaway(giveawayId) {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    alert('You must be logged in to enter giveaways.');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/giveaways/enter', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ giveawayId }),
+    });
+
+    const result = await res.json();
+    if (res.ok) {
+      if (result.joined) {
+        showConfirmationPopup(`🎉 Successfully entered the giveaway!`);
+      } else {
+        showConfirmationPopup(`❌ You have left the giveaway.`);
+      }
+      fetchGiveaways(); // Refresh list after status change
+    } else {
+      showConfirmationPopup(`❌ Failed to enter giveaway: ${result.error}`);
+    }
+    
+  } catch (error) {
+    console.error('Error entering giveaway:', error);
+    showConfirmationPopup('❌ An error occurred while entering.');
+  }
+}
+
+/**
+ * Displays a confirmation popup.
+ * @param {string} message - Message to show in the popup.
+ */
+function showConfirmationPopup(message) {
+  const modalOverlay = document.createElement('div');
+  modalOverlay.className = 'modal-overlay';
+
+  const modalBox = document.createElement('div');
+  modalBox.className = 'modal-box';
+  modalBox.innerHTML = `
+    <p>${message}</p>
+    <button class="confirm-button" id="closeModal">OK</button>
+  `;
+
+  modalOverlay.appendChild(modalBox);
+  document.body.appendChild(modalOverlay);
+
+  document.getElementById('closeModal').addEventListener('click', () => {
+    modalOverlay.remove();
+  });
+}
+
+// Button event listener to show giveaways
 if (showGiveawayListButton) {
   showGiveawayListButton.addEventListener('click', () => {
     fetchGiveaways();
-    showSection('giveawayList'); // Assumes showSection() is defined elsewhere
+    showSection('giveawayList');
   });
 }
+
 
 // ------------------------------
 // Login Section & Authentication
