@@ -565,31 +565,28 @@ app.post('/api/buy', authenticateToken, async (req, res) => {
   }
 });
 
-app.get('/api/giveaways/active', authenticateToken, async (req, res) => {
-  const userId = req.user.userId; // Get logged-in user ID
+app.get('/api/giveaways/:giveawayId/entries', async (req, res) => {
+  const { giveawayId } = req.params;
 
   try {
-    const now = Date.now();
-    db.all(
-      `SELECT g.id, g.name, g.prize, g.end_time,
-        (SELECT COUNT(*) FROM giveaway_entries ge WHERE ge.giveaway_id = g.id) AS entryCount,
-        EXISTS(SELECT 1 FROM giveaway_entries ge WHERE ge.giveaway_id = g.id AND ge.user_id = ?) AS isEntered
-      FROM giveaways g
-      WHERE g.end_time > ?`,
-      [userId, now],
-      (err, rows) => {
+    db.get(
+      `SELECT COUNT(*) AS entryCount FROM giveaway_entries WHERE giveaway_id = ?`,
+      [giveawayId],
+      (err, row) => {
         if (err) {
-          console.error('Error fetching active giveaways:', err);
-          return res.status(500).json({ error: 'Failed to fetch active giveaways.' });
+          console.error(`❌ Error fetching giveaway entries for ${giveawayId}:`, err);
+          return res.status(500).json({ error: 'Failed to fetch giveaway entries.' });
         }
-        res.json(rows);
+        res.json({ giveawayId, entryCount: row.entryCount || 0 });
       }
     );
   } catch (error) {
-    console.error("❌ Error fetching giveaways:", error);
-    res.status(500).json({ error: "Internal server error." });
+    console.error('❌ Error in /api/giveaways/:giveawayId/entries:', error);
+    res.status(500).json({ error: 'Internal server error.' });
   }
 });
+
+
 
 app.post('/api/giveaway/toggle', authenticateToken, async (req, res) => {
   const { giveawayId } = req.body;

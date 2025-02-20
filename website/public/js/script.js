@@ -543,9 +543,20 @@ async function fetchGiveaways() {
 
     const options = { month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric', hour12: true };
 
-    giveaways.reverse().forEach((g) => {
+    // Fetch entry counts for all giveaways
+    for (const g of giveaways.reverse()) {
       const timestamp = g.end_time.toString().length === 10 ? g.end_time * 1000 : g.end_time;
       const endTime = new Date(timestamp).toLocaleString(undefined, options);
+
+      // Fetch the entry count for this giveaway
+      let entryCount = 0;
+      try {
+        const entryRes = await fetch(`/api/giveaways/${g.id}/entries`);
+        const entryData = await entryRes.json();
+        entryCount = entryData.entryCount || 0;
+      } catch (error) {
+        console.error(`Error fetching entry count for giveaway ${g.id}:`, error);
+      }
 
       // Giveaway container
       const giveawayDiv = document.createElement('div');
@@ -564,6 +575,7 @@ async function fetchGiveaways() {
       detailsDiv.innerHTML = `
         <p><strong>Prize:</strong> ${g.prize}</p>
         <p><strong>Winners:</strong> ${g.winners}</p>
+        <p><strong>Entries:</strong> ${entryCount}</p>
         <p><strong>End Time:</strong> ${endTime}</p>
       `;
       giveawayDiv.appendChild(detailsDiv);
@@ -574,12 +586,13 @@ async function fetchGiveaways() {
       });
 
       giveawayItems.appendChild(giveawayDiv);
-    });
+    }
   } catch (error) {
     console.error('Error fetching giveaways:', error);
     giveawayItems.innerHTML = '<p>Error loading giveaways.</p>';
   }
 }
+
 
 /**
  * Sends a request to enter the giveaway.
