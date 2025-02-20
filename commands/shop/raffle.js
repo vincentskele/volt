@@ -22,7 +22,7 @@ module.exports = {
         .setRequired(true))
     .addIntegerOption(option =>
       option.setName('quantity')
-        .setDescription('Total number of tickets available')
+        .setDescription('1/2 the number of tickets you want available')
         .setRequired(true))
     .addIntegerOption(option =>
       option.setName('winners')
@@ -96,7 +96,7 @@ module.exports = {
 
       const embed = new EmbedBuilder()
         .setTitle(`🎟️ Raffle Started: ${raffleName}`)
-        .setDescription(`Prize: **${prizeInput}**\nTicket Cost: **${formatCurrency(ticketCost)}**\nTotal Tickets: **${ticketQuantity}**\n🎉 Ends in **${durationValue} ${timeUnit}**\n🏆 Winners: **${winnersCount}**`) // ✅ Winners count added
+        .setDescription(`Prize: **${prizeInput}**\nTicket Cost: **${formatCurrency(ticketCost)}**\nTotal Tickets: **${ticketQuantity * 2}**\n🎉 Ends in **${durationValue} ${timeUnit}**\n🏆 Winners: **${winnersCount}**`)
         .setColor(0xFFD700)
         .setTimestamp();
 
