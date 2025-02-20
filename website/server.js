@@ -456,6 +456,27 @@ app.get('/api/inventory', authenticateToken, (req, res) => {
   );
 });
 
+// Public endpoint for user inventory (no authentication)
+app.get('/api/public-inventory/:userId', (req, res) => {
+  const userId = req.params.userId;
+
+  db.all(
+    `SELECT i.itemID, i.name, i.description, inv.quantity
+     FROM inventory inv
+     JOIN items i ON inv.itemID = i.itemID
+     WHERE inv.userID = ?`,
+    [userId],
+    (err, rows) => {
+      if (err) {
+        console.error('Error fetching inventory:', err);
+        return res.status(500).json({ error: 'Failed to fetch inventory.' });
+      }
+      res.json(rows);
+    }
+  );
+});
+
+
 /**
  * POST /api/buy
  * Allows a user to buy an item from the shop.

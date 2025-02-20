@@ -52,49 +52,102 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // ------------------------------
-  // Leaderboard Section
-  // ------------------------------
-  const showLeaderboardButton = document.getElementById('showLeaderboardButton');
-  if (showLeaderboardButton) {
-    showLeaderboardButton.addEventListener('click', () => {
-      const leaderboardList = document.getElementById('leaderboardList');
-      fetch('/api/leaderboard')
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          return response.json();
-        })
-        .then((leaderboard) => {
-          leaderboardList.innerHTML = '';
-          leaderboard.forEach((entry, index) => {
-            const item = document.createElement('div');
-            item.className = 'leaderboard-item';
+// ------------------------------
+// Leaderboard Section (Clickable to view user's inventory)
+// ------------------------------
+const showLeaderboardButton = document.getElementById('showLeaderboardButton');
+if (showLeaderboardButton) {
+  showLeaderboardButton.addEventListener('click', () => {
+    const leaderboardList = document.getElementById('leaderboardList');
+    fetch('/api/leaderboard')
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then((leaderboard) => {
+        leaderboardList.innerHTML = '';
+        leaderboard.forEach((entry, index) => {
+          const item = document.createElement('div');
+          item.className = 'leaderboard-item';
+          item.style.cursor = 'pointer'; // Indicates that the item is clickable
 
-            const userLink = document.createElement('a');
-            userLink.href = `https://discord.com/users/${entry.userID}`;
-            userLink.target = '_blank';
-            userLink.textContent = `${index + 1}. ${entry.userTag}`;
-            userLink.className = 'user-link';
-
-            const total = entry.wallet + entry.bank;
-            const details = document.createElement('span');
-            details.innerHTML = `Solarian: ${entry.wallet} | Battery Bank: ${entry.bank} | Total: ${total || 0}`;
-            details.className = 'details';
-
-            item.appendChild(userLink);
-            item.appendChild(details);
-            leaderboardList.appendChild(item);
+          // When clicked, fetch and display the inventory for that user
+          item.addEventListener('click', () => {
+            fetchUserInventory(entry.userID);
           });
-        })
-        .catch((error) => {
-          console.error('Error fetching leaderboard:', error);
-          leaderboardList.textContent = 'Failed to load leaderboard.';
+
+          // Create the content for this leaderboard entry
+          const totalBalance = entry.wallet + entry.bank;
+          item.innerHTML = `
+            <span class="rank">${index + 1}. </span>
+            <span class="user-tag">${entry.userTag}</span> 
+            <span class="details">
+              Solarian: ${entry.wallet} | Battery Bank: ${entry.bank} | Total: ${totalBalance}
+            </span>
+          `;
+          leaderboardList.appendChild(item);
         });
-      showSection('leaderboard');
-    });
+      })
+      .catch((error) => {
+        console.error('Error fetching leaderboard:', error);
+        leaderboardList.textContent = 'Failed to load leaderboard.';
+      });
+    showSection('leaderboard');
+  });
+}
+
+/**
+ * Fetches and displays the inventory for the given user.
+ * Assumes there is an API endpoint at `/api/public-inventory/<userID>` that returns an array of items.
+ * @param {string} userID - The ID of the user whose inventory should be shown.
+ */
+async function fetchUserInventory(userID) {
+  try {
+    const response = await fetch(`/api/public-inventory/${userID}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch inventory for user ${userID}`);
+    }
+    const data = await response.json();
+    const inventoryItems = document.getElementById('inventoryItems');
+    inventoryItems.innerHTML = '';
+
+    if (!data.length) {
+      inventoryItems.innerHTML = `<p class="no-items text-body">No items in this user's inventory.</p>`;
+    } else {
+      data.forEach((item) => {
+        const itemContainer = document.createElement('div');
+        itemContainer.className = 'inventory-item raffle-item bg-content border border-accent rounded-lg p-3 my-2 shadow-md text-primary';
+
+        itemContainer.innerHTML = `
+          <h3 class="font-bold text-highlight uppercase tracking-wide text-center">${item.name} (Qty: ${item.quantity})</h3>
+          <p class="text-body text-primary">${item.description}</p>
+        `;
+
+        // Event for clicking to use the item
+        itemContainer.addEventListener('click', async () => {
+          const command = `%use "${item.name}"`;
+          try {
+            await navigator.clipboard.writeText(command);
+            alert(`Copied to clipboard: ${command}\n\nClick OK to go to Discord and use your item!`);
+          } catch (err) {
+            console.error('Clipboard copy failed:', err);
+            alert('Failed to copy. Please copy manually.');
+          }
+          window.open('https://discord.com/channels/1014872741846974514/1336779333641179146', '_blank');
+        });
+
+        inventoryItems.appendChild(itemContainer);
+      });
+    }
+    showSection('inventorySection');
+  } catch (error) {
+    console.error('Error fetching user inventory:', error);
+    alert('Failed to load user inventory.');
   }
+}
+
 
   // ------------------------------
   // Admin List Section
@@ -282,8 +335,8 @@ function showConfirmationPopup(message) {
 
 
 
-  // ================================================
-// INVENTORY SECTION (My Items)
+// ================================================
+// INVENTORY SECTION
 // ================================================
 const showInventoryButton = document.getElementById('showInventoryButton');
 const inventorySection = document.getElementById('inventorySection');
@@ -315,7 +368,7 @@ async function fetchInventory() {
     inventoryItems.innerHTML = ''; // Clear existing content
 
     if (!data.length) {
-      inventoryItems.innerHTML = '<p class="no-items">You have no items in your inventory.</p>';
+      inventoryItems.innerHTML = '<p class="no-items">There are no items in this inventory.</p>';
       return;
     }
 
