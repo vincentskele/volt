@@ -493,50 +493,41 @@ client.on('messageCreate', async (message) => {
   if (!(await userHasAllowedRole(message.author, message.guild))) return;
 
   const userId = message.author.id;
-  // Use EST-based date here
   const today = getESTDateString();
 
-  // Get or initialize user message data
-  if (!userMessageCounts.has(userId)) {
-    userMessageCounts.set(userId, { date: today, count: 0, reacted: false, firstMessage: false });
-  }
-
-  const userData = userMessageCounts.get(userId);
-
-  // Reset data if it's a new day (based on EST date)
-  if (userData.date !== today) {
-    userData.date = today;
-    userData.count = 0;
-    userData.reacted = false;
-    userData.firstMessage = false; // Reset first message bonus eligibility
-  }
-
-  // Check if the message is in the allowed first message bonus channel (or all channels if blank)
-  const isBonusChannel = !FIRST_MESSAGE_BONUS_CHANNEL || message.channel.id === FIRST_MESSAGE_BONUS_CHANNEL;
-
-  // 🎁 First Message Bonus - Award if it's the user's first message of the day
-  if (!userData.firstMessage && isBonusChannel) {
-    userData.firstMessage = true;
+  // Initialize or reset user data for a new day.
+  let userData = userMessageCounts.get(userId);
+  if (!userData || userData.date !== today) {
+    userData = {
+      date: today,
+      count: 0,
+      reacted: false,
+      firstMessageBonusGiven: false,
+    };
     userMessageCounts.set(userId, userData);
-    saveMessageCounts(); // Save progress
+  }
 
+  // Determine if the current channel qualifies for a bonus.
+  // If no bonus channel is set, allow bonus in any channel.
+  const inBonusChannel = !FIRST_MESSAGE_BONUS_CHANNEL || message.channel.id === FIRST_MESSAGE_BONUS_CHANNEL;
+
+  // 🎁 Award first message bonus if not already given and if in a bonus-eligible channel.
+  if (!userData.firstMessageBonusGiven && inBonusChannel) {
+    userData.firstMessageBonusGiven = true;
     await updateWallet(userId, FIRST_MESSAGE_BONUS);
-    console.log(`🎁 First message bonus! Given ${FIRST_MESSAGE_BONUS} to ${message.author.username}`);
-
-    /* Optional: Notify the user
-    message.reply(`🎉 You've received your first message bonus of the day! (+${FIRST_MESSAGE_BONUS})`);*/
+    console.log(`🎁 First message bonus awarded to ${message.author.username} (+${FIRST_MESSAGE_BONUS}).`);
+    saveMessageCounts();
   }
 
-  // 💬 Regular message-based rewards (only in allowed channels)
+  // 💬 Regular message-based rewards (only in allowed channels).
   if (allowedChannels.includes(message.channel.id) && userData.count < MESSAGE_REWARD_LIMIT) {
-    userData.count += 1;
-    userMessageCounts.set(userId, userData);
-    saveMessageCounts(); // Save progress
-
+    userData.count++;
     await updateWallet(userId, MESSAGE_REWARD_AMOUNT);
-    console.log(`⚡ Given ${MESSAGE_REWARD_AMOUNT} to ${message.author.username} for message #${userData.count} today`);
+    console.log(`⚡ Awarded ${MESSAGE_REWARD_AMOUNT} to ${message.author.username} for message #${userData.count} today.`);
+    saveMessageCounts();
   }
 });
+
 
 // ==========================
 // ⭐ REACTION-BASED REWARDS (Once Per 24 Hours Once Per Message)
