@@ -7,6 +7,8 @@ const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs'); // Needed to read the console.json file
 
+
+
 // Import your Discord bot client so we can fetch usernames
 // Make sure ../bot exports something like: module.exports = { client }
 const { client } = require('../info-bot'); 
@@ -30,6 +32,33 @@ const db = new sqlite3.Database(dbPath, (err) => {
     console.log(`Connected to SQLite database at ${dbPath}`);
   }
 });
+
+
+
+/**
+ * Adds a user to a giveaway.
+ * Ensures there are no duplicate entries.
+ */
+async function addGiveawayEntry(giveawayId, userId) {
+  try {
+    // Check if the user is already entered
+    const existingEntry = await dbGet(
+      `SELECT 1 FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?`,
+      [giveawayId, userId]
+    );
+
+    if (existingEntry) {
+      console.log(`⚠️ User ${userId} already entered in giveaway ${giveawayId}. Skipping duplicate.`);
+      return;
+    }
+
+    // Insert entry into giveaway_entries
+    await dbRun(`INSERT INTO giveaway_entries (giveaway_id, user_id) VALUES (?, ?)`, [giveawayId, userId]);
+    console.log(`✅ Added new giveaway entry for user ${userId} in giveaway ${giveawayId}`);
+  } catch (error) {
+    console.error(`❌ Error adding giveaway entry:`, error);
+  }
+}
 
 /**
  * Helper: fetch a user’s Discord tag from their user ID.
@@ -367,6 +396,7 @@ app.post("/api/register", async (req, res) => {
 });
 
 const util = require('util');
+const dbRun = util.promisify(db.run).bind(db);
 // Promisify the db.get method for easier async/await usage
 const dbGet = util.promisify(db.get).bind(db);
 
@@ -609,9 +639,9 @@ app.post('/api/giveaway/toggle', authenticateToken, async (req, res) => {
       console.log(`🛑 User ${userId} left giveaway ${giveawayId}`);
       return res.json({ success: true, action: "left" });
     } else {
-      // User is not entered → Add them
-      await db.run(`INSERT INTO giveaway_entries (giveaway_id, user_id) VALUES (?, ?)`, [giveawayId, userId]);
-      console.log(`✅ User ${userId} joined giveaway ${giveawayId}`);
+      // ✅ Use `addGiveawayEntry()` instead of direct DB insert
+      await addGiveawayEntry(giveawayId, userId);
+      console.log(`✅ User ${userId} successfully joined giveaway ${giveawayId} via API.`);
       return res.json({ success: true, action: "joined" });
     }
   } catch (error) {
@@ -619,6 +649,7 @@ app.post('/api/giveaway/toggle', authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
 
 /**
  * POST /api/giveaways/enter
@@ -645,9 +676,9 @@ app.post('/api/giveaways/enter', authenticateToken, async (req, res) => {
       console.log(`🛑 User ${userId} left giveaway ${giveawayId}`);
       return res.json({ success: true, joined: false }); // Explicitly return joined: false
     } else {
-      // User is not entered → Add them
-      await db.run(`INSERT INTO giveaway_entries (giveaway_id, user_id) VALUES (?, ?)`, [giveawayId, userId]);
-      console.log(`✅ User ${userId} joined giveaway ${giveawayId}`);
+      // ✅ Use `addGiveawayEntry()` instead of direct DB insert
+      await addGiveawayEntry(giveawayId, userId);
+      console.log(`✅ User ${userId} successfully entered giveaway ${giveawayId} via API.`);
       return res.json({ success: true, joined: true }); // Explicitly return joined: true
     }
   } catch (error) {
@@ -655,6 +686,7 @@ app.post('/api/giveaways/enter', authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
 
 
 

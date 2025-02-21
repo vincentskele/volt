@@ -989,18 +989,21 @@ function redeemItem(userID, itemName) {
 // =========================================================================
 
 // Save a new giveaway and return its auto-generated id.
-async function saveGiveaway(messageId, channelId, endTime, prize, winners, giveawayName, repeat) {
+async function saveGiveaway(discordMessageId, channelId, endTime, prize, winners, name, repeat) {
   return new Promise((resolve, reject) => {
     db.run(
-      'INSERT INTO giveaways (message_id, channel_id, end_time, prize, winners, giveaway_name, repeat) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [messageId, channelId, endTime, prize, winners, giveawayName, repeat],
-      function (err) {
-        if (err) reject(err);
-        else resolve(this.lastID);
+      `INSERT INTO giveaways (message_id, channel_id, end_time, prize, winners, giveaway_name, repeat)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [discordMessageId, channelId, endTime, prize, winners, name, repeat],
+      function(err) {
+        if (err) return reject(err);
+        // "this.lastID" is the auto-increment 'id' in the giveaways table
+        resolve(this.lastID);
       }
     );
   });
 }
+
 
 
 // Get all active giveaways.
@@ -1043,21 +1046,49 @@ async function getGiveawayByMessageId(messageId) {
 
 // Record a giveaway entry (i.e. when a user reacts).
 async function addGiveawayEntry(giveawayId, userId) {
-  const existingEntry = await db.get(
-    'SELECT * FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?',
-    [giveawayId, userId]
-  );
+  try {
+    // ✅ Force a real-time check from the database
+    const existingEntry = await new Promise((resolve, reject) => {
+      db.get(
+        'SELECT * FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?',
+        [giveawayId, userId],
+        (err, row) => {
+          if (err) {
+            console.error(`❌ Database error checking entry for user ${userId} in giveaway ${giveawayId}:`, err);
+            reject(err);
+          } else {
+            resolve(row);
+          }
+        }
+      );
+    });
 
-  if (existingEntry) {
-    console.log(`⚠️ User ${userId} already entered in giveaway ${giveawayId}. Skipping duplicate.`);
-    return;
+    if (existingEntry) {
+      console.log(`⚠️ User ${userId} already entered in giveaway ${giveawayId}. Skipping duplicate.`);
+      return;
+    }
+
+    await new Promise((resolve, reject) => {
+      db.run(
+        'INSERT INTO giveaway_entries (giveaway_id, user_id) VALUES (?, ?)',
+        [giveawayId, userId],
+        function (err) {
+          if (err) {
+            console.error(`❌ Database error adding user ${userId} to giveaway ${giveawayId}:`, err);
+            reject(err);
+          } else {
+            console.log(`✅ Successfully added user ${userId} to giveaway ${giveawayId}.`);
+            resolve();
+          }
+        }
+      );
+    });
+
+  } catch (error) {
+    console.error(`❌ Error adding user ${userId} to giveaway ${giveawayId}:`, error);
   }
-
-  await db.run(
-    'INSERT INTO giveaway_entries (giveaway_id, user_id) VALUES (?, ?)',
-    [giveawayId, userId]
-  );
 }
+
 
 
 // Get all giveaway entries (user IDs) for a specific giveaway.
@@ -1074,6 +1105,7 @@ async function getGiveawayEntries(giveawayId) {
   });
 }
 
+
 // Remove a giveaway entry when a reaction is removed.
 async function removeGiveawayEntry(giveawayId, userId) {
   return new Promise((resolve, reject) => {
@@ -1081,12 +1113,21 @@ async function removeGiveawayEntry(giveawayId, userId) {
       'DELETE FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?',
       [giveawayId, userId],
       function (err) {
-        if (err) reject(err);
-        else resolve();
+        if (err) {
+          console.error(`❌ Database error removing user ${userId} from giveaway ${giveawayId}:`, err);
+          reject(err);
+        } else if (this.changes === 0) {
+          console.warn(`⚠️ No entry found for user ${userId} in giveaway ${giveawayId}.`);
+          resolve(false); // No entry was removed
+        } else {
+          console.log(`✅ Successfully removed user ${userId} from giveaway ${giveawayId}.`);
+          resolve(true); // Entry was removed successfully
+        }
       }
     );
   });
 }
+
 
 // Clear all giveaway entries for a given giveaway (used when syncing reactions).
 async function clearGiveawayEntries(giveawayId) {

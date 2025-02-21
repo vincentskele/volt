@@ -158,10 +158,8 @@ function loadCommands(dir) {
 loadCommands(commandsPath);
 
 /**
- * Synchronize persistent giveaway entries for a given giveaway.
- * 1) Fetch the message from Discord
- * 2) Look at all 🎉 reactions (ignoring bots)
- * 3) Clear old entries in DB, re-add them
+ * Synchronize giveaway entries from Discord reactions to the database.
+ * This ensures that the database reflects the actual participants.
  */
 async function syncGiveawayEntries(giveaway) {
   try {
@@ -171,165 +169,185 @@ async function syncGiveawayEntries(giveaway) {
     if (!message) return;
 
     const reaction = message.reactions.cache.get('🎉');
-    let participantIDs = [];
-    if (reaction) {
-      const usersReacted = await reaction.users.fetch();
-      participantIDs = usersReacted.filter(u => !u.bot).map(u => u.id);
-    }
+    if (!reaction) return;
 
-    // Check existing DB entries and only add new ones
+    const usersReacted = await reaction.users.fetch();
+    const participantIDs = usersReacted.filter(user => !user.bot).map(user => user.id);
+
+    // Get existing entries from the database
     const existingEntries = await getGiveawayEntries(giveaway.id);
     const existingUserIds = new Set(existingEntries.map(entry => entry.user_id));
 
+    // Add new entries if they don't exist
     for (const userId of participantIDs) {
       if (!existingUserIds.has(userId)) {
         await addGiveawayEntry(giveaway.id, userId);
-        console.log(`✅ Added new giveaway entry for user ${userId} in giveaway ${giveaway.id}`);
+        console.log(`✅ Added new entry for user ${userId} in giveaway ${giveaway.id}`);
+      }
+    }
+
+    // Remove users from the database if they no longer have the reaction
+    for (const entry of existingEntries) {
+      if (!participantIDs.includes(entry.user_id)) {
+        await removeGiveawayEntry(giveaway.id, entry.user_id);
+        console.log(`❌ Removed entry for user ${entry.user_id} from giveaway ${giveaway.id}`);
       }
     }
   } catch (error) {
-    console.error('Error syncing giveaway entries:', error);
-  }
-}  // ✅ Make sure this closing bracket is here!
-
-
-/**
- * Reaction listener for adding a giveaway entry.
- */
-client.on('messageReactionAdd', async (reaction, user) => {
-  if (user.bot || reaction.emoji.name !== '🎉') return;
-  // Allowed roles filter check
-  if (reaction.message.guild && !(await userHasAllowedRole(user, reaction.message.guild))) return;
-  try {
-    if (reaction.partial) await reaction.fetch();
-    const giveaway = await getGiveawayByMessageId(reaction.message.id);
-    if (!giveaway) return; // Not a recognized giveaway message
-    await addGiveawayEntry(giveaway.id, user.id);
-    console.log(`Recorded giveaway entry for user ${user.id} in giveaway ${giveaway.id}`);
-  } catch (err) {
-    console.error('Error recording giveaway entry (add):', err);
-  }
-});
-
-/**
- * Reaction listener for removing a giveaway entry.
- */
-client.on('messageReactionRemove', async (reaction, user) => {
-  if (user.bot || reaction.emoji.name !== '🎉') return;
-  // Allowed roles filter check
-  if (reaction.message.guild && !(await userHasAllowedRole(user, reaction.message.guild))) return;
-  try {
-    if (reaction.partial) await reaction.fetch();
-    const giveaway = await getGiveawayByMessageId(reaction.message.id);
-    if (!giveaway) return;
-    await removeGiveawayEntry(giveaway.id, user.id);
-    console.log(`Removed giveaway entry for user ${user.id} from giveaway ${giveaway.id}`);
-  } catch (err) {
-    console.error('Error handling reaction remove:', err);
-  }
-});
-
-/**
- * Conclude a giveaway by fetching winners, awarding prizes, and announcing them.
- */
-async function concludeGiveaway(giveaway) {
-  try {
-    console.log(`⏳ Resolving giveaway: ${giveaway.message_id}`);
-    const channel = await client.channels.fetch(giveaway.channel_id);
-    if (!channel) {
-      console.error(`❌ Channel ${giveaway.channel_id} not found.`);
-      return;
-    }
-    const message = await channel.messages.fetch(giveaway.message_id);
-    if (!message) {
-      console.error(`❌ Message ${giveaway.message_id} not found.`);
-      return;
-    }
-
-    // Check for reactions
-    const reaction = message.reactions.cache.get('🎉');
-    if (!reaction) {
-      await channel.send('🚫 No one participated in the giveaway.');
-      await deleteGiveaway(giveaway.message_id);
-      return;
-    }
-
-    const usersReacted = await reaction.users.fetch();
-    const participants = usersReacted.filter(user => !user.bot);
-
-    if (participants.size === 0) {
-      await channel.send('🚫 No one participated in the giveaway.');
-      await deleteGiveaway(giveaway.message_id);
-      return;
-    }
-
-    // Select winners randomly
-    const participantArray = Array.from(participants.values());
-    const selectedWinners = [];
-    while (
-      selectedWinners.length < giveaway.winners &&
-      selectedWinners.length < participantArray.length
-    ) {
-      const randomIndex = Math.floor(Math.random() * participantArray.length);
-      const selectedUser = participantArray[randomIndex];
-      if (!selectedWinners.includes(selectedUser)) {
-        selectedWinners.push(selectedUser);
-      }
-    }
-
-    // Check if the prize is numeric points or a named shop item
-    const prizeCurrency = parseInt(giveaway.prize, 10);
-    for (const winner of selectedWinners) {
-      if (!isNaN(prizeCurrency)) {
-        // Award points
-        await updateWallet(winner.id, prizeCurrency);
-        console.log(`💰 Updated wallet for ${winner.id}: +${prizeCurrency}`);
-      } else {
-        // Award shop item
-        try {
-          const shopItem = await getShopItemByName(giveaway.prize);
-          await addItemToInventory(winner.id, shopItem.itemID, 1);
-          console.log(`🎁 Awarded shop item "${giveaway.prize}" to ${winner.id}`);
-        } catch (err) {
-          console.error(`❌ Failed to award shop item to ${winner.id}:`, err);
-        }
-      }
-    }
-
-    // Announce winners
-    const winnersMention = selectedWinners.map(u => `<@${u.id}>`).join(', ');
-    await channel.send(`🎉 Congratulations ${winnersMention}! You won **${giveaway.prize}**!`);
-    await deleteGiveaway(giveaway.message_id);
-    console.log(`✅ Giveaway ${giveaway.message_id} resolved and deleted from DB.`);
-  } catch (err) {
-    console.error('❌ Error concluding giveaway:', err);
+    console.error('❌ Error syncing giveaway entries:', error);
   }
 }
 
 /**
- * On bot ready: restore any active giveaways from the DB,
- * set timeouts to conclude them if needed, or conclude instantly if overdue.
+ * Check if a user is already in a giveaway (real-time DB query).
+ * @param {string} giveawayId - The giveaway ID.
+ * @param {string} userId - The user ID.
+ * @returns {Promise<boolean>} - True if the user is in the giveaway, false otherwise.
+ */
+async function checkUserInGiveaway(giveawayId, userId) {
+  try {
+    const existingEntries = await getGiveawayEntries(giveawayId);
+    return existingEntries.some(entry => entry.user_id === userId);
+  } catch (error) {
+    console.error(`❌ Error checking giveaway entry for user ${userId}:`, error);
+    return false; // Default to false if there's an error
+  }
+}
+
+
+/**
+ * Add a giveaway entry when a user reacts with 🎉.
+ */
+client.on('messageReactionAdd', async (reaction, user) => {
+  if (user.bot || reaction.emoji.name !== '🎉') return;
+
+  try {
+    if (reaction.partial) await reaction.fetch();
+    const giveaway = await getGiveawayByMessageId(reaction.message.id);
+    if (!giveaway) return;
+
+    // ✅ NEW: Directly query the database to check if the user is already in `giveaway_entries`
+    const userAlreadyEntered = await checkUserInGiveaway(giveaway.id, user.id);
+
+    if (userAlreadyEntered) {
+      console.log(`⚠️ User ${user.id} already entered in giveaway ${giveaway.id}. Skipping duplicate.`);
+      return; // Stop execution if user is already in the giveaway
+    }
+
+    await addGiveawayEntry(giveaway.id, user.id);
+    console.log(`📌 User ${user.id} entered giveaway ${giveaway.id}`);
+  } catch (err) {
+    console.error('⚠️ Error recording giveaway entry:', err);
+  }
+});
+
+
+
+/**
+ * Remove a giveaway entry when a user removes their 🎉 reaction.
+ */
+client.on('messageReactionRemove', async (reaction, user) => {
+  if (user.bot || reaction.emoji.name !== '🎉') return;
+
+  try {
+    if (reaction.partial) await reaction.fetch();
+    const giveaway = await getGiveawayByMessageId(reaction.message.id);
+    if (!giveaway) return;
+
+    // ✅ NEW: Force remove the user from the giveaway_entries table
+    await removeGiveawayEntry(giveaway.id, user.id);
+    console.log(`❌ User ${user.id} removed from giveaway ${giveaway.id}`);
+
+    // ✅ NEW: Introduce a slight delay to allow the DB to update
+    setTimeout(async () => {
+      const stillInGiveaway = await checkUserInGiveaway(giveaway.id, user.id);
+      if (stillInGiveaway) {
+        console.log(`⚠️ User ${user.id} still exists in giveaway ${giveaway.id} after removal! Investigate!`);
+      }
+    }, 500); // Small delay to verify DB update
+
+  } catch (err) {
+    console.error('⚠️ Error handling reaction removal:', err);
+  }
+});
+
+
+/**
+ * Conclude a giveaway by selecting winners from the database and awarding prizes.
+ */
+async function concludeGiveaway(giveaway) {
+  try {
+    console.log(`⏳ DEBUG: Starting conclusion for giveaway ${giveaway.id}`);
+
+    const channel = await client.channels.fetch(giveaway.channel_id);
+    if (!channel) {
+      console.error(`❌ DEBUG: Channel ${giveaway.channel_id} not found.`);
+      return;
+    }
+
+    // ✅ Fetch participants from the database and log what happens
+    console.log(`🔄 DEBUG: Fetching participants from giveaway_entries for giveaway ${giveaway.id}`);
+    const participants = await getGiveawayEntries(giveaway.id);
+    console.log(`📊 DEBUG: Participants retrieved from DB for giveaway ${giveaway.id}:`, participants);
+
+    if (!participants.length) {
+      console.log(`🚨 DEBUG: No valid participants found for giveaway ${giveaway.id}!`);
+      await channel.send(`🚫 No valid participants for giveaway **${giveaway.name}**.`);
+      await deleteGiveaway(giveaway.id);
+      return;
+    }
+
+    // ✅ Select winners randomly
+    const shuffled = participants.sort(() => 0.5 - Math.random());
+    const winners = shuffled.slice(0, giveaway.winners);
+
+    console.log(`🏆 DEBUG: Winners selected for giveaway ${giveaway.id}:`, winners);
+
+    // ✅ Announce winners
+    const winnersMention = winners.map(winnerId => `<@${winnerId}>`).join(', ');
+    await channel.send(`🎉 Congratulations ${winnersMention}! You won **${giveaway.prize}**!`);
+
+    // ✅ Award prizes
+    for (const winnerId of winners) {
+      if (!isNaN(giveaway.prize)) {
+        await updateWallet(winnerId, parseInt(giveaway.prize, 10));
+      } else {
+        const shopItem = await getShopItemByName(giveaway.prize);
+        if (shopItem) {
+          await addItemToInventory(winnerId, shopItem.itemID);
+        }
+      }
+    }
+
+    // ✅ Cleanup
+    await deleteGiveaway(giveaway.id);
+    console.log(`✅ DEBUG: Giveaway ${giveaway.id} resolved and deleted.`);
+  } catch (err) {
+    console.error('⚠️ ERROR in concludeGiveaway():', err);
+  }
+}
+
+
+
+/**
+ * Restore and schedule active giveaways on bot startup.
  */
 client.once('ready', async () => {
-  console.log(`Logged in as ${client.user.tag}!`);
-  console.log(`Bot is ready to use commands with prefix "${PREFIX}".`);
-
+  console.log(`✅ Logged in as ${client.user.tag}`);
+  
   const activeGiveaways = await getActiveGiveaways();
   console.log(`🔄 Restoring ${activeGiveaways.length} active giveaways...`);
 
   for (const giveaway of activeGiveaways) {
-    // Sync the DB with current reactions (in case of offline period)
     await syncGiveawayEntries(giveaway);
 
     const remainingTime = giveaway.end_time - Date.now();
     if (remainingTime > 0) {
-      // Schedule for the future
       setTimeout(async () => {
         await concludeGiveaway(giveaway);
       }, remainingTime);
-      console.log(`Scheduled giveaway ${giveaway.message_id} to conclude in ${remainingTime}ms.`);
+      console.log(`⏳ Scheduled giveaway ${giveaway.message_id} to conclude in ${remainingTime}ms.`);
     } else {
-      // Conclude immediately if it's already expired
       await concludeGiveaway(giveaway);
     }
   }
