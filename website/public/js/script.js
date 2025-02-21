@@ -301,6 +301,8 @@ async function buyItem(itemName) {
     const result = await response.json();
     if (response.ok) {
       showConfirmationPopup(`✅ Purchase successful! You bought "${itemName}".`);
+      // Re-fetch the Volt balance here:
+      fetchVoltBalance();
     } else {
       showConfirmationPopup(`❌ Purchase failed: ${result.error}`);
     }
@@ -309,6 +311,7 @@ async function buyItem(itemName) {
     showConfirmationPopup('❌ An error occurred while processing your purchase.');
   }
 }
+
 
 /**
  * Show a simple confirmation message popup.
@@ -855,17 +858,17 @@ async function fetchVoltBalance() {
     const token = localStorage.getItem('token');
     if (!token) return;
 
-    const response = await fetch('/api/volt-balance', {
+    const response = await fetch(`/api/volt-balance?nocache=${new Date().getTime()}`, {
       method: 'GET',
       headers: {
-        Authorization: `Bearer ${token}`,
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
     });
 
     const data = await response.json();
     if (response.ok) {
-      document.getElementById('voltBalance').textContent = data.balance || '0 Volts';
+      document.getElementById('voltBalance').textContent = `${data.balance}`;
     } else {
       console.error('❌ Failed to fetch Volt balance:', data.message);
       document.getElementById('voltBalance').textContent = 'Error loading';
@@ -875,6 +878,7 @@ async function fetchVoltBalance() {
     document.getElementById('voltBalance').textContent = 'Error loading';
   }
 }
+
 
 
 
@@ -1032,7 +1036,7 @@ async function fetchVoltBalance() {
       alert("You must be logged in to buy raffle tickets.");
       return;
     }
-
+  
     try {
       const response = await fetch("/api/buy", {
         method: "POST",
@@ -1042,10 +1046,12 @@ async function fetchVoltBalance() {
         },
         body: JSON.stringify({ itemName }),
       });
-
+  
       const result = await response.json();
       if (response.ok) {
         showConfirmationPopup(`✅ Purchase successful! You bought "${itemName}".`);
+        // Force refresh Volt balance after purchase
+        fetchVoltBalance();
       } else {
         showConfirmationPopup(`❌ Purchase failed: ${result.error}`);
       }
@@ -1054,6 +1060,7 @@ async function fetchVoltBalance() {
       showConfirmationPopup("❌ An error occurred while processing your purchase.");
     }
   }
+  
 
   /**
    * Show a confirmation message popup after purchase.
