@@ -436,7 +436,7 @@ app.post("/api/login", async (req, res) => {
     const token = jwt.sign(
       { userId: user.userID, username: user.username },
       SECRET_KEY,
-      { expiresIn: "1h" }
+      { expiresIn: "72h" }
     );
 
     console.log(`✅ Login successful for ${user.username}`);
