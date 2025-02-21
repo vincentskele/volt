@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
-const { EmbedBuilder, PermissionsBitField, AutocompleteInteraction } = require('discord.js');
+const { EmbedBuilder, PermissionsBitField } = require('discord.js');
 const db = require('../../db');
 const { points, formatCurrency } = require('../../points');
 
@@ -15,7 +15,7 @@ module.exports = {
       option.setName('prize')
         .setDescription('Enter a Volt amount (number) or select a shop item')
         .setRequired(true)
-        .setAutocomplete(true)) // ✅ Enables autocomplete for shop items
+        .setAutocomplete(true))
     .addIntegerOption(option =>
       option.setName('cost')
         .setDescription(`Ticket cost in ${points.symbol}`)
@@ -41,10 +41,7 @@ module.exports = {
           { name: 'Hours', value: 'hours' },
           { name: 'Days', value: 'days' }
         )),
-
-  /**
-   * Handles the raffle command execution.
-   */
+  
   async execute(interaction) {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
       return interaction.reply({ content: '🚫 Only admins can start raffles.', ephemeral: true });
@@ -69,10 +66,11 @@ module.exports = {
     const endTime = Date.now() + durationMs;
     const raffleTicketName = `${raffleName} Raffle Ticket`;
 
-    // ✅ Ensure prize is either a number (for Volt) or a valid shop item
+    // Validate prize: either a number (for Volt) or a valid shop item
     if (!/^\d+$/.test(prizeInput)) {
-      const shopItem = await db.getShopItemByName(prizeInput);
-      if (!shopItem) {
+      try {
+        await db.getShopItemByName(prizeInput);
+      } catch (err) {
         return interaction.reply({ content: '🚫 Invalid prize. Enter a Volt amount (number) or a valid shop item.', ephemeral: true });
       }
     }
@@ -91,7 +89,7 @@ module.exports = {
         interaction.channelId, raffleName, prizeInput, ticketCost, ticketQuantity, winnersCount, endTime
       );
 
-      // ✅ Ensure ticket is upserted properly to avoid duplicates
+      // Upsert the raffle ticket into the shop so users can buy it (or receive it via your website)
       await db.upsertShopItem(ticketCost, raffleTicketName, `Entry ticket for ${raffleName}`, ticketQuantity);
 
       const embed = new EmbedBuilder()
@@ -112,22 +110,20 @@ module.exports = {
     }
   },
 
-  /**
-   * Handles autocomplete for available shop items.
-   */
   async autocomplete(interaction) {
     const focusedValue = interaction.options.getFocused();
-    const shopItems = await db.getShopItems(); // Fetch available items
+    const shopItems = await db.getShopItems();
     const filtered = shopItems
       .map(item => ({ name: item.name, value: item.name }))
       .filter(choice => choice.name.toLowerCase().includes(focusedValue.toLowerCase()));
 
-    await interaction.respond(filtered.slice(0, 25)); // Discord supports max 25 options
+    await interaction.respond(filtered.slice(0, 25));
   },
 };
 
 /**
- * Concludes the raffle, picks winners, removes shop item, and clears entries.
+ * Concludes the raffle by selecting winners based on raffle ticket entries in user inventories.
+ * This version builds the pool of entries by querying inventory for the raffle ticket item.
  */
 async function concludeRaffle(raffle_id, channel) {
   try {
@@ -137,41 +133,67 @@ async function concludeRaffle(raffle_id, channel) {
       return;
     }
 
-    const participants = await db.getRaffleParticipants(raffle_id);
-    if (participants.length === 0) {
-      await channel.send(`🚫 The **${raffle.name}** raffle ended, but no one entered.`);
-      await db.removeRaffleShopItem(raffle.name);
-      await db.clearRaffleEntries(raffle_id);
+    const ticketName = `${raffle.name} Raffle Ticket`;
+
+    // Get the raffle ticket item details from the shop.
+    let raffleTicketItem;
+    try {
+      raffleTicketItem = await db.getShopItemByName(ticketName);
+    } catch (err) {
+      console.error(`❌ Raffle ticket item "${ticketName}" not found.`);
+      await channel.send(`🚫 Raffle ticket item for "${raffle.name}" not found.`);
       return;
     }
 
-    const shuffled = participants.sort(() => 0.5 - Math.random());
+    const ticketItemID = raffleTicketItem.itemID;
+
+    // Fetch all inventory rows for this raffle ticket.
+    // (You'll need to add this helper function in your db module.)
+    const ticketEntries = await db.getInventoryByItemID(ticketItemID);
+
+    // Build an array where each ticket is one entry.
+    let entries = [];
+    ticketEntries.forEach(entry => {
+      for (let i = 0; i < entry.quantity; i++) {
+        entries.push(entry.userID);
+      }
+    });
+
+    if (entries.length === 0) {
+      await channel.send(`🚫 The **${raffle.name}** raffle ended, but no tickets were found.`);
+      await db.removeRaffleShopItem(raffle.name);
+      return;
+    }
+
+    // Shuffle entries and pick winners.
+    const shuffled = entries.sort(() => 0.5 - Math.random());
     const winners = shuffled.slice(0, raffle.winners);
 
+    // Award prize(s) to winners.
     if (!isNaN(raffle.prize)) {
+      const prizeAmount = parseInt(raffle.prize, 10);
       for (const winner of winners) {
-        await db.updateWallet(winner.user_id, parseInt(raffle.prize));
-        console.log(`💰 ${winner.user_id} won ${raffle.prize} coins!`);
+        await db.updateWallet(winner, prizeAmount);
+        console.log(`💰 ${winner} won ${prizeAmount} coins!`);
       }
     } else {
       const shopItem = await db.getShopItemByName(raffle.prize);
       if (shopItem) {
         for (const winner of winners) {
-          await db.addItemToInventory(winner.user_id, shopItem.itemID);
-          console.log(`🎁 ${winner.user_id} won "${shopItem.name}"!`);
+          await db.addItemToInventory(winner, shopItem.itemID);
+          console.log(`🎁 ${winner} won "${shopItem.name}"!`);
         }
       } else {
         console.error(`❌ Could not find shop item "${raffle.prize}"`);
       }
     }
 
-    const winnerMentions = winners.map(w => `<@${w.user_id}>`).join(', ');
+    const winnerMentions = winners.map(userID => `<@${userID}>`).join(', ');
     await channel.send(`🎉 The **${raffle.name}** raffle has ended! Congratulations to: ${winnerMentions}`);
 
+    // Remove raffle ticket from the shop and from all user inventories.
     await db.removeRaffleShopItem(raffle.name);
-    await db.clearRaffleEntries(raffle_id);
-
-    console.log(`✅ Raffle ${raffle_id} concluded and cleaned up.`);
+    console.log(`✅ Raffle ${raffle.id} concluded and raffle tickets removed.`);
   } catch (error) {
     console.error(`❌ Error concluding raffle ${raffle_id}:`, error);
   }

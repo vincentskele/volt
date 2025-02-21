@@ -1652,7 +1652,21 @@ function resetPassword(discord_id, newPassword) {
   });
 }
 
-
+function getInventoryByItemID(itemID) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT userID, quantity FROM inventory WHERE itemID = ?`,
+      [itemID],
+      (err, rows) => {
+        if (err) {
+          console.error(`Error fetching inventory for itemID ${itemID}:`, err);
+          return reject(err);
+        }
+        resolve(rows || []);
+      }
+    );
+  });
+}
 
 // =========================================================================
 // Exports
@@ -1691,6 +1705,7 @@ module.exports = {
   createRaffle,
   getRaffleByName,
   getRaffleById,
+  getInventoryByItemID,
   getActiveRaffles,
   autoEnterRaffle,
   removeRaffleShopItem,
