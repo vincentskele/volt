@@ -577,6 +577,50 @@ if (showJobListButton) {
   });
 }
 
+document.addEventListener('click', (event) => {
+  if (event.target && event.target.id === 'quitJobButton') {
+    console.log("🛑 Quit Job button clicked!");
+    quitJob();
+  }
+});
+
+async function quitJob() {
+  console.log("🚀 Sending request to quit job...");
+
+  const token = localStorage.getItem('token');
+  if (!token) {
+    showConfirmationPopup('❌ You must be logged in to quit your job.');
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/quit-job', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    console.log("🔄 API Response:", response);
+
+    const result = await response.json();
+    console.log("📢 Server Response:", result);
+
+    if (response.ok) {
+      showConfirmationPopup(`✅ ${result.message}`);
+      fetchJobs(); // Refresh job list after quitting
+    } else {
+      showConfirmationPopup(`❌ ${result.error}`);
+    }
+  } catch (error) {
+    console.error('❌ Error quitting job:', error);
+    showConfirmationPopup('❌ Failed to quit job. Please try again later.');
+  }
+}
+
+
+
 
 // ------------------------------
 // Giveaways Section (Clickable Entry)

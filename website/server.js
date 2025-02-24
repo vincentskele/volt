@@ -723,6 +723,39 @@ app.post('/api/assign-job', authenticateToken, async (req, res) => {
   }
 });
 
+app.post('/api/quit-job', authenticateToken, async (req, res) => {
+  const userID = req.user?.userId; // Extract user ID from JWT
+
+  console.log(`[DEBUG] Received quit job request from user: ${userID}`);
+
+  if (!userID) {
+    console.error(`[ERROR] User not authenticated`);
+    return res.status(401).json({ error: 'User not authenticated' });
+  }
+
+  try {
+    console.log(`[CHECK] Fetching active job for user ${userID}`);
+    const activeJob = await dbGet(`SELECT jobID FROM job_assignees WHERE userID = ?`, [userID]);
+
+    if (!activeJob) {
+      console.warn(`[WARN] User ${userID} has no active job.`);
+      return res.status(400).json({ error: 'You have no active job to quit.' });
+    }
+
+    console.log(`[INFO] Removing job ${activeJob.jobID} for user ${userID}`);
+    
+    await dbRun(`DELETE FROM job_assignees WHERE userID = ?`, [userID]);
+
+    console.log(`[SUCCESS] User ${userID} quit their job.`);
+    return res.json({ success: true, message: 'You have quit your job.' });
+
+  } catch (error) {
+    console.error(`[ERROR] Job quitting failed:`, error);
+    return res.status(500).json({ error: 'Failed to quit job' });
+  }
+});
+
+
 
 
 
