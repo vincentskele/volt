@@ -687,6 +687,44 @@ app.post('/api/giveaways/enter', authenticateToken, async (req, res) => {
   }
 });
 
+const { assignJobById, getActiveJob } = require('../db'); // Ensure correct path
+
+
+app.post('/api/assign-job', authenticateToken, async (req, res) => {
+  const { jobID } = req.body;
+  const userID = req.user?.userId;
+
+  console.log(`[DEBUG] Received job assignment request:`, { userID, jobID });
+
+  if (!userID) {
+    console.error(`[ERROR] User not authenticated`);
+    return res.status(401).json({ error: 'User not authenticated' });
+  }
+
+  if (!jobID) {
+    console.error(`[ERROR] Job ID missing in request`);
+    return res.status(400).json({ error: 'Invalid job ID' });
+  }
+
+  try {
+    const activeJob = await getActiveJob(userID);
+    if (activeJob) {
+      console.warn(`[WARN] User ${userID} already has job ${activeJob.jobID}`);
+      return res.status(400).json({ error: 'You already have an assigned job.' });
+    }
+
+    const job = await assignJobById(userID, jobID);
+    console.log(`[SUCCESS] Job assigned to user ${userID}:`, job);
+    return res.json({ success: true, job });
+
+  } catch (error) {
+    console.error(`[ERROR] Job assignment failed:`, error);
+    return res.status(500).json({ error: 'Failed to assign job' });
+  }
+});
+
+
+
 
 
 

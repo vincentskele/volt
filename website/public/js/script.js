@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('DOMContentLoaded', () => {
   const sections = document.querySelectorAll('.content');
   const SERVER_ID = '1014872741846974514'; // Hardcoded Discord server ID
 
@@ -426,101 +426,157 @@ if (showInventoryButton) {
 
 
   // ------------------------------
-  // Jobs Section
-  // ------------------------------
-  const showJobListButton = document.getElementById('showJobListButton');
-  const jobListContent = document.getElementById('jobListContent');
+// Jobs Section (with Clickable Assignment)
+// ------------------------------
+const showJobListButton = document.getElementById('showJobListButton');
+const jobListContent = document.getElementById('jobListContent');
 
-  async function resolveUsername(userId) {
-    try {
-      const res = await fetch(`/api/resolveUser/${userId}`);
-      if (!res.ok) throw new Error(`Failed to fetch username for ${userId}`);
-      const data = await res.json();
-      return data.username || `UnknownUser (${userId})`;
-    } catch (error) {
-      console.error('Error resolving username:', error);
-      return `UnknownUser (${userId})`;
-    }
+async function resolveUsername(userId) {
+  try {
+    const res = await fetch(`/api/resolveUser/${userId}`);
+    if (!res.ok) throw new Error(`Failed to fetch username for ${userId}`);
+    const data = await res.json();
+    return data.username || `UnknownUser (${userId})`;
+  } catch (error) {
+    console.error('Error resolving username:', error);
+    return `UnknownUser (${userId})`;
   }
+}
 
-  async function resolveChannelName(channelId) {
-    try {
-      const res = await fetch(`/api/resolveChannel/${channelId}`);
-      if (!res.ok) throw new Error(`Failed to fetch channel name for ${channelId}`);
-      const data = await res.json();
-      return data.channelName || `UnknownChannel (${channelId})`;
-    } catch (error) {
-      console.error('Error resolving channel name:', error);
-      return `UnknownChannel (${channelId})`;
-    }
+async function resolveChannelName(channelId) {
+  try {
+    const res = await fetch(`/api/resolveChannel/${channelId}`);
+    if (!res.ok) throw new Error(`Failed to fetch channel name for ${channelId}`);
+    const data = await res.json();
+    return data.channelName || `UnknownChannel (${channelId})`;
+  } catch (error) {
+    console.error('Error resolving channel name:', error);
+    return `UnknownChannel (${channelId})`;
   }
+}
 
-  async function fetchJobs() {
-    try {
-      jobListContent.innerHTML = '<p>Loading jobs...</p>';
-      const res = await fetch('/api/jobs');
-      const jobs = await res.json();
-      if (!jobs.length) {
-        jobListContent.innerHTML = '<p class="no-jobs-message">No jobs available at the moment. Please check back later.</p>';
-        return;
-      }
-      jobListContent.innerHTML = '';
-      const jobList = document.createElement('div');
-      jobList.className = 'job-list';
-      for (const job of jobs) {
-        let description = job.description;
-        const userIdMatches = description.match(/<@(\d+)>/g) || [];
-        const uniqueUserIds = [...new Set(userIdMatches.map(match => match.slice(2, -1)))];
-        const userMappings = {};
-        await Promise.all(uniqueUserIds.map(async (userId) => {
-          userMappings[userId] = await resolveUsername(userId);
-        }));
-        for (const userId in userMappings) {
-          description = description.replace(
-            new RegExp(`<@${userId}>`, 'g'),
-            `<a href="https://discord.com/users/${userId}" target="_blank" class="link">@${userMappings[userId]}</a>`
-          );
-        }
-        const channelIdMatches = description.match(/<#(\d+)>/g) || [];
-        await Promise.all(channelIdMatches.map(async (match) => {
-          const channelId = match.slice(2, -1);
-          const channelName = await resolveChannelName(channelId);
-          description = description.replace(
-            new RegExp(`<#${channelId}>`, 'g'),
-            `<a href="https://discord.com/channels/${channelId}" target="_blank" class="link">#${channelName}</a>`
-          );
-        }));
+async function fetchJobs() {
+  try {
+    jobListContent.innerHTML = '<p>Loading jobs...</p>';
+    const res = await fetch('/api/jobs');
+    const jobs = await res.json();
+
+    if (!jobs.length) {
+      jobListContent.innerHTML = '<p class="no-jobs-message">No jobs available at the moment. Please check back later.</p>';
+      return;
+    }
+
+    jobListContent.innerHTML = '';
+    const jobList = document.createElement('div');
+    jobList.className = 'job-list';
+
+    for (const job of jobs) {
+      let description = job.description;
+      const userIdMatches = description.match(/<@(\d+)>/g) || [];
+      const uniqueUserIds = [...new Set(userIdMatches.map(match => match.slice(2, -1)))];
+      const userMappings = {};
+
+      await Promise.all(uniqueUserIds.map(async (userId) => {
+        userMappings[userId] = await resolveUsername(userId);
+      }));
+
+      for (const userId in userMappings) {
         description = description.replace(
-          /\[([^\]]+)\]\(([^)]+)\)/g,
-          '<a href="$2" target="_blank" class="link">$1</a>'
+          new RegExp(`<@${userId}>`, 'g'),
+          `<a href="https://discord.com/users/${userId}" target="_blank" class="link">@${userMappings[userId]}</a>`
         );
-        const jobItem = document.createElement('div');
-        jobItem.className = 'job-item';
-        jobItem.innerHTML = `<p><strong>Job:</strong> ${description}</p>`;
-        if (job.assignees && Array.isArray(job.assignees) && job.assignees.length > 0) {
-          const assigneeLinks = await Promise.all(job.assignees.map(async (userId) => {
-            const username = await resolveUsername(userId);
-            return `<a href="https://discord.com/users/${userId}" target="_blank" class="link">@${username}</a>`;
-          }));
-          jobItem.innerHTML += `<p>Assigned to: ${assigneeLinks.join(', ')}</p>`;
-        } else {
-          jobItem.innerHTML += `<p>Not assigned</p>`;
-        }
-        jobList.appendChild(jobItem);
       }
-      jobListContent.appendChild(jobList);
-    } catch (error) {
-      console.error('Error fetching jobs:', error.message, error.stack);
-      jobListContent.innerHTML = '<p>Error loading jobs. Please try again later.</p>';
+
+      const channelIdMatches = description.match(/<#(\d+)>/g) || [];
+      await Promise.all(channelIdMatches.map(async (match) => {
+        const channelId = match.slice(2, -1);
+        const channelName = await resolveChannelName(channelId);
+        description = description.replace(
+          new RegExp(`<#${channelId}>`, 'g'),
+          `<a href="https://discord.com/channels/${channelId}" target="_blank" class="link">#${channelName}</a>`
+        );
+      }));
+
+      description = description.replace(
+        /\[([^\]]+)\]\(([^)]+)\)/g,
+        '<a href="$2" target="_blank" class="link">$1</a>'
+      );
+
+      const jobItem = document.createElement('div');
+      jobItem.className = 'job-item clickable-job';
+      jobItem.dataset.jobId = job.jobID;
+      jobItem.innerHTML = `<p><strong>Job:</strong> ${description}</p>`;
+
+      if (job.assignees && Array.isArray(job.assignees) && job.assignees.length > 0) {
+        const assigneeLinks = await Promise.all(job.assignees.map(async (userId) => {
+          const username = await resolveUsername(userId);
+          return `<a href="https://discord.com/users/${userId}" target="_blank" class="link">@${username}</a>`;
+        }));
+        jobItem.innerHTML += `<p>Assigned to: ${assigneeLinks.join(', ')}</p>`;
+      } else {
+        jobItem.innerHTML += `<p>Not assigned</p>`;
+      }
+
+      // Click event to assign the user to this job
+      jobItem.addEventListener('click', () => {
+        assignUserToJob(job.jobID);
+      });
+
+      jobList.appendChild(jobItem);
     }
+
+    jobListContent.appendChild(jobList);
+  } catch (error) {
+    console.error('Error fetching jobs:', error.message, error.stack);
+    jobListContent.innerHTML = '<p>Error loading jobs. Please try again later.</p>';
+  }
+}
+
+// Assigns user to a job when clicked
+async function assignUserToJob(jobID) {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    alert('Please log in first!');
+    return;
   }
 
-  if (showJobListButton) {
-    showJobListButton.addEventListener('click', () => {
-      fetchJobs();
-      showSection('jobList');
+  try {
+    console.log(`[DEBUG] Sending request to assign job:`, { jobID });
+
+    const response = await fetch('/api/assign-job', { // ✅ Ensure correct endpoint
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ jobID }),
     });
+
+    const result = await response.json();
+    console.log(`[DEBUG] Job assignment response:`, result);
+
+    if (response.ok) {
+      showConfirmationPopup(`✅ Successfully assigned to job: "${result.job.description}"`);
+      fetchJobs(); // Refresh the job list
+    } else {
+      showConfirmationPopup(`❌ Job assignment failed: ${result.error}`);
+    }
+  } catch (error) {
+    console.error(`[ERROR] Error assigning job:`, error);
+    showConfirmationPopup('❌ Error assigning job.');
   }
+}
+
+
+
+// Show the job list when the button is clicked
+if (showJobListButton) {
+  showJobListButton.addEventListener('click', () => {
+    fetchJobs();
+    showSection('jobList');
+  });
+}
+
 
 // ------------------------------
 // Giveaways Section (Clickable Entry)
