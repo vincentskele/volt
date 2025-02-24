@@ -619,6 +619,31 @@ async function quitJob() {
   }
 }
 
+document.addEventListener("click", (event) => {
+  const modal = document.getElementById("jobSubmissionModal");
+
+  if (event.target && event.target.id === "submitJobButton") {
+    console.log("✅ Submit Job button clicked!");
+    
+    if (modal) {
+      modal.style.display = "flex"; // Make it visible
+      console.log("📌 Submission modal is now visible.");
+    } else {
+      console.error("❌ Submission modal not found!");
+    }
+  }
+
+  // Handle closing the modal
+  if (event.target && event.target.id === "cancelSubmissionButton") {
+    if (modal) {
+      modal.style.display = "none"; // Hide the modal
+      console.log("❌ Submission modal closed.");
+    }
+  }
+});
+
+
+
 
 
 

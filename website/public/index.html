@@ -234,8 +234,31 @@
     </p>
   </div>
 
-  <button id="quitJobButton" class="btn danger">Quit Job</button>
+  <button id="quitJobButton" class="btn danger">Quit</button>
+  <button id="submitJobButton" class="btn success">Submit</button>
+
   <button class="back-button">Home</button>
+
+<!-- Job Submission Modal -->
+<div id="jobSubmissionModal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); align-items: center; justify-content: center; z-index: 999;">
+  <div style="background: white; padding: 20px; border-radius: 10px; text-align: center;">
+    <h2>Submit Task</h2>
+    
+    <label for="jobSubmissionText">Task Description</label>
+    <textarea id="jobSubmissionText" placeholder="Describe your work"></textarea>
+
+    <label for="jobSubmissionImage">Upload Proof</label>
+    <input type="file" id="jobSubmissionImage" accept="image/*" />
+
+    <div>
+      <button id="cancelSubmissionButton">Cancel</button>
+      <button id="sendSubmissionButton">Submit</button>
+    </div>
+  </div>
+</div>
+
+
+
 </div>
 
 
