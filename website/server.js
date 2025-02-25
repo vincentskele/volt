@@ -15,7 +15,8 @@ const multer = require("multer");
 const { client } = require('../info-bot'); 
 
 const app = express();
-const PORT = process.env.SERVER_PORT || 3000;
+const PORT = Number(process.env.SERVER_PORT) || 3000;
+
 
 // Enable CORS and JSON parsing
 app.use(cors());
@@ -770,40 +771,38 @@ const { EmbedBuilder } = require("discord.js");
 
 
 
-// ✅ Setup Multer (File Upload)
-const upload = multer({ dest: "uploads/" }); // Temporary storage for images
+// ✅ Ensure uploads directory exists
+const uploadDir = path.join(__dirname, "../uploads");
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
+// ✅ Configure Multer for file storage
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, `${uniqueSuffix}-${file.originalname}`);
+  },
+});
+const upload = multer({ storage });
+
+// ✅ Serve uploaded images as static files
+app.use("/uploads", express.static(uploadDir));
 
 // ✅ Job Submission API
 app.post("/api/submit-job", upload.single("image"), async (req, res) => {
   console.log("📥 Received job submission:", req.body, req.file);
 
-  const userID = req.user?.userId || req.headers["x-user-id"]; // Get user ID from token or headers
-
-if (!userID) {
-  return res.status(400).json({ error: "User ID is missing. Please log in again." });
-}
+  const userID = req.headers["x-user-id"];
+  if (!userID) return res.status(400).json({ error: "User ID is missing. Please log in again." });
 
   const { title, description } = req.body;
-  const image = req.file; // Uploaded image (if any)
-
-  if (!userID || !title || !description) {
-    console.error("❌ Missing required fields!");
-    return res.status(400).json({ error: "User ID, title, and description are required." });
-  }
+  if (!title || !description) return res.status(400).json({ error: "Title and description are required." });
 
   try {
-    console.log("🔍 Fetching submission channel:", process.env.SUBMISSION_CHANNEL_ID);
     const channel = await client.channels.fetch(process.env.SUBMISSION_CHANNEL_ID);
-
-    if (!channel) {
-      console.error("❌ Submission channel not found!");
-      return res.status(500).json({ error: "Submission channel not found." });
-    }
+    if (!channel) return res.status(500).json({ error: "Submission channel not found." });
 
     console.log("📤 Sending embed to Discord...");
-
-    // ✅ Create a Discord embed message
     const embed = new EmbedBuilder()
       .setTitle("📢 New Job Submission!")
       .setColor("#0099ff")
@@ -811,21 +810,18 @@ if (!userID) {
       .setFooter({ text: `Submitted by: <@${userID}>` })
       .setTimestamp();
 
-    // ✅ Attach image if available
-    let files = [];
-    if (image) {
-      embed.setImage(`attachment://${image.filename}`);
-      files.push(image.path);
-    }
+// ✅ Attach image URL in embed as a field
+if (req.file) {
+  const imageUrl = `http://localhost:${PORT}/uploads/${req.file.filename}`;
+  console.log("🖼️ Image URL for embed:", imageUrl);
 
-    // ✅ Send embed to Discord
-    await channel.send({ embeds: [embed], files });
+  embed.addFields({ name: "📷 Image URL", value: `[Click to View](${imageUrl})` });
+}
+
+
+    await channel.send({ embeds: [embed] });
 
     console.log("✅ Job submitted successfully!");
-
-    // ✅ Cleanup: Delete temp file after sending
-    if (image) fs.unlink(image.path, (err) => { if (err) console.error("❌ Failed to delete temp file:", err); });
-
     res.json({ message: "Job submitted successfully!" });
   } catch (error) {
     console.error("❌ ERROR DETAILS:", error);
