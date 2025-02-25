@@ -812,7 +812,7 @@ app.post("/api/submit-job", upload.single("image"), async (req, res) => {
 
 // ✅ Attach image URL in embed as a field
 if (req.file) {
-  const imageUrl = `https://volt.solarians.world:${PORT}/uploads/${req.file.filename}`; //HARDCODED - CHANGE THIS FOR RUNNING CUSTOM
+  const imageUrl = `https://volt.solarians.world/uploads/${encodeURIComponent(req.file.filename)}`; //HARDCODED - CHANGE THIS FOR RUNNING CUSTOM
   console.log("🖼️ Image URL for embed:", imageUrl);
 
   embed.addFields({ name: "📷 Image URL", value: `[Click to View](${imageUrl})` });
