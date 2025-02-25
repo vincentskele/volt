@@ -32,3 +32,5 @@ userMessageCounts.json
 *.env.local
 points.db
 console.json
+/uploads
+
