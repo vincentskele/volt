@@ -619,6 +619,7 @@ async function quitJob() {
   }
 }
 
+// ✅ Keep the original modal open/close functionality
 document.addEventListener("click", (event) => {
   const modal = document.getElementById("jobSubmissionModal");
 
@@ -626,7 +627,7 @@ document.addEventListener("click", (event) => {
     console.log("✅ Submit Job button clicked!");
     
     if (modal) {
-      modal.style.display = "flex"; // Make it visible
+      modal.style.display = "flex"; // Show the modal
       console.log("📌 Submission modal is now visible.");
     } else {
       console.error("❌ Submission modal not found!");
@@ -641,6 +642,178 @@ document.addEventListener("click", (event) => {
     }
   }
 });
+
+// ✅ Ensure the event listener for submission is correctly attached
+document.addEventListener("click", async (event) => {
+  console.log(`🖱️ Click detected on element:`, event.target);
+
+  const modal = document.getElementById("jobSubmissionModal");
+  const jobDescriptionElement = document.getElementById("jobSubmissionText");
+
+  // ✅ Capture job selection when clicking a job from the list
+  if (event.target.closest(".clickable-job")) {
+    const jobItem = event.target.closest(".clickable-job");
+    localStorage.setItem("selectedJobID", jobItem.dataset.jobId); // Store job ID
+    console.log(`📌 Job selected, ID: ${jobItem.dataset.jobId}`);
+  }
+
+  // ✅ Open modal when clicking "Submit Task" button
+  if (event.target.id === "submitJobButton") {
+    console.log("✅ Submit Job button clicked!");
+    if (modal) {
+      modal.style.display = "flex"; // Show modal
+      console.log("📌 Submission modal is now visible.");
+
+      // FIX: Delay focus to ensure modal is fully rendered
+      setTimeout(() => {
+        jobDescriptionElement.focus();
+      }, 100);
+    } else {
+      console.error("❌ Submission modal not found!");
+    }
+  }
+
+  // ✅ Close modal when clicking "Cancel"
+  if (event.target.id === "cancelSubmissionButton") {
+    if (modal) {
+      modal.style.display = "none"; // Hide modal
+      console.log("❌ Submission modal closed.");
+    }
+  }
+
+  // ✅ Handle job submission
+  if (event.target.id === "sendSubmissionButton") {
+    console.log("🚀 Confirm job submission button clicked!");
+
+    // Retrieve job ID from storage
+    const selectedJobID = localStorage.getItem("selectedJobID");
+    if (!selectedJobID) {
+      alert("⚠️ Please select a job first.");
+      return;
+    }
+
+    // Fetch job details just before submission
+    const job = await getJobById(selectedJobID);
+    if (!job) {
+      alert("❌ Job not found! Please select a valid job.");
+      return;
+    }
+
+    console.log(`📌 Using job title from database: ${job.description}`);
+
+    // Ensure elements exist
+    if (!jobDescriptionElement) {
+      console.error("❌ Job description field not found!");
+      return;
+    }
+
+    // Extract values
+    const jobDescription = jobDescriptionElement.value.trim();
+    const jobImageElement = document.getElementById("jobSubmissionImage");
+    const jobImage = jobImageElement.files[0]; // Get uploaded file
+
+    if (!jobDescription) {
+      alert("⚠️ Please provide a task description.");
+      return;
+    }
+
+    // ✅ Fetch user ID from local storage (ensure it's set at login)
+    const userId = localStorage.getItem("discordUserID");
+    if (!userId) {
+      alert("⚠️ User ID is missing. Please log in again.");
+      return;
+    }
+
+    console.log(`📤 Preparing job submission:`, {
+      userID: userId,
+      title: job.description,
+      description: jobDescription,
+      image: jobImage ? jobImage.name : "No image uploaded"
+    });
+
+    // Create FormData for file upload
+    const formData = new FormData();
+    formData.append("title", job.description); // Use database title
+    formData.append("description", jobDescription);
+    if (jobImage) {
+      formData.append("image", jobImage);
+    }
+
+    // FIX: Log FormData contents before sending
+    for (let [key, value] of formData.entries()) {
+      console.log(`📤 FormData -> ${key}:`, value);
+    }
+
+    try {
+      const response = await fetch("/api/submit-job", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem("token")}`, // If required
+          "x-user-id": userId, // ✅ Include user ID in headers
+        },
+        body: formData, // Send data
+      });
+
+      const result = await response.json();
+      console.log("📥 Server response:", result);
+
+      if (response.ok) {
+        showStyledAlert("✅ Job submitted successfully!");
+        modal.style.display = "none"; // Hide modal after submission
+      } else {
+        alert(`❌ Submission failed: ${result.error}`);
+      }
+    } catch (error) {
+      console.error("❌ Error submitting job:", error);
+      alert("❌ Failed to submit job.");
+    }
+  }
+});
+
+function showStyledAlert(message, duration = 3000) {
+  let alertBox = document.getElementById("customAlert");
+
+  if (!alertBox) {
+    alertBox = document.createElement("div");
+    alertBox.id = "customAlert";
+    alertBox.classList.add("custom-alert");
+    document.body.appendChild(alertBox);
+  }
+
+  alertBox.textContent = message;
+  alertBox.style.opacity = "1";
+  alertBox.style.animation = "slideIn 0.5s forwards";
+
+  // Hide the alert after the duration
+  setTimeout(() => {
+    alertBox.style.animation = "slideOut 0.5s forwards";
+  }, duration);
+}
+
+
+/**
+ * Fetches all jobs from /api/jobs, 
+ * then returns the job object that matches the provided jobID.
+ * @param {number|string} jobID - The ID of the job to find.
+ * @returns {Object|null} The job object (if found), or null otherwise.
+ */
+async function getJobById(jobID) {
+  try {
+    const res = await fetch('/api/jobs');
+    if (!res.ok) {
+      throw new Error(`Failed to fetch jobs: ${res.status} ${res.statusText}`);
+    }
+
+    const jobs = await res.json();
+    // Find the job with the matching ID
+    const job = jobs.find(j => j.jobID == jobID);
+    return job || null; // Return null if no match found
+  } catch (error) {
+    console.error('Error fetching /api/jobs:', error);
+    return null;
+  }
+}
+
 
 
 
@@ -821,7 +994,6 @@ if (loginButton) {
   console.log("✅ Login button found:", loginButton);
 
   loginButton.addEventListener("click", async (event) => {
-    event.preventDefault();
     console.log("🚀 Login button clicked!");
 
     let username = usernameInput.value.trim().toLowerCase(); // Convert to lowercase
@@ -847,8 +1019,11 @@ if (loginButton) {
       if (response.ok) {
         console.log("✅ Login successful:", data);
 
-        // Store JWT token in localStorage
+        // ✅ Store JWT token & user ID in localStorage
         localStorage.setItem("token", data.token);
+        localStorage.setItem("discordUserID", data.userId); // Store user ID
+
+        console.log(`✅ Stored Discord User ID: ${data.userId}`);
 
         // Show the post-login buttons (Inventory & Logout)
         showPostLoginButtons();

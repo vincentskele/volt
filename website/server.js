@@ -6,6 +6,7 @@ const express = require('express');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs'); // Needed to read the console.json file
+const multer = require("multer");
 
 
 
@@ -440,7 +441,13 @@ app.post("/api/login", async (req, res) => {
     );
 
     console.log(`✅ Login successful for ${user.username}`);
-    return res.json({ message: "Login successful!", token, username: user.username });
+    return res.json({
+      message: "Login successful!",
+      token,
+      username: user.username,
+      userId: user.userID 
+    });
+    
   } catch (error) {
     console.error("❌ Error during login:", error);
     return res.status(500).json({ message: "Internal server error." });
@@ -755,6 +762,76 @@ app.post('/api/quit-job', authenticateToken, async (req, res) => {
   }
 });
 
+
+
+const SUBMISSION_CHANNEL_ID = process.env.SUBMISSION_CHANNEL_ID;
+
+const { EmbedBuilder } = require("discord.js");
+
+
+
+// ✅ Setup Multer (File Upload)
+const upload = multer({ dest: "uploads/" }); // Temporary storage for images
+
+
+// ✅ Job Submission API
+app.post("/api/submit-job", upload.single("image"), async (req, res) => {
+  console.log("📥 Received job submission:", req.body, req.file);
+
+  const userID = req.user?.userId || req.headers["x-user-id"]; // Get user ID from token or headers
+
+if (!userID) {
+  return res.status(400).json({ error: "User ID is missing. Please log in again." });
+}
+
+  const { title, description } = req.body;
+  const image = req.file; // Uploaded image (if any)
+
+  if (!userID || !title || !description) {
+    console.error("❌ Missing required fields!");
+    return res.status(400).json({ error: "User ID, title, and description are required." });
+  }
+
+  try {
+    console.log("🔍 Fetching submission channel:", process.env.SUBMISSION_CHANNEL_ID);
+    const channel = await client.channels.fetch(process.env.SUBMISSION_CHANNEL_ID);
+
+    if (!channel) {
+      console.error("❌ Submission channel not found!");
+      return res.status(500).json({ error: "Submission channel not found." });
+    }
+
+    console.log("📤 Sending embed to Discord...");
+
+    // ✅ Create a Discord embed message
+    const embed = new EmbedBuilder()
+      .setTitle("📢 New Job Submission!")
+      .setColor("#0099ff")
+      .setDescription(`**Title:** ${title}\n**Description:** ${description}`)
+      .setFooter({ text: `Submitted by: <@${userID}>` })
+      .setTimestamp();
+
+    // ✅ Attach image if available
+    let files = [];
+    if (image) {
+      embed.setImage(`attachment://${image.filename}`);
+      files.push(image.path);
+    }
+
+    // ✅ Send embed to Discord
+    await channel.send({ embeds: [embed], files });
+
+    console.log("✅ Job submitted successfully!");
+
+    // ✅ Cleanup: Delete temp file after sending
+    if (image) fs.unlink(image.path, (err) => { if (err) console.error("❌ Failed to delete temp file:", err); });
+
+    res.json({ message: "Job submitted successfully!" });
+  } catch (error) {
+    console.error("❌ ERROR DETAILS:", error);
+    res.status(500).json({ error: `Failed to send job submission. Reason: ${error.message}` });
+  }
+});
 
 
 

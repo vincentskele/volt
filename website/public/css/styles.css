@@ -1087,6 +1087,52 @@ code {
   background-color: #50597A;
 }
 
+/* --------------------------------------------------
+   CUSTOM ALERT STYLING
+-------------------------------------------------- */
+.custom-alert {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--highlight);
+  color: var(--black);
+  font-size: 1rem;
+  font-weight: bold;
+  padding: 12px 18px;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  text-align: center;
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+  text-shadow: 1px 1px 2px var(--black);
+}
+
+/* Animation to slide in */
+@keyframes slideIn {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* Animation to slide out */
+@keyframes slideOut {
+  0% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+}
+
 
 /* --------------------------------------------------
    FOOTER
