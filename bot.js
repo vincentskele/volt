@@ -158,6 +158,9 @@ function loadCommands(dir) {
 }
 loadCommands(commandsPath);
 
+const raffleCommand = require('./commands/giveaway/raffle.js');
+raffleCommand.setClient(client);
+
 /**
  * Synchronize giveaway entries from Discord reactions to the database.
  * This ensures that the database reflects the actual participants.
@@ -331,10 +334,7 @@ async function concludeGiveaway(giveaway) {
 const db = require('./db'); // Now "db" is available
 
 // Now you can do db.getRaffleParticipants, db.removeRaffleShopItem, etc.
-async function concludeRaffle(raffle) {
-  const participants = await db.getRaffleParticipants(raffle.id);
-  // ...
-}
+const { concludeRaffle } = require('./commands/giveaway/raffle.js');
 
 
 /**
@@ -344,7 +344,7 @@ client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
   
   const activeGiveaways = await getActiveGiveaways();
-  console.log(`🔄 Restoring ${activeGiveaways.length} active giveaways...`);
+  console.log(`🚦 Restoring ${activeGiveaways.length} active giveaways...`);
 
   for (const giveaway of activeGiveaways) {
     await syncGiveawayEntries(giveaway);
@@ -364,22 +364,20 @@ client.once('ready', async () => {
 client.once('ready', async () => {
   console.log('🔄 Checking active raffles on startup...');
 
-  const activeRaffles = await getActiveGiveaways(); // Or getActiveRaffles(), whichever you use
+  const activeRaffles = await getActiveRaffles();
+  console.log(`🔄 Restoring ${activeRaffles.length} active raffles...`);
 
   for (const raffle of activeRaffles) {
     const timeLeft = raffle.end_time - Date.now();
 
     if (timeLeft > 0) {
-      // Schedule a timeout to conclude the raffle at the correct time
       setTimeout(() => {
-        concludeRaffle(raffle);
+        concludeRaffle(raffle.id);
       }, timeLeft);
-
-      console.log(`📅 Scheduled raffle "${raffle.name}" (ID ${raffle.id}) to conclude in ${timeLeft}ms.`);
+      console.log(`📅 Scheduled raffle "${raffle.name}" (ID: ${raffle.id}) to conclude in ${timeLeft}ms.`);
     } else {
-      // If it's already past the end time, conclude immediately
-      await concludeRaffle(raffle);
-      console.log(`⏰ Raffle "${raffle.name}" (ID ${raffle.id}) was past end time and concluded now.`);
+      await concludeRaffle(raffle.id);
+      console.log(`⏰ Raffle "${raffle.name}" (ID: ${raffle.id}) was past end time and concluded immediately.`);
     }
   }
 });
@@ -387,30 +385,17 @@ client.once('ready', async () => {
 // Check every 60 seconds if any raffles have passed their end time.
 setInterval(async () => {
   try {
-    // 1) Fetch all raffles that are not yet concluded. 
-    //    (Make sure getActiveGiveaways/getActiveRaffles only returns those.)
-    const activeRaffles = await getActiveGiveaways(); 
-
+    const activeRaffles = await getActiveRaffles();
     for (const raffle of activeRaffles) {
-      // 2) If now >= raffle.end_time, it's time to conclude
       if (Date.now() >= raffle.end_time) {
         console.log(`⏰ Raffle "${raffle.name}" is past its end time. Concluding now...`);
-        
-        // 3) Conclude the raffle
-        await concludeRaffle(raffle);
-
-        // 4) IMPORTANT: Remove or mark the raffle as concluded so it 
-        //    won't be returned by getActiveGiveaways again.
-        await deleteGiveaway(raffle.id);
-        // OR await db.markRaffleConcluded(raffle.id);
-
-        console.log(`✅ Raffle "${raffle.name}" concluded and removed from active raffles.`);
+        await concludeRaffle(raffle.id);
       }
     }
   } catch (error) {
     console.error('⚠️ Error polling raffles:', error);
   }
-}, 60_000); // Every 60 seconds
+}, 60_000);
 
 
 
@@ -475,13 +460,17 @@ client.on('interactionCreate', async (interaction) => {
     await command.execute(interaction);
   } catch (error) {
     console.error(`Error executing slash command ${interaction.commandName}:`, error);
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({
-        content: '🚫 There was an error executing that command!',
-        ephemeral: true,
-      });
-    } else {
-      await interaction.reply({ content: '🚫 There was an error executing that command!', ephemeral: true });
+    
+    // Only try to respond if we haven't already
+    if (!interaction.replied && !interaction.deferred) {
+      try {
+        await interaction.reply({ 
+          content: '🚫 There was an error executing that command!', 
+          ephemeral: true 
+        });
+      } catch (err) {
+        console.error('Failed to send error response:', err);
+      }
     }
   }
 });
@@ -694,104 +683,6 @@ client.on('messageReactionRemove', async (reaction, user) => {
     console.log(`📌 User ${user.id} left raffle ${raffle.id}`);
   } catch (err) {
     console.error('⚠️ Error removing raffle entry:', err);
-  }
-});
-
-async function concludeRaffle(raffle) {
-  try {
-    console.log(`🎟️ Concluding raffle: ${raffle.name}`);
-
-    // (Optional) Fetch the channel if you want to announce winners
-    let channel = null;
-    try {
-      channel = await client.channels.fetch(raffle.channel_id);
-    } catch (fetchErr) {
-      console.error(`❌ Could not fetch channel ${raffle.channel_id}:`, fetchErr);
-    }
-
-    // 1) Get participants from the raffle_entries table
-    const participants = await db.getRaffleParticipants(raffle.id);
-    if (!participants.length) {
-      console.log(`🚫 No participants for raffle "${raffle.name}".`);
-      // Optionally announce
-      if (channel) {
-        await channel.send(`🚫 The **${raffle.name}** raffle ended, but no one entered.`);
-      }
-      // Clean up
-      await db.removeRaffleShopItem(raffle.name);
-      await db.clearRaffleEntries(raffle.id);
-      return;
-    }
-
-    console.log(`🎟️ Raffle "${raffle.name}" has ${participants.length} total tickets.`);
-
-    // 2) Shuffle & pick winners
-    const shuffled = participants.sort(() => Math.random() - 0.5);
-    const winningEntries = shuffled.slice(0, raffle.winners);
-
-    if (!winningEntries.length) {
-      console.log(`❌ No winners selected for raffle "${raffle.name}".`);
-      return;
-    }
-
-    // 3) Award prizes
-    if (!isNaN(raffle.prize)) {
-      // Numeric prize
-      const prizeAmount = parseInt(raffle.prize, 10);
-      for (const ticket of winningEntries) {
-        await db.updateWallet(ticket.user_id, prizeAmount);
-        console.log(`💰 User ${ticket.user_id} won ${prizeAmount} coins!`);
-      }
-    } else {
-      // Item prize
-      const shopItem = await db.getShopItemByName(raffle.prize);
-      if (!shopItem) {
-        console.error(`❌ Could not find shop item "${raffle.prize}"`);
-      } else {
-        for (const ticket of winningEntries) {
-          await db.addItemToInventory(ticket.user_id, shopItem.itemID);
-          console.log(`🎁 User ${ticket.user_id} won "${shopItem.name}"!`);
-        }
-      }
-    }
-
-    // 4) Announce winners (if channel is found)
-    if (channel) {
-      const winnerMentions = winningEntries.map(entry => `<@${entry.user_id}>`).join(', ');
-      await channel.send(`🎉 The **${raffle.name}** raffle has ended! Congratulations to: ${winnerMentions}`);
-    }
-
-    // 5) Clean up
-    await db.removeRaffleShopItem(raffle.name);
-    await db.clearRaffleEntries(raffle.id);
-
-    console.log(`✅ Raffle "${raffle.name}" concluded and cleaned up.`);
-  } catch (err) {
-    console.error(`⚠️ Error concluding raffle "${raffle.name}":`, err);
-  }
-}
-
-// Restore active raffles on bot startup
-client.once('ready', async () => {
-  console.log('🔄 Checking active raffles on startup...');
-
-  const activeRaffles = await getActiveRaffles(); // or getActiveGiveaways()
-  console.log(`🔄 Restoring ${activeRaffles.length} active raffles...`);
-
-  // Then iterate through each active raffle
-  for (const raffle of activeRaffles) {
-    const timeLeft = raffle.end_time - Date.now();
-
-    if (timeLeft > 0) {
-      setTimeout(() => {
-        concludeRaffle(raffle);
-      }, timeLeft);
-      console.log(`📅 Scheduled raffle "${raffle.name}" (ID: ${raffle.id}) to conclude in ${timeLeft}ms.`);
-    } else {
-      // Raffle is already past its end time, conclude immediately
-      await concludeRaffle(raffle);
-      console.log(`⏰ Raffle "${raffle.name}" (ID: ${raffle.id}) was past end time and concluded immediately.`);
-    }
   }
 });
 
