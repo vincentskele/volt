@@ -1219,13 +1219,16 @@ async function upsertShopItem(price, name, description, quantity) {
     db.run(`
       INSERT INTO items (price, name, description, quantity, isAvailable)
       VALUES (?, ?, ?, ?, 1)
-      ON CONFLICT(name) DO UPDATE SET quantity = items.quantity + excluded.quantity
+      ON CONFLICT(name) DO UPDATE 
+      SET description = excluded.description, 
+          quantity = items.quantity + excluded.quantity
     `, [price, name, description, quantity], function (err) {
       if (err) return reject(new Error('🚫 Failed to upsert shop item.'));
       resolve();
     });
   });
 }
+
 
 
 /**
