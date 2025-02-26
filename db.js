@@ -1447,33 +1447,35 @@ async function removeRaffleShopItem(raffleName) {
 //--------------------------------------
 
 /**
- * concludeRaffle(raffle_id, channel)
- * - Fetches the raffle by ID
- * - Gets all participant "ticket" rows
+ * concludeRaffle(raffle)
+ * - Fetches the raffle by ID (passed in from wherever)
+ * - Gets all participant rows from the `raffle_entries` table
  * - Shuffles & picks winners
  * - Awards currency or item
  * - Removes ticket shop item & clears entries
  */
-async function concludeRaffle(raffle_id, channel) {
+async function concludeRaffle(raffle) {
   try {
-    const raffle = await getRaffleById(raffle_id);
-    if (!raffle) {
-      console.error(`❌ Raffle ${raffle_id} not found in DB.`);
-      return;
-    }
+    console.log(`🎟️ Concluding raffle: ${raffle.name}`);
 
-    // 5a) Fetch participant rows
-    const participants = await getRaffleParticipants(raffle_id);
+    // 1) Get the participants from your DB (raffle_entries)
+    const participants = await getRaffleParticipants(raffle.id);
     if (participants.length === 0) {
-      await channel.send(`🚫 The **${raffle.name}** raffle ended, but no one entered.`);
+      console.log(`🚫 No participants found for raffle "${raffle.name}".`);
+      // Optionally send a message to the channel (if you still want an announcement)
+      const channel = await client.channels.fetch(raffle.channel_id).catch(() => null);
+      if (channel) {
+        await channel.send(`🚫 The **${raffle.name}** raffle ended, but no one entered.`);
+      }
+      // Clean up
       await removeRaffleShopItem(raffle.name);
-      await clearRaffleEntries(raffle_id);
+      await clearRaffleEntries(raffle.id);
       return;
     }
 
     console.log(`🎟️ Raffle "${raffle.name}" has ${participants.length} total tickets.`);
 
-    // 5b) Shuffle & pick winners (limit by raffle.winners)
+    // 2) Shuffle & pick winners
     const shuffled = participants.sort(() => Math.random() - 0.5);
     const winningEntries = shuffled.slice(0, raffle.winners);
 
@@ -1482,9 +1484,9 @@ async function concludeRaffle(raffle_id, channel) {
       return;
     }
 
-    // 5c) Award the prizes
+    // 3) Award the prizes
     if (!isNaN(raffle.prize)) {
-      // Prize is numeric currency (e.g., coins/points)
+      // Prize is numeric currency
       const prizeAmount = parseInt(raffle.prize, 10);
       for (const ticket of winningEntries) {
         await db.updateWallet(ticket.user_id, prizeAmount);
@@ -1493,31 +1495,32 @@ async function concludeRaffle(raffle_id, channel) {
     } else {
       // Prize is a shop item
       const shopItem = await db.getShopItemByName(raffle.prize);
-      if (shopItem) {
+      if (!shopItem) {
+        console.error(`⚠️ Shop item "${raffle.prize}" not found.`);
+      } else {
         for (const ticket of winningEntries) {
           await db.addItemToInventory(ticket.user_id, shopItem.itemID);
           console.log(`🎁 ${ticket.user_id} won "${shopItem.name}"!`);
         }
-      } else {
-        console.error(`❌ Could not find shop item "${raffle.prize}"`);
       }
     }
 
-    // 5d) Announce winners in the channel
-    const winnerMentions = winningEntries.map(entry => `<@${entry.user_id}>`).join(', ');
-    await channel.send(
-      `🎉 The **${raffle.name}** raffle has ended! Congratulations to: ${winnerMentions}`
-    );
+    // 4) Announce winners in the channel (optional)
+    const channel = await client.channels.fetch(raffle.channel_id).catch(() => null);
+    if (channel) {
+      const winnerMentions = winningEntries.map(entry => `<@${entry.user_id}>`).join(', ');
+      await channel.send(`🎉 The **${raffle.name}** raffle has ended! Winners: ${winnerMentions}`);
+    }
 
-    // 5e) Clean up: remove the raffle shop item & clear entries
+    // 5) Clean up
     await removeRaffleShopItem(raffle.name);
-    await clearRaffleEntries(raffle_id);
-
+    await clearRaffleEntries(raffle.id);
     console.log(`✅ Raffle "${raffle.name}" concluded and cleaned up.`);
   } catch (err) {
-    console.error(`❌ Error concluding raffle ${raffle_id}:`, err);
+    console.error(`❌ Error concluding raffle "${raffle.name}":`, err);
   }
 }
+
 
 // =========================================================================
 // User Accounts (With Discord ID and Username Support)
