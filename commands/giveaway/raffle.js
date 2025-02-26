@@ -93,7 +93,7 @@ module.exports = {
       await db.upsertShopItem(
         ticketCost,
         raffleTicketName,
-        `Entry ticket for ${raffleName}. 🏆 ${winnersCount} winner(s) will be selected! ⏳ Ends in ${durationValue} ${timeUnit}. 🎁 Prize: ${prizeInput}`,
+        `Entry ticket for ${raffleName}. 🎁 Prize: ${prizeInput}. 🏆 ${winnersCount} winner(s) will be selected! ⏳ Ends in ${durationValue} ${timeUnit}.`,
         ticketQuantity
       );
       
