@@ -90,8 +90,13 @@ module.exports = {
       );
 
       // Upsert the raffle ticket into the shop so users can buy it (or receive it via your website)
-      await db.upsertShopItem(ticketCost, raffleTicketName, `Entry ticket for ${raffleName}. Prize: ${prizeInput}`, ticketQuantity);
-
+      await db.upsertShopItem(
+        ticketCost,
+        raffleTicketName,
+        `Entry ticket for ${raffleName}. 🏆 ${winnersCount} winner(s) will be selected! ⏳ Ends in ${durationValue} ${timeUnit}. 🎁 Prize: ${prizeInput}`,
+        ticketQuantity
+      );
+      
       const embed = new EmbedBuilder()
         .setTitle(`🎟️ Raffle Started: ${raffleName}`)
         .setDescription(`Prize: **${prizeInput}**\nTicket Cost: **${formatCurrency(ticketCost)}**\nTotal Tickets: **${ticketQuantity * 2}**\n🎉 Ends in **${durationValue} ${timeUnit}**\n🏆 Winners: **${winnersCount}**`)
