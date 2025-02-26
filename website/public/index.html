@@ -240,22 +240,39 @@
   <button class="back-button">Home</button>
 
 <!-- Job Submission Modal -->
-<div id="jobSubmissionModal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); align-items: center; justify-content: center; z-index: 999;">
-  <div style="background: white; padding: 20px; border-radius: 10px; text-align: center;">
+<div id="jobSubmissionModal">
+  <div>
     <h2>Submit Task</h2>
-    
+
+    <!-- Task Description -->
     <label for="jobSubmissionText">Task Description</label>
     <textarea id="jobSubmissionText" placeholder="Describe your work"></textarea>
 
-    <label for="jobSubmissionImage">Upload Proof</label>
-    <input type="file" id="jobSubmissionImage" accept="image/*" />
+    <!-- Drag & Drop Upload -->
+    <div id="dropArea">
+      <p>Drag & drop an image here or <label for="jobSubmissionImage">browse</label></p>
+      <input type="file" id="jobSubmissionImage" accept="image/*">
+    </div>
 
+    <!-- Image Preview -->
+    <div id="imagePreviewContainer">
+      <img id="imagePreview" src="" alt="Preview">
+      <button id="removeImage">❌ Remove</button>
+    </div>
+
+    <!-- Upload Progress Bar -->
+    <div id="uploadProgressBar">
+      <div id="uploadProgress"></div>
+    </div>
+
+    <!-- Buttons -->
     <div>
       <button id="cancelSubmissionButton">Cancel</button>
       <button id="sendSubmissionButton">Submit</button>
     </div>
   </div>
 </div>
+
 
 
 

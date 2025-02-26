@@ -653,7 +653,7 @@ document.addEventListener("click", async (event) => {
   // ✅ Capture job selection when clicking a job from the list
   if (event.target.closest(".clickable-job")) {
     const jobItem = event.target.closest(".clickable-job");
-    localStorage.setItem("selectedJobID", jobItem.dataset.jobId); // Store job ID
+    localStorage.setItem("selectedJobID", jobItem.dataset.jobId);
     console.log(`📌 Job selected, ID: ${jobItem.dataset.jobId}`);
   }
 
@@ -661,10 +661,9 @@ document.addEventListener("click", async (event) => {
   if (event.target.id === "submitJobButton") {
     console.log("✅ Submit Job button clicked!");
     if (modal) {
-      modal.style.display = "flex"; // Show modal
+      modal.style.display = "flex";
       console.log("📌 Submission modal is now visible.");
 
-      // FIX: Delay focus to ensure modal is fully rendered
       setTimeout(() => {
         jobDescriptionElement.focus();
       }, 100);
@@ -676,7 +675,7 @@ document.addEventListener("click", async (event) => {
   // ✅ Close modal when clicking "Cancel"
   if (event.target.id === "cancelSubmissionButton") {
     if (modal) {
-      modal.style.display = "none"; // Hide modal
+      modal.style.display = "none";
       console.log("❌ Submission modal closed.");
     }
   }
@@ -685,42 +684,37 @@ document.addEventListener("click", async (event) => {
   if (event.target.id === "sendSubmissionButton") {
     console.log("🚀 Confirm job submission button clicked!");
 
-    // Retrieve job ID from storage
     const selectedJobID = localStorage.getItem("selectedJobID");
     if (!selectedJobID) {
-      alert("⚠️ Please select a job first.");
+      showStyledAlert("⚠️ Please select a job first.", 3000);
       return;
     }
 
-    // Fetch job details just before submission
     const job = await getJobById(selectedJobID);
     if (!job) {
-      alert("❌ Job not found! Please select a valid job.");
+      showStyledAlert("❌ Job not found! Please select a valid job.", 3000);
       return;
     }
 
     console.log(`📌 Using job title from database: ${job.description}`);
 
-    // Ensure elements exist
     if (!jobDescriptionElement) {
       console.error("❌ Job description field not found!");
       return;
     }
 
-    // Extract values
     const jobDescription = jobDescriptionElement.value.trim();
     const jobImageElement = document.getElementById("jobSubmissionImage");
-    const jobImage = jobImageElement.files[0]; // Get uploaded file
+    const jobImage = jobImageElement.files[0];
 
     if (!jobDescription) {
-      alert("⚠️ Please provide a task description.");
+      showStyledAlert("⚠️ Please provide a task description.", 3000);
       return;
     }
 
-    // ✅ Fetch user ID from local storage (ensure it's set at login)
     const userId = localStorage.getItem("discordUserID");
     if (!userId) {
-      alert("⚠️ User ID is missing. Please log in again.");
+      showStyledAlert("⚠️ User ID is missing. Please log in again.", 3000);
       return;
     }
 
@@ -731,15 +725,13 @@ document.addEventListener("click", async (event) => {
       image: jobImage ? jobImage.name : "No image uploaded"
     });
 
-    // Create FormData for file upload
     const formData = new FormData();
-    formData.append("title", job.description); // Use database title
+    formData.append("title", job.description);
     formData.append("description", jobDescription);
     if (jobImage) {
       formData.append("image", jobImage);
     }
 
-    // FIX: Log FormData contents before sending
     for (let [key, value] of formData.entries()) {
       console.log(`📤 FormData -> ${key}:`, value);
     }
@@ -748,28 +740,85 @@ document.addEventListener("click", async (event) => {
       const response = await fetch("/api/submit-job", {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${localStorage.getItem("token")}`, // If required
-          "x-user-id": userId, // ✅ Include user ID in headers
+          "Authorization": `Bearer ${localStorage.getItem("token")}`,
+          "x-user-id": userId,
         },
-        body: formData, // Send data
+        body: formData,
       });
 
       const result = await response.json();
       console.log("📥 Server response:", result);
 
       if (response.ok) {
-        showStyledAlert("✅ Job submitted successfully!");
-        modal.style.display = "none"; // Hide modal after submission
+        showStyledAlert("✅ Job submitted successfully!", 3000);
+        modal.style.display = "none";
       } else {
-        alert(`❌ Submission failed: ${result.error}`);
+        showStyledAlert(`❌ Submission failed: ${result.error}`, 3000);
       }
     } catch (error) {
       console.error("❌ Error submitting job:", error);
-      alert("❌ Failed to submit job.");
+      showStyledAlert("❌ Failed to submit job.", 3000);
     }
   }
 });
 
+/* 🔥 Improved Image Upload UX */
+const jobImageElement = document.getElementById("jobSubmissionImage");
+const previewContainer = document.getElementById("imagePreviewContainer");
+const previewImage = document.getElementById("imagePreview");
+const removeImageButton = document.getElementById("removeImage");
+const dropArea = document.getElementById("dropArea");
+const maxFileSize = 5 * 1024 * 1024; // 5MB Limit
+
+jobImageElement.addEventListener("change", () => handleFileUpload(jobImageElement.files[0]));
+
+dropArea.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  dropArea.style.borderColor = "blue";
+});
+
+dropArea.addEventListener("dragleave", () => {
+  dropArea.style.borderColor = "#ccc";
+});
+
+dropArea.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dropArea.style.borderColor = "#ccc";
+
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    jobImageElement.files = e.dataTransfer.files;
+    handleFileUpload(file);
+  }
+});
+
+function handleFileUpload(file) {
+  if (!file) return;
+
+  if (!file.type.startsWith("image/")) {
+    showStyledAlert("⚠️ Please upload a valid image file.", 3000);
+    return;
+  }
+
+  if (file.size > maxFileSize) {
+    showStyledAlert("⚠️ File is too large. Please upload an image smaller than 5MB.", 3000);
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    previewImage.src = e.target.result;
+    previewContainer.style.display = "block";
+  };
+  reader.readAsDataURL(file);
+}
+
+removeImageButton.addEventListener("click", () => {
+  jobImageElement.value = "";
+  previewContainer.style.display = "none";
+});
+
+/* 🔥 Styled Alert Function */
 function showStyledAlert(message, duration = 3000) {
   let alertBox = document.getElementById("customAlert");
 
@@ -784,35 +833,25 @@ function showStyledAlert(message, duration = 3000) {
   alertBox.style.opacity = "1";
   alertBox.style.animation = "slideIn 0.5s forwards";
 
-  // Hide the alert after the duration
   setTimeout(() => {
     alertBox.style.animation = "slideOut 0.5s forwards";
   }, duration);
 }
 
-
-/**
- * Fetches all jobs from /api/jobs, 
- * then returns the job object that matches the provided jobID.
- * @param {number|string} jobID - The ID of the job to find.
- * @returns {Object|null} The job object (if found), or null otherwise.
- */
+/* 🔥 Fetch Job by ID */
 async function getJobById(jobID) {
   try {
     const res = await fetch('/api/jobs');
-    if (!res.ok) {
-      throw new Error(`Failed to fetch jobs: ${res.status} ${res.statusText}`);
-    }
+    if (!res.ok) throw new Error(`Failed to fetch jobs: ${res.status} ${res.statusText}`);
 
     const jobs = await res.json();
-    // Find the job with the matching ID
-    const job = jobs.find(j => j.jobID == jobID);
-    return job || null; // Return null if no match found
+    return jobs.find(j => j.jobID == jobID) || null;
   } catch (error) {
     console.error('Error fetching /api/jobs:', error);
     return null;
   }
 }
+
 
 
 
