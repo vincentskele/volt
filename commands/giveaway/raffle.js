@@ -90,20 +90,24 @@ module.exports = {
       );
 
       // Upsert the raffle ticket into the shop so users can buy it (or receive it via your website)
-      await db.upsertShopItem(
-        ticketCost,
-        raffleTicketName,
-        `Entry ticket for ${raffleName}. 🎁 Prize: ${prizeInput}. 🏆 ${winnersCount} winner(s) will be selected! ⏳ Ends in ${durationValue} ${timeUnit}.`,
-        ticketQuantity
-      );
-      
-      const embed = new EmbedBuilder()
-        .setTitle(`🎟️ Raffle Started: ${raffleName}`)
-        .setDescription(`Prize: **${prizeInput}**\nTicket Cost: **${formatCurrency(ticketCost)}**\nTotal Tickets: **${ticketQuantity * 2}**\n🎉 Ends in **${durationValue} ${timeUnit}**\n🏆 Winners: **${winnersCount}**`)
-        .setColor(0xFFD700)
-        .setTimestamp();
+      const endDate = new Date(endTime);
+const formattedEndDate = endDate.toUTCString().replace(' GMT', ' UTC');
 
-      await interaction.reply({ embeds: [embed] });
+await db.upsertShopItem(
+  ticketCost,
+  raffleTicketName,
+  `Entry ticket for ${raffleName}. 🎁 Prize: ${prizeInput}. 🏆 ${winnersCount} winner(s) will be selected! ⏳ Ends at **${formattedEndDate}**.`,
+  ticketQuantity
+);
+
+    
+const embed = new EmbedBuilder()
+    .setTitle(`🎟️ Raffle Started: ${raffleName}`)
+    .setDescription(`Prize: **${prizeInput}**\nTicket Cost: **${formatCurrency(ticketCost)}**\nTotal Tickets: **${ticketQuantity * 2}**\n🎉 Ends at **${formattedEndDate}**\n🏆 Winners: **${winnersCount}**`)
+    .setColor(0xFFD700)
+    .setTimestamp(endDate);
+
+await interaction.reply({ embeds: [embed] });
 
       // Schedule raffle conclusion
       setTimeout(async () => {
