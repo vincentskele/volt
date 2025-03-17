@@ -6,7 +6,7 @@ module.exports = {
   // Slash command registration
   data: new SlashCommandBuilder()
     .setName('volts')
-    .setDescription('Check your another Solarian\'s Volts.')
+    .setDescription('Check your or another Solarian\'s Volts.')
     .addUserOption(option =>
       option.setName('solarian')
         .setDescription('The @user to check the Volts of')
