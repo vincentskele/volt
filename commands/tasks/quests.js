@@ -30,7 +30,7 @@ module.exports = {
           ? task.assignees.map(id => `<@${id}>`).join(', ')
           : 'Not assigned';
         embed.addFields({
-          name: `Task #${task.jobID}`,
+          name: `Quest #${task.jobID}`,
           value: `${task.description || 'No description available'}\nAssigned to: ${assignment}`,
           inline: false,
         });

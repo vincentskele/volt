@@ -104,14 +104,13 @@
 
 <!-- Landing Page Section -->
 <div id="landingPage" class="content">
-  <h2>Welcome to the Vol<span style="margin-left: -6px;"></span>t Dashboard!</h2>
-  <div class="buttons">
+   <div class="buttons">
     
     <button id="showGiveawayListButton" class="btn">Giveaway List</button>
     <button id="showRafflesButton" class="btn">Raffles</button>
     <button id="showShopButton" class="btn">Shop</button>
-    <button id="showDailyTasksButton" class="btn">Daily Tasks</button>
-    <button id="showJobListButton" class="btn">Task List</button>
+    <button id="showDailyTasksButton" class="btn">Daily Quests</button>
+    <button id="showJobListButton" class="btn">Quests</button>
     <button id="showLeaderboardButton" class="btn">Leaderboard</button>
     <button id="showAdminListButton" class="btn">Admin List</button>
     <button id="showConsoleButton" class="btn">Console</button>
@@ -126,7 +125,7 @@
 
     <ul>
       <li>🔗 <a href="#">Click here to go to the playground</a>.</li>
-      <li>✅ Type <code>/tasklist</code> — Pick a task.</li>
+      <li>✅ Type <code>/quests</code> — Pick a quest.</li>
       <li>⚡ Share progress and receive Vol<span style="margin-left: -3px;"></span>ts.</li>
       <li>🎫 <a href="#">Open a ticket</a> if no Vol<span style="margin-left: -3px;"></span>ts are received.</li>
     </ul>
@@ -177,7 +176,7 @@
     <a href="https://discord.com/channels/1014872741846974514/1220357242663075890" target="_blank" rel="noopener noreferrer" class="link">
       ticket
     </a> 
-    and share your task progress there.
+    and share your quest progress there.
   </p>
   
   <button class="back-button">Home</button>
@@ -214,7 +213,7 @@
 
 <!-- Job List Section -->
 <div id="jobList" class="content" style="display: none;">
-  <h2>💼 Task List</h2>
+  <h2>💠 Quests</h2>
   <div class="job-list" id="jobListContent">
     <!-- Dynamically generated job items will be appended here -->
   </div>
@@ -222,7 +221,7 @@
     <p>
       In the 
       <a href="https://discord.com/channels/1014872741846974514/1336779333641179146" target="_blank" rel="noopener noreferrer" class="link">
-        playground</a>, use <code>/tasklist</code> to choose from the list. Share your work in the playground and an admin will charge up your Solarian with <strong>Vol<span style="margin-left: -2px;"></span>ts</strong>.
+        playground</a>, use <code>/quests</code> to choose from the list. Share your work in the playground and an admin will charge up your Solarian with <strong>Vol<span style="margin-left: -2px;"></span>ts</strong>.
     </p>
     <p>
         If you don't get your Vol<span style="margin-left: -2px;"></span>ts after a few minutes, open a <a href="https://discord.com/channels/1014872741846974514/1220357242663075890" target="_blank" rel="noopener noreferrer" class="link">
@@ -230,7 +229,7 @@
         </a> and share a screenshot of your proof of completion (or your attempt).
     </p>
     <p>
-        Try <code>/work</code> for a random task to receive double the Vol<span style="margin-left: -2px;"></span>ts!
+        Try <code>/randomquest</code> to receive double the Vol<span style="margin-left: -2px;"></span>ts!
     </p>
   </div>
 
@@ -242,10 +241,10 @@
 <!-- Job Submission Modal -->
 <div id="jobSubmissionModal">
   <div>
-    <h2>Submit Task</h2>
+    <h2>Submit Quest</h2>
 
     <!-- Task Description -->
-    <label for="jobSubmissionText">Task Description</label>
+    <label for="jobSubmissionText">Quest Description</label>
     <textarea id="jobSubmissionText" placeholder="Describe your work"></textarea>
 
     <!-- Drag & Drop Upload -->
@@ -294,8 +293,8 @@
 
 <!-- Daily Tasks Section -->
 <div id="dailyTasksPage" class="content" style="display: none;">
-  <h2>📋 Daily Tasks</h2>
-  <p>Complete your daily tasks before the reset!</p>
+  <h2>📋 Daily Quests</h2>
+  <p>Complete your daily quests before the reset!</p>
   
   <!-- Countdown Timer -->
   <div class="countdown-container">
@@ -305,7 +304,6 @@
 
   <ul id="dailyTasksList">
     <li>🎁 User's first message of the day receives a bonus of 8 Vol<span style="margin-left: -2px;"></span>ts.</li>
-    <li>✅ Complete a job using <code>/work</code> (unlimited).</li>
     <li>💬 Send up to 16 messages in <a href="https://discord.com/channels/1014872741846974514/1015078531526574141">#robo-chat</a>
       to get charged up 1 Vol<span style="margin-left: -2px;"></span>t per message.</li>
     <li>🤖 React to a new message in <a href="https://discord.com/channels/1014872741846974514/1015076041934520330">#announcements</a> once per day to receive 8 Vol<span style="margin-left: -2px;"></span>ts.</li>

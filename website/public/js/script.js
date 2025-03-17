@@ -505,7 +505,7 @@ async function fetchJobs() {
       const jobItem = document.createElement('div');
       jobItem.className = 'job-item clickable-job';
       jobItem.dataset.jobId = job.jobID;
-      jobItem.innerHTML = `<p><strong>Job:</strong> ${description}</p>`;
+      jobItem.innerHTML = `<p><strong>Quest:</strong> ${description}</p>`;
 
       if (job.assignees && Array.isArray(job.assignees) && job.assignees.length > 0) {
         const assigneeLinks = await Promise.all(job.assignees.map(async (userId) => {
