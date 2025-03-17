@@ -1347,6 +1347,25 @@ async function getActiveRaffles() {
   });
 }
 
+async function getUserTickets(userId) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT r.name AS raffleName, COUNT(re.user_id) AS quantity
+       FROM raffle_entries re
+       JOIN raffles r ON re.raffle_id = r.id
+       WHERE re.user_id = ?
+       GROUP BY r.name`,
+      [userId],
+      (err, rows) => {
+        if (err) {
+          console.error("❌ Error fetching user tickets:", err);
+          return reject(err);
+        }
+        resolve(rows || []);
+      }
+    );
+  });
+}
 
 
 //--------------------------------------
@@ -1711,6 +1730,7 @@ module.exports = {
   createRaffle,
   getRaffleByName,
   getRaffleById,
+  getUserTickets,
   getInventoryByItemID,
   getActiveRaffles,
   autoEnterRaffle,
