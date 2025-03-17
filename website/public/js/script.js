@@ -1194,29 +1194,53 @@ document.addEventListener('DOMContentLoaded', () => {
  */
 async function fetchVoltBalance() {
   try {
-    const token = localStorage.getItem('token');
-    if (!token) return;
+    const token = localStorage.getItem("token");
+    if (!token) {
+      console.warn("🚨 No token found. User might not be logged in.");
+      return;
+    }
 
-    const response = await fetch(`/api/volt-balance?nocache=${new Date().getTime()}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
+    // Fetch leaderboard data instead of /api/volt-balance
+    const response = await fetch("/api/leaderboard", {
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     });
 
-    const data = await response.json();
-    if (response.ok) {
-      document.getElementById('voltBalance').textContent = `${data.balance}`;
-    } else {
-      console.error('❌ Failed to fetch Volt balance:', data.message);
-      document.getElementById('voltBalance').textContent = 'Error loading';
+    if (!response.ok) {
+      throw new Error(`Failed to fetch balance: ${response.statusText}`);
     }
+
+    const leaderboard = await response.json();
+
+    // Get logged-in user’s ID from local storage
+    const userId = localStorage.getItem("discordUserID");
+    if (!userId) {
+      console.error("❌ User ID not found in local storage.");
+      return;
+    }
+
+    // Find the logged-in user's balance in the leaderboard
+    const userData = leaderboard.find((entry) => entry.userID === userId);
+
+    if (!userData) {
+      console.warn("⚠️ User not found in leaderboard.");
+      return;
+    }
+
+    // ✅ Update the UI
+    document.getElementById("solarianBalance").textContent = `Solarian: ${userData.wallet}`;
+    document.getElementById("batteryBankBalance").textContent = `Battery Bank: ${userData.bank}`;
+    document.getElementById("totalBalance").textContent = `Total: ${userData.totalBalance}`;
+
+    console.log(`✅ Updated Volt Balance for ${userData.userTag}:`, userData);
+
   } catch (error) {
-    console.error('❌ Error fetching Volt balance:', error);
-    document.getElementById('voltBalance').textContent = 'Error loading';
+    console.error("❌ Error fetching Volt balance:", error);
+    document.getElementById("solarianBalance").textContent = "Error";
+    document.getElementById("batteryBankBalance").textContent = "Error";
+    document.getElementById("totalBalance").textContent = "Error";
   }
 }
+
 
 
 
