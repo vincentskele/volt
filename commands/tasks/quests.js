@@ -8,20 +8,20 @@ const db = require('../../db');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('tasklist')
-    .setDescription('View available tasks with assignment details.'),
+    .setName('quests')
+    .setDescription('View available quests with details.'),
   
   async execute(interaction) {
-    console.log(`[INFO] User ${interaction.user.id} runs command /tasklist`);
+    console.log(`[INFO] User ${interaction.user.id} runs command /quests`);
     try {
       const jobList = await db.getJobList();
       if (!jobList || jobList.length === 0) {
-        return interaction.reply({ content: '🚫 No tasks available at this time.', ephemeral: true });
+        return interaction.reply({ content: '🚫 No quests available at this time.', ephemeral: true });
       }
 
       const embed = new EmbedBuilder()
-        .setTitle('📋 Task List')
-        .setDescription('Select a task from the dropdown below. (Message refreshes on selection)')
+        .setTitle('📋 Quest List')
+        .setDescription('Select a quest from the dropdown below. (Message refreshes on selection)')
         .setColor(0x00AE86)
         .setTimestamp();
       
@@ -37,11 +37,11 @@ module.exports = {
       });
       
       const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId('tasklist')
-        .setPlaceholder('Choose a task...')
+        .setCustomId('questlist')
+        .setPlaceholder('Choose a quest...')
         .addOptions(
           jobList.map(task => ({
-            label: `Task #${task.jobID}`,
+            label: `Quest #${task.jobID}`,
             description: task.description && task.description.length > 100
               ? task.description.substring(0, 97) + '...'
               : task.description || 'No description available',
@@ -53,7 +53,7 @@ module.exports = {
       
       return interaction.reply({ embeds: [embed], components: [row] });
     } catch (error) {
-      console.error(`[ERROR] /tasklist command: ${error}`);
+      console.error(`[ERROR] /quests command: ${error}`);
       return interaction.reply({ content: `🚫 An error occurred: ${error.message || error}`, ephemeral: true });
     }
   },
