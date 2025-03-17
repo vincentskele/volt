@@ -14,7 +14,7 @@ const POINTS_SYMBOL = process.env.POINTS_SYMBOL || '';
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('giveaway-create')
+    .setName('create-giveaway')
     .setDescription('Create a giveaway for points or shop items.')
     .addStringOption(option =>
       option.setName('name')

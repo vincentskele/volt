@@ -12,7 +12,7 @@ function setClient(discordClient) {
 module.exports = {
   setClient,
   data: new SlashCommandBuilder()
-    .setName('raffle')
+    .setName('create-raffle')
     .setDescription('Starts a raffle with a prize and ticket cost.')
     .addStringOption(option =>
       option.setName('name')

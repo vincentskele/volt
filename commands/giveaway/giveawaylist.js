@@ -3,7 +3,7 @@ const { getActiveGiveaways, getGiveawayEntries } = require('../../db');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('giveaway')
+    .setName('giveawaylist')
     .setDescription('List all active giveaways and show if you have entered.'),
 
   async execute(interaction) {
