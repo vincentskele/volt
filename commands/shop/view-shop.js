@@ -11,9 +11,13 @@ module.exports = {
   async execute(interaction) {
     try {
       const items = await db.getShopItems();
+
       if (!items.length) {
         return interaction.reply({ content: '🚫 The shop is empty.', ephemeral: true });
       }
+
+      // Sort items from most expensive to least expensive
+      items.sort((a, b) => b.price - a.price);
 
       const embed = new EmbedBuilder()
         .setTitle(`🛍️ ${points.name.charAt(0).toUpperCase() + points.name.slice(1)} Shop`)
