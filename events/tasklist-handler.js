@@ -10,44 +10,58 @@ module.exports = {
     try {
       const userID = interaction.user.id;
       
-      // Check if the user already has a quest.
+      console.log(`[INFO] User ${userID} selected a quest from the dropdown.`);
+      
+      // Get the selected quest ID from the dropdown.
+      const selectedQuestID = interaction.values[0].replace('quest_', ''); // Ensure ID matches database format
+      console.log(`[DEBUG] Selected Quest ID: ${selectedQuestID}`);
+
+      // Fetch the latest job list
+      const jobList = await db.getJobList();
+      console.log(`[DEBUG] Available job IDs:`, jobList.map(q => q.jobID));
+
+      // Find the selected quest
+      const selectedQuest = jobList.find(task => task.jobID.toString() === selectedQuestID);
+      
+      if (!selectedQuest) {
+        return interaction.reply({ content: '🚫 Selected quest not found.', ephemeral: true });
+      }
+
+      // Check if the user already has a quest
       const existingJob = await db.getUserJob(userID);
       if (existingJob) {
         return interaction.reply({ content: '🚫 You already have a quest!', ephemeral: true });
       }
-      
-      // Get the selected quest ID from the dropdown.
-      const selectedQuestID = interaction.values[0];
-      
-      // Attempt to assign the quest.
-      const quest = await db.assignJobById(userID, selectedQuestID);
-      if (!quest) {
+
+      // Assign the quest to the user
+      const assignedQuest = await db.assignJobById(userID, selectedQuestID);
+      if (!assignedQuest) {
         return interaction.reply({ content: `🚫 Failed to assign quest with ID ${selectedQuestID}`, ephemeral: true });
       }
-      
+
       // Log and announce in the channel.
-      console.log(`[INFO] User ${userID} assigned quest ${quest.description}`);
+      console.log(`[INFO] User ${userID} assigned quest: ${assignedQuest.description}`);
       await interaction.channel.send(
-        `✅ Quest assigned: <@${userID}> is now assigned to **${quest.description}** (Quest #${quest.jobID}).`
+        `✅ Quest assigned: <@${userID}> is now assigned to **${assignedQuest.description}** (Quest #${assignedQuest.jobID}).`
       );
-      
-      // Re-fetch the updated quest list.
-      const jobList = await db.getJobList();
-      if (!jobList || jobList.length === 0) {
+
+      // Re-fetch updated quest list
+      const updatedJobList = await db.getJobList();
+      if (!updatedJobList || updatedJobList.length === 0) {
         return interaction.update({ content: '🚫 No quests available at this time.', components: [] });
       }
-      
+
       const MAX_QUESTS_PER_PAGE = 10;
-      const questsToShow = jobList.slice(0, MAX_QUESTS_PER_PAGE);
-      const totalQuests = jobList.length;
-      
-      // Rebuild the embed.
+      const questsToShow = updatedJobList.slice(0, MAX_QUESTS_PER_PAGE);
+      const totalQuests = updatedJobList.length;
+
+      // Rebuild the quest list embed
       const embed = new EmbedBuilder()
         .setTitle('📋 Quest List')
         .setDescription('Select a quest from the dropdown below. (Message refreshes on selection)')
         .setColor(0x00AE86)
         .setTimestamp();
-      
+
       questsToShow.forEach(questItem => {
         let assignment = (questItem.assignees && questItem.assignees.length > 0)
           ? questItem.assignees.map(id => `<@${id}>`).join(', ')
@@ -58,29 +72,30 @@ module.exports = {
           inline: false,
         });
       });
-      
+
       if (totalQuests > MAX_QUESTS_PER_PAGE) {
-        embed.setFooter({ text: `Showing ${MAX_QUESTS_PER_PAGE} of ${totalQuests} quests. (Pagination not implemented)` });
+        embed.setFooter({ text: `Showing ${MAX_QUESTS_PER_PAGE} of ${totalQuests} quests.` });
       }
-      
-      // Rebuild the dropdown with all quests.
+
+      // Rebuild the dropdown with all quests
       const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId('questlist')  // Make sure this matches the one in `/quests` command
+        .setCustomId('questlist')
         .setPlaceholder('Choose a quest...')
         .addOptions(
-          jobList.map(questItem => ({
+          updatedJobList.map(questItem => ({
             label: `Quest #${questItem.jobID}`,
             description: questItem.description && questItem.description.length > 100
               ? questItem.description.substring(0, 97) + '...'
               : questItem.description || 'No description available',
-            value: questItem.jobID.toString()
+            value: `quest_${questItem.jobID}` // Ensure IDs are correctly formatted
           }))
         );
-      
+
       const row = new ActionRowBuilder().addComponents(selectMenu);
-      
-      // Update the public quest list message.
+
+      // Update the public quest list message
       return interaction.update({ embeds: [embed], components: [row] });
+
     } catch (error) {
       console.error(`[ERROR] questlist-handler: ${error}`);
       return interaction.reply({ content: `🚫 An error occurred: ${error.message || error}`, ephemeral: true });
