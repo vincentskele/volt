@@ -1,91 +1,88 @@
-// File: tasklist-handler.js
-
 const { Events, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
 const db = require('../db');
 
 module.exports = {
   name: 'interactionCreate', // Must match the Discord event name exactly.
   async execute(interaction) {
-    // Process only select menu interactions with customId "tasklist"
-    if (!interaction.isStringSelectMenu() || interaction.customId !== 'tasklist') return;
+    // Process only select menu interactions with customId "questlist"
+    if (!interaction.isStringSelectMenu() || interaction.customId !== 'questlist') return;
     
     try {
       const userID = interaction.user.id;
       
-      // Check if the user already has a task.
+      // Check if the user already has a quest.
       const existingJob = await db.getUserJob(userID);
       if (existingJob) {
-        // Inform the user privately if they already have a task.
-        return interaction.reply({ content: '🚫 You already have a task!', ephemeral: true });
+        return interaction.reply({ content: '🚫 You already have a quest!', ephemeral: true });
       }
       
-      // Get the selected task ID from the dropdown.
-      const selectedTaskID = interaction.values[0];
+      // Get the selected quest ID from the dropdown.
+      const selectedQuestID = interaction.values[0];
       
-      // Attempt to assign the task.
-      const task = await db.assignJobById(userID, selectedTaskID);
-      if (!task) {
-        return interaction.reply({ content: `🚫 Failed to assign task with ID ${selectedTaskID}`, ephemeral: true });
+      // Attempt to assign the quest.
+      const quest = await db.assignJobById(userID, selectedQuestID);
+      if (!quest) {
+        return interaction.reply({ content: `🚫 Failed to assign quest with ID ${selectedQuestID}`, ephemeral: true });
       }
       
       // Log and announce in the channel.
-      console.log(`[INFO] User ${userID} assigned task ${task.description}`);
+      console.log(`[INFO] User ${userID} assigned quest ${quest.description}`);
       await interaction.channel.send(
-        `✅ Task assigned: <@${userID}> is now assigned to **${task.description}** (Task #${task.jobID}).`
+        `✅ Quest assigned: <@${userID}> is now assigned to **${quest.description}** (Quest #${quest.jobID}).`
       );
       
-      // Re-fetch the updated task list.
+      // Re-fetch the updated quest list.
       const jobList = await db.getJobList();
       if (!jobList || jobList.length === 0) {
-        return interaction.update({ content: '🚫 No tasks available at this time.', components: [] });
+        return interaction.update({ content: '🚫 No quests available at this time.', components: [] });
       }
       
-      const MAX_TASKS_PER_PAGE = 10;
-      const tasksToShow = jobList.slice(0, MAX_TASKS_PER_PAGE);
-      const totalTasks = jobList.length;
+      const MAX_QUESTS_PER_PAGE = 10;
+      const questsToShow = jobList.slice(0, MAX_QUESTS_PER_PAGE);
+      const totalQuests = jobList.length;
       
       // Rebuild the embed.
       const embed = new EmbedBuilder()
-        .setTitle('📋 Task List')
-        .setDescription('Select a task from the dropdown below. (Message refreshes on selection)')
+        .setTitle('📋 Quest List')
+        .setDescription('Select a quest from the dropdown below. (Message refreshes on selection)')
         .setColor(0x00AE86)
         .setTimestamp();
       
-      tasksToShow.forEach(taskItem => {
-        let assignment = (taskItem.assignees && taskItem.assignees.length > 0)
-          ? taskItem.assignees.map(id => `<@${id}>`).join(', ')
+      questsToShow.forEach(questItem => {
+        let assignment = (questItem.assignees && questItem.assignees.length > 0)
+          ? questItem.assignees.map(id => `<@${id}>`).join(', ')
           : 'Not assigned';
         embed.addFields({
-          name: `Task #${taskItem.jobID}`,
-          value: `${taskItem.description || 'No description available'}\nAssigned to: ${assignment}`,
+          name: `Quest #${questItem.jobID}`,
+          value: `${questItem.description || 'No description available'}\nAssigned to: ${assignment}`,
           inline: false,
         });
       });
       
-      if (totalTasks > MAX_TASKS_PER_PAGE) {
-        embed.setFooter({ text: `Showing ${MAX_TASKS_PER_PAGE} of ${totalTasks} tasks. (Pagination not implemented)` });
+      if (totalQuests > MAX_QUESTS_PER_PAGE) {
+        embed.setFooter({ text: `Showing ${MAX_QUESTS_PER_PAGE} of ${totalQuests} quests. (Pagination not implemented)` });
       }
       
-      // Rebuild the dropdown with all tasks.
+      // Rebuild the dropdown with all quests.
       const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId('tasklist')
-        .setPlaceholder('Choose a task...')
+        .setCustomId('questlist')  // Make sure this matches the one in `/quests` command
+        .setPlaceholder('Choose a quest...')
         .addOptions(
-          jobList.map(taskItem => ({
-            label: `Task #${taskItem.jobID}`,
-            description: taskItem.description && taskItem.description.length > 100
-              ? taskItem.description.substring(0, 97) + '...'
-              : taskItem.description || 'No description available',
-            value: taskItem.jobID.toString()
+          jobList.map(questItem => ({
+            label: `Quest #${questItem.jobID}`,
+            description: questItem.description && questItem.description.length > 100
+              ? questItem.description.substring(0, 97) + '...'
+              : questItem.description || 'No description available',
+            value: questItem.jobID.toString()
           }))
         );
       
       const row = new ActionRowBuilder().addComponents(selectMenu);
       
-      // Update the public task list message.
+      // Update the public quest list message.
       return interaction.update({ embeds: [embed], components: [row] });
     } catch (error) {
-      console.error(`[ERROR] tasklist-handler: ${error}`);
+      console.error(`[ERROR] questlist-handler: ${error}`);
       return interaction.reply({ content: `🚫 An error occurred: ${error.message || error}`, ephemeral: true });
     }
   },
