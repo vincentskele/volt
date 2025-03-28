@@ -462,13 +462,19 @@ app.post("/api/login", async (req, res) => {
 app.get('/api/volt-balance', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId; // Get user ID from JWT
-    const user = await dbGet(`SELECT wallet FROM economy WHERE userID = ?`, [userId]);
+    const user = await dbGet(
+      `SELECT wallet, bank FROM economy WHERE userID = ?`,
+      [userId]
+    );
 
     if (!user) {
       return res.status(404).json({ message: "User not found." });
     }
 
-    res.json({ balance: user.wallet });
+    const { wallet, bank } = user;
+    const totalBalance = wallet + bank;
+
+    res.json({ wallet, bank, totalBalance });
   } catch (error) {
     console.error("❌ Error fetching Volt balance:", error);
     res.status(500).json({ message: "Internal server error." });

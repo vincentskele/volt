@@ -1189,49 +1189,33 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-/**
- * Fetch Volt Balance from API (only if logged in).
- */
 async function fetchVoltBalance() {
   try {
     const token = localStorage.getItem("token");
+
     if (!token) {
       console.warn("🚨 No token found. User might not be logged in.");
       return;
     }
 
-    // Fetch leaderboard data instead of /api/volt-balance
-    const response = await fetch("/api/leaderboard", {
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    const response = await fetch("/api/volt-balance", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch balance: ${response.statusText}`);
+      throw new Error(`Failed to fetch Volt balance: ${response.statusText}`);
     }
 
-    const leaderboard = await response.json();
+    const { wallet, bank, totalBalance } = await response.json();
 
-    // Get logged-in user’s ID from local storage
-    const userId = localStorage.getItem("discordUserID");
-    if (!userId) {
-      console.error("❌ User ID not found in local storage.");
-      return;
-    }
+    document.getElementById("solarianBalance").textContent = `Solarian: ${wallet}`;
+    document.getElementById("batteryBankBalance").textContent = `Battery Bank: ${bank}`;
+    document.getElementById("totalBalance").textContent = `Total: ${totalBalance}`;
 
-    // Find the logged-in user's balance in the leaderboard
-    const userData = leaderboard.find((entry) => entry.userID === userId);
-
-    if (!userData) {
-      console.warn("⚠️ User not found in leaderboard.");
-      return;
-    }
-
-    // ✅ Update the UI
-    document.getElementById("solarianBalance").textContent = `Solarian: ${userData.wallet}`;
-    document.getElementById("batteryBankBalance").textContent = `Battery Bank: ${userData.bank}`;
-    document.getElementById("totalBalance").textContent = `Total: ${userData.totalBalance}`;
-
-    console.log(`✅ Updated Volt Balance for ${userData.userTag}:`, userData);
+    console.log("✅ Volt Balance Updated:", { wallet, bank, totalBalance });
 
   } catch (error) {
     console.error("❌ Error fetching Volt balance:", error);
@@ -1240,7 +1224,6 @@ async function fetchVoltBalance() {
     document.getElementById("totalBalance").textContent = "Error";
   }
 }
-
 
 
 
