@@ -671,35 +671,35 @@ app.post('/api/giveaway/toggle', authenticateToken, async (req, res) => {
  */
 app.post('/api/giveaways/enter', authenticateToken, async (req, res) => {
   const { giveawayId } = req.body;
-  const userId = req.user.userId; // Get user ID from JWT
+  const userId = req.user.userId;
 
   if (!giveawayId) {
     return res.status(400).json({ error: "Missing giveaway ID." });
   }
 
   try {
-    // Check if the user is already entered
     const userEntry = await dbGet(
       `SELECT 1 FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?`,
       [giveawayId, userId]
     );
 
     if (userEntry) {
-      // User is already entered → Remove them
-      await db.run(`DELETE FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?`, [giveawayId, userId]);
-      console.log(`🛑 User ${userId} left giveaway ${giveawayId}`);
-      return res.json({ success: true, joined: false }); // Explicitly return joined: false
-    } else {
-      // ✅ Use `addGiveawayEntry()` instead of direct DB insert
-      await addGiveawayEntry(giveawayId, userId);
-      console.log(`✅ User ${userId} successfully entered giveaway ${giveawayId} via API.`);
-      return res.json({ success: true, joined: true }); // Explicitly return joined: true
+      // 🚫 Do NOT remove entry – just inform the user they're already in
+      console.log(`ℹ️ User ${userId} already entered giveaway ${giveawayId}`);
+      return res.json({ success: true, alreadyEntered: true });
     }
+
+    // ✅ Enter the user
+    await addGiveawayEntry(giveawayId, userId);
+    console.log(`✅ User ${userId} successfully entered giveaway ${giveawayId} via API.`);
+    return res.json({ success: true, joined: true });
+
   } catch (error) {
-    console.error("❌ Error toggling giveaway entry:", error);
+    console.error("❌ Error entering giveaway:", error);
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
 
 const { assignJobById, getActiveJob } = require('../db'); // Ensure correct path
 

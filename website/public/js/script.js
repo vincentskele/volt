@@ -956,22 +956,27 @@ async function enterGiveaway(giveawayId) {
     });
 
     const result = await res.json();
+
     if (res.ok) {
       if (result.joined) {
         showConfirmationPopup(`🎉 Successfully entered the giveaway!`);
+      } else if (result.alreadyEntered) {
+        showConfirmationPopup(`✅ You have already entered this giveaway.`);
       } else {
-        showConfirmationPopup(`❌ You have left the giveaway.`);
+        showConfirmationPopup(`❌ Unable to enter the giveaway.`);
       }
+
       fetchGiveaways(); // Refresh list after status change
     } else {
       showConfirmationPopup(`❌ Failed to enter giveaway: ${result.error}`);
     }
-    
+
   } catch (error) {
     console.error('Error entering giveaway:', error);
     showConfirmationPopup('❌ An error occurred while entering.');
   }
 }
+
 
 /**
  * Displays a confirmation popup.
