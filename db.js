@@ -1603,20 +1603,27 @@ function registerUser(discord_id, username, password) {
           return reject('Username is already taken.');
         }
 
-        // Insert or update user data
-        db.run(
-          `INSERT INTO economy (userID, username, password, wallet, bank)
-          VALUES (?, ?, ?, 0, 0)
-          ON CONFLICT(userID) DO UPDATE SET username = excluded.username, password = excluded.password`,
-          [discord_id, username, hash],
-          function (err) {
-            if (err) {
-              console.error('Error registering user:', err);
-              return reject('Failed to register user.');
+        // Get current wallet and bank balances if user exists
+        db.get(`SELECT wallet, bank FROM economy WHERE userID = ?`, [discord_id], (err, balances) => {
+          if (err) return reject('Failed to fetch existing balance.');
+
+          const wallet = balances ? balances.wallet : 0;
+          const bank = balances ? balances.bank : 0;
+
+          db.run(
+            `INSERT INTO economy (userID, username, password, wallet, bank)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(userID) DO UPDATE SET username = excluded.username, password = excluded.password`,
+            [discord_id, username, hash, wallet, bank],
+            function (err) {
+              if (err) {
+                console.error('Error registering user:', err);
+                return reject('Failed to register user.');
+              }
+              resolve({ discord_id, username });
             }
-            resolve({ discord_id, username });
-          }
-        );
+          );
+        });
       });
     });
   });
