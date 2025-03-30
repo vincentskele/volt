@@ -1345,43 +1345,60 @@ async function fetchVoltBalance() {
   }
 
   /**
-   * Show a confirmation modal before purchasing a raffle ticket.
-   * @param {Object} item - Raffle item details.
-   */
+ * Show a confirmation modal before purchasing raffle tickets with quantity input.
+ * @param {Object} item - Raffle item details.
+ */
   function showRaffleConfirmation(item) {
     const modalOverlay = document.createElement("div");
     modalOverlay.className = "modal-overlay";
-
+  
     const modalBox = document.createElement("div");
     modalBox.className = "modal-box";
     modalBox.innerHTML = `
       <h2>CONFIRM PURCHASE</h2>
-      <p>Are you sure you want to buy:</p>
-      <p><strong>${item.originalName}</strong> for ⚡${item.price}?</p>
+      <p>How many <strong>${item.originalName}</strong> would you like to buy?</p>
+      <p>Price per ticket: ⚡${item.price}</p>
+      <input type="number" id="raffleQuantity" min="1" value="1" style="margin: 10px 0; width: 100%; padding: 6px;" />
+      <p id="totalCost">Total: ⚡${item.price}</p>
       <div class="modal-buttons">
         <button class="confirm-button" id="confirmRafflePurchase">CONFIRM</button>
         <button class="cancel-button" id="cancelRafflePurchase">CANCEL</button>
       </div>
     `;
-
+  
     modalOverlay.appendChild(modalBox);
     document.body.appendChild(modalOverlay);
-
-    document.getElementById("confirmRafflePurchase").addEventListener("click", () => {
-      modalOverlay.remove();
-      buyRaffleTicket(item.originalName);
+  
+    const quantityInput = document.getElementById("raffleQuantity");
+    const totalCostDisplay = document.getElementById("totalCost");
+  
+    quantityInput.addEventListener("input", () => {
+      const quantity = parseInt(quantityInput.value, 10) || 1;
+      totalCostDisplay.textContent = `Total: ⚡${item.price * quantity}`;
     });
-
+  
+    document.getElementById("confirmRafflePurchase").addEventListener("click", () => {
+      const quantity = parseInt(quantityInput.value, 10);
+      if (isNaN(quantity) || quantity < 1) {
+        alert("Please enter a valid quantity.");
+        return;
+      }
+      modalOverlay.remove();
+      buyRaffleTicket(item.originalName, quantity, item.price);
+    });
+  
     document.getElementById("cancelRafflePurchase").addEventListener("click", () => {
       modalOverlay.remove();
     });
   }
-
+  
   /**
-   * Send purchase request for the raffle ticket.
-   * @param {string} itemName - Name of the raffle ticket to buy.
+   * Send purchase request for the raffle tickets.
+   * @param {string} itemName - Name of the raffle ticket.
+   * @param {number} quantity - Number of tickets to buy.
+   * @param {number} price - Price per ticket (for display only).
    */
-  async function buyRaffleTicket(itemName) {
+  async function buyRaffleTicket(itemName, quantity, price) {
     const token = localStorage.getItem("token");
     if (!token) {
       alert("You must be logged in to buy raffle tickets.");
@@ -1395,13 +1412,12 @@ async function fetchVoltBalance() {
           "Authorization": `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ itemName }),
+        body: JSON.stringify({ itemName, quantity }),
       });
   
       const result = await response.json();
       if (response.ok) {
-        showConfirmationPopup(`✅ Purchase successful! You bought "${itemName}".`);
-        // Force refresh Volt balance after purchase
+        showConfirmationPopup(`✅ You bought ${quantity} "${itemName}" ticket(s) for ⚡${price * quantity}.`);
         fetchVoltBalance();
       } else {
         showConfirmationPopup(`❌ Purchase failed: ${result.error}`);
@@ -1413,28 +1429,29 @@ async function fetchVoltBalance() {
   }
   
 
-  /**
-   * Show a confirmation message popup after purchase.
-   * @param {string} message - The message to display.
-   */
-  function showConfirmationPopup(message) {
-    const modalOverlay = document.createElement("div");
-    modalOverlay.className = "modal-overlay";
+/**
+ * Show a confirmation message popup after purchase.
+ * @param {string} message - The message to display.
+ */
+function showConfirmationPopup(message) {
+  const modalOverlay = document.createElement("div");
+  modalOverlay.className = "modal-overlay";
 
-    const modalBox = document.createElement("div");
-    modalBox.className = "modal-box";
-    modalBox.innerHTML = `
-      <p>${message}</p>
-      <button class="confirm-button" id="closeModal">OK</button>
-    `;
+  const modalBox = document.createElement("div");
+  modalBox.className = "modal-box";
+  modalBox.innerHTML = `
+    <p>${message}</p>
+    <button class="confirm-button" id="closeModal">OK</button>
+  `;
 
-    modalOverlay.appendChild(modalBox);
-    document.body.appendChild(modalOverlay);
+  modalOverlay.appendChild(modalBox);
+  document.body.appendChild(modalOverlay);
 
-    document.getElementById("closeModal").addEventListener("click", () => {
-      modalOverlay.remove();
-    });
-  }
+  document.getElementById("closeModal").addEventListener("click", () => {
+    modalOverlay.remove();
+  });
+}
+
 })();
 
 
