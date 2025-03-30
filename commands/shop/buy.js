@@ -13,6 +13,12 @@ module.exports = {
         .setDescription('The name of the item to buy')
         .setRequired(true)
         .setAutocomplete(true)
+    )
+    .addIntegerOption(option =>
+      option
+        .setName('quantity')
+        .setDescription('How many of the item you want to buy')
+        .setRequired(false)
     ),
 
   // This is used for slash command autocomplete
@@ -34,22 +40,30 @@ module.exports = {
 
   // Our execute function now supports both slash and prefix usage.
   async execute(context, messageOrInteraction, args) {
-    let itemName, user;
+    let itemName, quantity = 1, user;
 
     if (typeof messageOrInteraction === 'undefined') {
-      // Slash command mode: `context` is the interaction.
+      // Slash command mode
       const interaction = context;
       itemName = interaction.options.getString('item');
+      quantity = interaction.options.getInteger('quantity') || 1;
       user = interaction.user;
     } else {
-      // Prefix command mode: `messageOrInteraction` is the message, and `args` is an array of arguments.
+      // Prefix command mode
       const message = messageOrInteraction;
       if (!args.length) {
-        return message.reply(`🚫 Usage: \`${PREFIX}buy <item>\``);
+        return message.reply(`🚫 Usage: \`${PREFIX}buy <item> [quantity]\``);
       }
-      // Join all args into one string.
+
+      // Check if last arg is a number for quantity
+      const lastArg = args[args.length - 1];
+      const possibleQty = parseInt(lastArg);
+      if (!isNaN(possibleQty)) {
+        quantity = possibleQty;
+        args.pop();
+      }
+
       itemName = args.join(' ').trim();
-      // If the item name is wrapped in quotes (single or double), remove them.
       if (
         (itemName.startsWith('"') && itemName.endsWith('"')) ||
         (itemName.startsWith("'") && itemName.endsWith("'"))
@@ -59,61 +73,53 @@ module.exports = {
       user = message.author;
     }
 
+    if (quantity < 1 || !Number.isInteger(quantity)) {
+      const errorPayload = {
+        content: `🚫 Quantity must be a positive whole number.`,
+        ephemeral: true,
+      };
+      if (messageOrInteraction) return messageOrInteraction.reply(errorPayload);
+      return context.reply(errorPayload);
+    }
+
     try {
-      // Retrieve the shop item by name.
       const shopItem = await db.getShopItemByName(itemName);
       if (!shopItem) {
         const replyPayload = {
           content: `🚫 "${itemName}" is not available in the shop.`,
           ephemeral: true,
         };
-        if (messageOrInteraction) {
-          return messageOrInteraction.reply(replyPayload);
-        } else {
-          return context.reply(replyPayload);
-        }
+        if (messageOrInteraction) return messageOrInteraction.reply(replyPayload);
+        return context.reply(replyPayload);
       }
 
-      // Check stock.
-      if (shopItem.quantity <= 0) {
+      if (shopItem.quantity < quantity) {
         const replyPayload = {
-          content: `🚫 "${shopItem.name}" is out of stock.`,
+          content: `🚫 Only ${shopItem.quantity} left in stock for "${shopItem.name}".`,
           ephemeral: true,
         };
-        if (messageOrInteraction) {
-          return messageOrInteraction.reply(replyPayload);
-        } else {
-          return context.reply(replyPayload);
-        }
+        if (messageOrInteraction) return messageOrInteraction.reply(replyPayload);
+        return context.reply(replyPayload);
       }
 
-      // Check the user's wallet balance.
+      const totalCost = shopItem.price * quantity;
       const { wallet } = await db.getBalances(user.id);
-      if (wallet < shopItem.price) {
+      if (wallet < totalCost) {
         const replyPayload = {
-          content: `🚫 You only have ${formatCurrency(wallet)}, but **${shopItem.name}** costs ${formatCurrency(shopItem.price)}.`,
+          content: `🚫 You only have ${formatCurrency(wallet)}, but **${shopItem.name} x${quantity}** costs ${formatCurrency(totalCost)}.`,
           ephemeral: true,
         };
-        if (messageOrInteraction) {
-          return messageOrInteraction.reply(replyPayload);
-        } else {
-          return context.reply(replyPayload);
-        }
+        if (messageOrInteraction) return messageOrInteraction.reply(replyPayload);
+        return context.reply(replyPayload);
       }
 
-      // Deduct the item price from the user's wallet.
-      await db.updateWallet(user.id, -shopItem.price);
+      await db.updateWallet(user.id, -totalCost);
+      await db.addItemToInventory(user.id, shopItem.itemID, quantity);
+      await db.updateShopItemQuantity(shopItem.itemID, shopItem.quantity - quantity);
 
-      // Add the purchased item to the user's inventory.
-      await db.addItemToInventory(user.id, shopItem.itemID, 1);
-
-      // Decrease the shop quantity.
-      await db.updateShopItemQuantity(shopItem.itemID, shopItem.quantity - 1);
-
-      // Build a success embed.
       const embed = new EmbedBuilder()
-        .setTitle(`✅ Purchased ${shopItem.name}`)
-        .setDescription(`You have bought **${shopItem.name}** for ${formatCurrency(shopItem.price)}.`)
+        .setTitle(`✅ Purchased ${shopItem.name} x${quantity}`)
+        .setDescription(`You have bought **${shopItem.name} x${quantity}** for ${formatCurrency(totalCost)}.`)
         .setColor(0x32CD32)
         .setTimestamp();
 
@@ -128,11 +134,8 @@ module.exports = {
         content: `🚫 Purchase failed: ${err.message || err}`,
         ephemeral: true,
       };
-      if (messageOrInteraction) {
-        return messageOrInteraction.reply(errorPayload);
-      } else {
-        return context.reply(errorPayload);
-      }
+      if (messageOrInteraction) return messageOrInteraction.reply(errorPayload);
+      return context.reply(errorPayload);
     }
   },
 };
