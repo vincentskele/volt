@@ -488,14 +488,17 @@ async function fetchJobs() {
       }
 
       const channelIdMatches = description.match(/<#(\d+)>/g) || [];
+      const GUILD_ID = "1014872741846974514"; // your server ID
+
       await Promise.all(channelIdMatches.map(async (match) => {
         const channelId = match.slice(2, -1);
         const channelName = await resolveChannelName(channelId);
         description = description.replace(
           new RegExp(`<#${channelId}>`, 'g'),
-          `<a href="https://discord.com/channels/${channelId}" target="_blank" class="link">#${channelName}</a>`
+          `<a href="https://discord.com/channels/${GUILD_ID}/${channelId}" target="_blank" class="link">#${channelName}</a>`
         );
       }));
+      
 
       description = description.replace(
         /\[([^\]]+)\]\(([^)]+)\)/g,
