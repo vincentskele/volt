@@ -18,7 +18,7 @@ module.exports = {
       const userId = interaction.user.id;
       const userTickets = await db.getUserTickets(userId);
       const ticketCounts = userTickets.reduce((acc, ticket) => {
-        acc[ticket.raffleName] = ticket.quantity;
+        acc[ticket.raffleName] = (acc[ticket.raffleName] || 0) + parseInt(ticket.quantity);
         return acc;
       }, {});
 
