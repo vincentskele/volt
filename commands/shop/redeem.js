@@ -3,7 +3,7 @@ const { redeemItem, getInventory } = require('../../db'); // Ensure you have bot
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('redeem')
+    .setName('use')
     .setDescription('Use (redeem) an item from your inventory.')
     .addStringOption(option =>
       option
