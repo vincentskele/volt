@@ -786,6 +786,109 @@ setInterval(() => {
   }
 }, 60_000);
 
+// ==========================
+// 🎲 TRIVIA
+// ==========================
+const triviaQuestions = require('./questions.json');
+const MS_IN_24_HOURS = 86400000;
+const triviaAskedToday = new Set();
+let triviaCountToday = 0;
+let activeCollector = null;
+
+function getRandomTrivia() {
+  const unused = triviaQuestions.filter(q => !triviaAskedToday.has(q.question));
+  if (unused.length === 0) return null;
+  return unused[Math.floor(Math.random() * unused.length)];
+}
+
+async function askTriviaQuestion() {
+  const rewardAmount = parseInt(process.env.TRIVIA_REWARD_AMOUNT, 10) || 50;
+  const channel = await client.channels.fetch(process.env.TRIVIA_CHANNEL_ID);
+  if (!channel) return console.error("⚠️ Trivia channel not found.");
+
+  const trivia = getRandomTrivia();
+  if (!trivia) return console.warn("⚠️ No unused trivia questions left today.");
+
+  triviaAskedToday.add(trivia.question);
+  triviaCountToday++;
+
+  // End the previous collector if it was still running
+  if (activeCollector) {
+    activeCollector.stop('next-question');
+    activeCollector = null;
+  }
+
+  // Send trivia question
+  await channel.send(`🎲 Trivia Time! First to answer correctly wins ${rewardAmount} Volts:\n**${trivia.question}**`);
+  console.log(`🧠 Trivia #${triviaCountToday} asked: ${trivia.question}`);
+
+  const collector = channel.createMessageCollector({
+    filter: msg => !msg.author.bot,
+    time: MS_IN_24_HOURS, // will be stopped manually by next question or reset
+  });
+
+  activeCollector = collector;
+
+  collector.on('collect', async msg => {
+    if (msg.content.toLowerCase().includes(trivia.answer.toLowerCase())) {
+      collector.stop('answered');
+      await updateWallet(msg.author.id, rewardAmount);
+      await channel.send(`✅ Correct! ${msg.author} wins ${rewardAmount} Volts!`);
+      console.log(`🏆 ${msg.author.tag} won trivia #${triviaCountToday} (+${rewardAmount} Volts)`);
+    }
+  });
+
+  collector.on('end', (_, reason) => {
+    if (reason === 'answered') return;
+    if (reason === 'next-question') {
+      console.log(`⌛ No correct answer for trivia #${triviaCountToday - 1}. Moving on.`);
+    } else {
+      console.log(`❌ Trivia collector ended with reason: ${reason}`);
+    }
+  });
+}
+
+/**
+ * Schedule all trivia drops at random times within 24 hours
+ */
+function scheduleDailyTriviaQuestions() {
+  const maxPerDay = parseInt(process.env.TRIVIA_QUESTIONS_PER_DAY, 10) || 3;
+  console.log(`📅 Scheduling ${maxPerDay} trivia questions for the next 24 hours.`);
+
+  for (let i = 0; i < maxPerDay; i++) {
+    const delay = Math.floor(Math.random() * MS_IN_24_HOURS);
+    setTimeout(() => askTriviaQuestion(), delay);
+  }
+}
+
+/**
+ * Resets everything and reschedules trivia at midnight EST (05:00 UTC)
+ */
+function scheduleTriviaReset() {
+  const now = new Date();
+  const midnightEST = new Date(now.toISOString().split('T')[0] + 'T05:00:00.000Z');
+  let delay = midnightEST.getTime() - now.getTime();
+  if (delay < 0) delay += MS_IN_24_HOURS;
+
+  setTimeout(() => {
+    triviaAskedToday.clear();
+    triviaCountToday = 0;
+
+    if (activeCollector) {
+      activeCollector.stop('reset');
+      activeCollector = null;
+    }
+
+    console.log("🔄 Trivia reset for new day.");
+    scheduleDailyTriviaQuestions();
+    scheduleTriviaReset();
+  }, delay);
+}
+
+// 🟢 Kick off trivia loop on bot start
+scheduleDailyTriviaQuestions();
+scheduleTriviaReset();
+
 
 // ==========================
 // EXPORT THE CLIENT
