@@ -60,7 +60,8 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMessageReactions,
-    
+    GatewayIntentBits.GuildVoiceStates,
+
   ],
   partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
@@ -685,6 +686,106 @@ client.on('messageReactionRemove', async (reaction, user) => {
     console.error('⚠️ Error removing raffle entry:', err);
   }
 });
+
+// ==========================
+// 🎧 VOICE PRESENCE REWARDS (DAO Call)
+// ==========================
+
+const voicePresenceMap = new Map(); // { userId: { joinedAt, totalMinutes, rewardedToday } }
+let hasLoggedWindowStart = false;
+
+client.on('voiceStateUpdate', (oldState, newState) => {
+  const userId = newState.member?.user?.id || oldState.member?.user?.id;
+  if (!userId) return;
+
+  const joinedChannelId = newState.channelId;
+  const leftChannelId = oldState.channelId;
+  const targetChannelId = process.env.VOICE_REWARD_CHANNEL_ID;
+
+  const joinedTarget = joinedChannelId === targetChannelId;
+  const leftTarget = leftChannelId === targetChannelId && joinedChannelId !== targetChannelId;
+
+  if (joinedTarget) {
+    const now = new Date();
+    const currentDay = now.getDay();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+
+    const rewardDay = parseInt(process.env.VOICE_REWARD_DAY, 10);
+    const rewardHour = parseInt(process.env.VOICE_REWARD_HOUR, 10);
+    const rewardDuration = parseInt(process.env.VOICE_REWARD_DURATION, 10);
+    const isInWindow = currentDay === rewardDay && currentHour === rewardHour && currentMinute < rewardDuration;
+
+    const existing = voicePresenceMap.get(userId);
+    if (!existing) {
+      voicePresenceMap.set(userId, {
+        joinedAt: Date.now(),
+        totalMinutes: 0,
+        rewardedToday: false,
+      });
+    } else if (!existing.joinedAt) {
+      existing.joinedAt = Date.now();
+      voicePresenceMap.set(userId, existing);
+    }
+
+    if (isInWindow) {
+      const user = client.users.cache.get(userId);
+      console.log(`🎙️ ${user?.tag || userId} joined the voice channel during the reward window.`);
+    }
+  }
+
+  if (leftTarget && voicePresenceMap.has(userId)) {
+    const session = voicePresenceMap.get(userId);
+    if (session.joinedAt) {
+      const minutesInSession = Math.floor((Date.now() - session.joinedAt) / 60000);
+      session.totalMinutes += minutesInSession;
+      session.joinedAt = null;
+      voicePresenceMap.set(userId, session);
+    }
+  }
+});
+
+setInterval(() => {
+  const now = new Date();
+  const currentDay = now.getDay(); // 0 = Sunday
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+
+  const rewardDay = parseInt(process.env.VOICE_REWARD_DAY, 10);
+  const rewardHour = parseInt(process.env.VOICE_REWARD_HOUR, 10);
+  const rewardDuration = parseInt(process.env.VOICE_REWARD_DURATION, 10);
+  const requiredMinutes = parseInt(process.env.VOICE_REWARD_MINUTES_REQUIRED, 10);
+  const rewardAmount = parseInt(process.env.VOICE_REWARD_AMOUNT, 10);
+
+  const isInWindow = currentDay === rewardDay && currentHour === rewardHour && currentMinute < rewardDuration;
+
+  if (isInWindow && !hasLoggedWindowStart) {
+    console.log(`🕒 DAO call reward window has started (${rewardDuration} min, requires ${requiredMinutes} min presence)`);
+    hasLoggedWindowStart = true;
+  }
+
+  if (!isInWindow && hasLoggedWindowStart) {
+    hasLoggedWindowStart = false;
+  }
+
+  if (!isInWindow) return;
+
+  for (const [userId, session] of voicePresenceMap.entries()) {
+    const activeMinutes = session.joinedAt ? Math.floor((Date.now() - session.joinedAt) / 60000) : 0;
+    const totalMinutes = session.totalMinutes + activeMinutes;
+
+    if (!session.rewardedToday && totalMinutes >= requiredMinutes) {
+      updateWallet(userId, rewardAmount);
+      session.rewardedToday = true;
+      voicePresenceMap.set(userId, session);
+
+      const user = client.users.cache.get(userId);
+      console.log(`🏆 ${user?.tag || userId} awarded ${rewardAmount} Volts for attending the DAO call (${totalMinutes} min).`);
+
+    }
+  }
+}, 60_000);
+
 
 // ==========================
 // EXPORT THE CLIENT
