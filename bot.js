@@ -830,7 +830,11 @@ async function askTriviaQuestion() {
   activeCollector = collector;
 
   collector.on('collect', async msg => {
-    if (msg.content.toLowerCase().includes(trivia.answer.toLowerCase())) {
+    const userAnswer = msg.content.toLowerCase().trim();
+    const acceptedAnswers = trivia.answers || [trivia.answer];
+    const isCorrect = acceptedAnswers.some(ans => userAnswer.includes(ans.toLowerCase()));
+
+    if (isCorrect) {
       collector.stop('answered');
       await updateWallet(msg.author.id, rewardAmount);
       await channel.send(`✅ Correct! ${msg.author} wins ${rewardAmount} Volts!`);
