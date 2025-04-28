@@ -1881,38 +1881,91 @@ const marketBuyButton = document.getElementById("marketBuyButton");
 
 if (marketBuyButton) {
   marketBuyButton.addEventListener("click", async () => {
-    const confirmBuy = confirm("Buy 1 barrel of Robot Oil at the cheapest market price?");
-    if (!confirmBuy) return;
-
-    const token = localStorage.getItem("token");
-    if (!token) {
-      alert('You must be logged in!');
-      return;
-    }
-
     try {
-      const response = await fetch('/api/oil/market-buy', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        }
-      });
+      // 🛢️ First fetch the cheapest oil listing
+      const response = await fetch('/api/oil-market');
+      const listings = await response.json();
 
-      const result = await response.json();
-      if (response.ok) {
-        showConfirmationPopup(result.message || '✅ Market buy successful!');
-        fetchVoltBalance();
-        await loadOrderBook();
-      } else {
-        showConfirmationPopup(`❌ Market buy failed: ${result.error}`);
+      if (!Array.isArray(listings) || listings.length === 0) {
+        showConfirmationPopup('❌ No Robot Oil listings available.');
+        return;
       }
+
+      // Sort to make sure (safety)
+      listings.sort((a, b) => a.price_per_unit - b.price_per_unit);
+
+      const cheapest = listings[0];
+      const price = cheapest.price_per_unit;
+
+      customConfirm(
+        `Buy 1 barrel of Robot Oil for ⚡${price}?`,
+        async () => {
+          const token = localStorage.getItem("token");
+          if (!token) {
+            alert('You must be logged in!');
+            return;
+          }
+
+          try {
+            const buyResponse = await fetch('/api/oil/market-buy', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              }
+            });
+
+            const buyResult = await buyResponse.json();
+            if (buyResponse.ok) {
+              showConfirmationPopup(buyResult.message || '✅ Market buy successful!');
+              fetchVoltBalance();
+              await loadOrderBook();
+            } else {
+              showConfirmationPopup(`❌ Market buy failed: ${buyResult.error}`);
+            }
+          } catch (error) {
+            console.error('Error processing market buy:', error);
+            showConfirmationPopup('❌ Failed to process market buy.');
+          }
+        }
+      );
     } catch (error) {
-      console.error('Error processing market buy:', error);
-      showConfirmationPopup('❌ Failed to process market buy.');
+      console.error('Error fetching market listings:', error);
+      showConfirmationPopup('❌ Failed to fetch market listings.');
     }
   });
 }
+
+// Pixel-Modal Confirm (same)
+function customConfirm(message, onConfirm) {
+  const modalOverlay = document.createElement("div");
+  modalOverlay.className = "modal-overlay";
+
+  const modalBox = document.createElement("div");
+  modalBox.className = "modal-box";
+  modalBox.innerHTML = `
+    <h2>⚡ Confirm</h2>
+    <p style="margin: 10px 0 20px;">${message}</p>
+    <div class="modal-buttons">
+      <button id="confirmYes" class="confirm-button">Yes</button>
+      <button id="confirmNo" class="cancel-button">No</button>
+    </div>
+  `;
+
+  modalOverlay.appendChild(modalBox);
+  document.body.appendChild(modalOverlay);
+
+  document.getElementById("confirmYes").addEventListener("click", () => {
+    onConfirm();
+    modalOverlay.remove();
+  });
+
+  document.getElementById("confirmNo").addEventListener("click", () => {
+    modalOverlay.remove();
+  });
+}
+
+
 
 const offerSaleButton = document.getElementById('offerSaleButton');
 
