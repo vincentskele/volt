@@ -4,10 +4,10 @@ const { formatCurrency } = require('../../points');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('drain') // Command name
-    .setDescription("Attempt to drain another Solarian's Volts (Be careful you might get shocked!)") // Command description
+    .setName('drain')
+    .setDescription("Attempt to drain another Solarian's Volts (Be careful you might get shocked!)")
     .addUserOption(option =>
-      option.setName('user') // User to drain
+      option.setName('user')
         .setDescription('The Solarian to drain')
         .setRequired(true)),
   
@@ -23,10 +23,20 @@ module.exports = {
     }
 
     try {
+      // Fetch the attacker's balance
+      const attackerBalance = await db.getUserBalance(interaction.user.id);
+
+      // Block if attacker has less than 1 Volt
+      if (!attackerBalance || attackerBalance < 1) {
+        return interaction.reply({ 
+          content: '🚫 You must have at least 1 Volt to attempt a drain!', 
+          ephemeral: true 
+        });
+      }
+
       // Attempt the drain
       const result = await db.robUser(interaction.user.id, targetUser.id);
 
-      // Handle drain outcomes
       if (!result.success) {
         return interaction.reply({ 
           content: `🚫 Drain attempt failed: ${result.message}`, 
@@ -34,21 +44,18 @@ module.exports = {
         });
       }
 
-      // Successful drain
       if (result.outcome === 'success') {
         return interaction.reply(
-          `⚡⚡⚡ You successfully drained <@${targetUser.id}> and drained **${formatCurrency(result.amountStolen)}**!`
+          `⚡⚡⚡ You successfully drained <@${targetUser.id}> and stole **${formatCurrency(result.amountStolen)}**!`
         );
       }
 
-      // Failed drain with penalty
       if (result.outcome === 'fail') {
         return interaction.reply(
-          `⚡⚡ZAPPEP⚡⚡ You got shocked! You got drained yourself and lost **${formatCurrency(result.penalty)}** to <@${targetUser.id}>.`
+          `⚡⚡ZAPPED⚡⚡ You got shocked! You lost **${formatCurrency(result.penalty)}** to <@${targetUser.id}>.`
         );
       }
 
-      // Handle unexpected outcomes
       return interaction.reply({ 
         content: '🚫 An unexpected error occurred during the drain.', 
         ephemeral: true 
@@ -57,7 +64,6 @@ module.exports = {
     } catch (err) {
       console.error(`Error in /drain command:`, err);
 
-      // Handle errors gracefully
       return interaction.reply({ 
         content: `🚫 Drain failed due to an internal error: ${err.message || err}`, 
         ephemeral: true 

@@ -5,8 +5,8 @@ const { points, formatCurrency } = require('../../points'); // Import points mod
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('complete-task')
-    .setDescription('Complete a task and charge up a user’s Solarian (Admin Only).')
+    .setName('complete-quest')
+    .setDescription('Complete a quest and charge up a user’s Solarian (Admin Only).')
     .addUserOption(option =>
       option.setName('user')
         .setDescription('The user to charge up')
@@ -30,7 +30,7 @@ module.exports = {
       const isBotAdmin = botAdmins.includes(user.id);
 
       if (!isServerAdmin && !isBotAdmin) {
-        return interaction.reply({ content: '🚫 Only bot admins or server administrators can complete jobs.', ephemeral: true });
+        return interaction.reply({ content: '🚫 Only bot admins or server administrators can complete quests.', ephemeral: true });
       }
 
       const targetUser = options.getUser('user');
@@ -44,28 +44,28 @@ module.exports = {
       // Get the user's active job (no need to input job ID manually)
       const activeJob = await db.getActiveJob(targetUser.id);
       if (!activeJob) {
-        return interaction.reply({ content: `🚫 <@${targetUser.id}> does not have an active job to complete.`, ephemeral: true });
+        return interaction.reply({ content: `🚫 <@${targetUser.id}> does not have an active quest to complete.`, ephemeral: true });
       }
 
       // Complete the job
       const result = await db.completeJob(targetUser.id, reward);
       if (!result.success) {
-        return interaction.reply({ content: `🚫 Failed to complete the job for <@${targetUser.id}>.`, ephemeral: true });
+        return interaction.reply({ content: `🚫 Failed to complete the quest for <@${targetUser.id}>.`, ephemeral: true });
       }
 
       // Special message if reward is 0
       if (reward === 0) {
         return interaction.reply(
-          `😆 OOOHHH NICE TRY, BUT JOB INCOMPLETE! <@${targetUser.id}> didn't get any reward!`
+          `😆 OOOHHH NICE TRY, BUT QUEST INCOMPLETE! <@${targetUser.id}> didn't get any reward!`
         );
       }
 
       return interaction.reply(
-        `✅ Completed job for <@${targetUser.id}> with reward **${formatCurrency(reward)}**!`
+        `✅ Completed quest for <@${targetUser.id}> with reward **${formatCurrency(reward)}**!`
       );
     } catch (err) {
       console.error('Complete Job Slash Error:', err);
-      return interaction.reply({ content: `🚫 Complete job failed: ${err.message || err}`, ephemeral: true });
+      return interaction.reply({ content: `🚫 Complete quest failed: ${err.message || err}`, ephemeral: true });
     }
   },
 };
