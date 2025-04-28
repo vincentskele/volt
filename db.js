@@ -72,6 +72,8 @@ function initializeDatabase() {
       }
     });
 
+
+
     // Items Table
     db.run(`
       CREATE TABLE IF NOT EXISTS items (
@@ -1464,74 +1466,83 @@ async function removeRaffleShopItem(raffleName) {
 //--------------------------------------
 // 5) Conclude a Raffle
 //--------------------------------------
-
-/**
- * concludeRaffle(raffle)
- * - Fetches the raffle by ID (passed in from wherever)
- * - Gets all participant rows from the `raffle_entries` table
- * - Shuffles & picks winners
- * - Awards currency or item
- * - Removes ticket shop item & clears entries
- */
 async function concludeRaffle(raffle) {
   try {
-    console.log(`🎟️ Concluding raffle: ${raffle.name}`);
+    console.log(`🎟️ Concluding raffle: ${raffle.name} (ID: ${raffle.id})`);
 
-    // 1) Get the participants from your DB (raffle_entries)
+    // 1) Fetch participants
     const participants = await getRaffleParticipants(raffle.id);
     if (participants.length === 0) {
       console.log(`🚫 No participants found for raffle "${raffle.name}".`);
-      // Optionally send a message to the channel (if you still want an announcement)
       const channel = await client.channels.fetch(raffle.channel_id).catch(() => null);
       if (channel) {
         await channel.send(`🚫 The **${raffle.name}** raffle ended, but no one entered.`);
       }
-      // Clean up
       await removeRaffleShopItem(raffle.name);
       await clearRaffleEntries(raffle.id);
       return;
     }
 
-    console.log(`🎟️ Raffle "${raffle.name}" has ${participants.length} total tickets.`);
+    const uniqueUserIds = [...new Set(participants.map(p => p.user_id))];
+    console.log(`📊 Found ${participants.length} total entries from ${uniqueUserIds.length} unique participants`);
 
-    // 2) Shuffle & pick winners
+    // 2) Shuffle and pick winners
     const shuffled = participants.sort(() => Math.random() - 0.5);
     const winningEntries = shuffled.slice(0, raffle.winners);
+    console.log(`🎟️ Selected ${winningEntries.length} winners from ${participants.length} total entries`);
 
     if (winningEntries.length === 0) {
       console.error(`❌ No winners selected for raffle "${raffle.name}"`);
       return;
     }
 
-    // 3) Award the prizes
+    // 3) Award prizes
     if (!isNaN(raffle.prize)) {
-      // Prize is numeric currency
       const prizeAmount = parseInt(raffle.prize, 10);
       for (const ticket of winningEntries) {
         await db.updateWallet(ticket.user_id, prizeAmount);
-        console.log(`💰 ${ticket.user_id} won ${prizeAmount} coins!`);
+        console.log(`💰 User ${ticket.user_id} won ${prizeAmount} coins`);
       }
     } else {
-      // Prize is a shop item
       const shopItem = await db.getShopItemByName(raffle.prize);
       if (!shopItem) {
         console.error(`⚠️ Shop item "${raffle.prize}" not found.`);
       } else {
         for (const ticket of winningEntries) {
           await db.addItemToInventory(ticket.user_id, shopItem.itemID);
-          console.log(`🎁 ${ticket.user_id} won "${shopItem.name}"!`);
+          console.log(`🎁 User ${ticket.user_id} won "${shopItem.name}"`);
         }
       }
     }
 
-    // 4) Announce winners in the channel (optional)
+    // 🛢️ 4) Award Robot Oil to ALL participants BEFORE cleanup
+    try {
+      console.log('🔍 [DEBUG] Attempting to fetch Robot Oil item...');
+      console.log('🔍 [DEBUG] Participants list (unique users):', uniqueUserIds);
+
+      const robotOilItem = await db.getShopItemByName('Robot Oil');
+
+      if (!robotOilItem) {
+        console.log('⚠️ [DEBUG] Robot Oil item not found.');
+      } else {
+        console.log(`✅ [DEBUG] Robot Oil found: itemID ${robotOilItem.itemID}`);
+        for (const userId of uniqueUserIds) {
+          console.log(`🛢️ [DEBUG] Awarding Robot Oil to userID: ${userId}`);
+          await db.addItemToInventory(userId, robotOilItem.itemID, 1);
+        }
+      }
+    } catch (oilRewardError) {
+      console.error('❌ Error awarding Robot Oil participation rewards:', oilRewardError);
+    }
+
+    // 5) Announce winners
     const channel = await client.channels.fetch(raffle.channel_id).catch(() => null);
     if (channel) {
       const winnerMentions = winningEntries.map(entry => `<@${entry.user_id}>`).join(', ');
       await channel.send(`🎉 The **${raffle.name}** raffle has ended! Winners: ${winnerMentions}`);
     }
 
-    // 5) Clean up
+    // 6) Cleanup raffle tickets and entries
     await removeRaffleShopItem(raffle.name);
     await clearRaffleEntries(raffle.id);
     console.log(`✅ Raffle "${raffle.name}" concluded and cleaned up.`);
@@ -1539,6 +1550,12 @@ async function concludeRaffle(raffle) {
     console.error(`❌ Error concluding raffle "${raffle.name}":`, err);
   }
 }
+
+
+// ==========================================================
+// Robot Oil
+// ==========================================================
+
 
 
 // =========================================================================
@@ -1771,4 +1788,6 @@ module.exports = {
   // User Accounts
   registerUser,
   authenticateUser,
+
+  // Robot Oil
 };
