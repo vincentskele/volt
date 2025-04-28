@@ -832,8 +832,273 @@ if (req.file) {
 
 
 
+// Robot Oil Price History API (dynamic from DB)
+app.get('/api/oil-history', (req, res) => {
+  db.all(
+    `SELECT created_at, price_per_unit
+     FROM robot_oil_history
+     WHERE event_type IN ('purchase', 'market_buy')
+     ORDER BY created_at ASC`,
+    [],
+    (err, rows) => {
+      if (err) {
+        console.error('Error fetching oil history:', err);
+        return res.status(500).json({ error: 'Failed to fetch oil history.' });
+      }
 
+      const oilHistory = rows.map((row) => ({
+        date: new Date(row.created_at * 1000).toISOString().split('T')[0], // Converts UNIX timestamp to YYYY-MM-DD
+        price: row.price_per_unit,
+      }));
 
+      res.json(oilHistory);
+    }
+  );
+});
+
+/**
+ * GET /api/oil-market
+ * Fetch active oil listings from the robot_oil_market table
+ */
+app.get('/api/oil-market', async (req, res) => {
+  try {
+    db.all(
+      `SELECT listing_id, seller_id, quantity, price_per_unit, created_at 
+       FROM robot_oil_market 
+       ORDER BY price_per_unit ASC, created_at ASC`, // Sort cheapest first
+      [],
+      async (err, rows) => {
+        if (err) {
+          console.error('Error fetching oil market listings:', err);
+          return res.status(500).json({ error: 'Failed to fetch oil market listings.' });
+        }
+
+        res.json(rows); // Send listings as JSON
+      }
+    );
+  } catch (error) {
+    console.error('❌ Error in /api/oil-market route:', error);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+app.post('/api/oil/market-buy', authenticateToken, async (req, res) => {
+  const userId = req.user.userId;
+
+  try {
+    // 1. Fetch the cheapest listing
+    db.get(`
+      SELECT * FROM robot_oil_market
+      ORDER BY price_per_unit ASC
+      LIMIT 1
+    `, async (err, listing) => {
+      if (err) {
+        console.error('Error fetching cheapest oil listing:', err);
+        return res.status(500).json({ error: 'Database error.' });
+      }
+
+      if (!listing) {
+        return res.status(404).json({ error: 'No oil available for sale.' });
+      }
+
+      const oilPrice = listing.price_per_unit;
+      const availableQuantity = listing.quantity;
+
+      // 2. Check user's wallet
+      const user = await dbGet(`SELECT wallet FROM economy WHERE userID = ?`, [userId]);
+      if (!user || user.wallet < oilPrice) {
+        return res.status(400).json({ error: 'Not enough ⚡ to buy 1 barrel.' });
+      }
+
+      // 3. Hardcode the Robot Oil item ID (we know it's 274)
+      const ROBOT_OIL_ITEM_ID = 274;
+
+      db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
+
+        // 4. Deduct Volts from the buyer
+        db.run(`UPDATE economy SET wallet = wallet - ? WHERE userID = ?`, [oilPrice, userId]);
+
+        // 5. Add 1 Robot Oil barrel to buyer's inventory
+        db.run(`
+          INSERT INTO inventory (userID, itemID, quantity)
+          VALUES (?, ?, 1)
+          ON CONFLICT(userID, itemID) DO UPDATE SET quantity = quantity + 1
+        `, [userId, ROBOT_OIL_ITEM_ID]);
+
+        // 6. Pay the seller
+        db.run(`UPDATE economy SET wallet = wallet + ? WHERE userID = ?`, [oilPrice, listing.seller_id]);
+
+        // 7. Reduce or delete the listing
+        if (availableQuantity > 1) {
+          db.run(`UPDATE robot_oil_market SET quantity = quantity - 1 WHERE listing_id = ?`, [listing.listing_id]);
+        } else {
+          db.run(`DELETE FROM robot_oil_market WHERE listing_id = ?`, [listing.listing_id]);
+        }
+
+        // 8. Log the transaction
+        db.run(`
+          INSERT INTO robot_oil_history (event_type, buyer_id, seller_id, quantity, price_per_unit, total_price)
+          VALUES ('market_buy', ?, ?, 1, ?, ?)
+        `, [userId, listing.seller_id, oilPrice, oilPrice]);
+
+        db.run('COMMIT');
+
+        res.json({ success: true, message: `✅ Bought 1 barrel for ⚡${oilPrice}.` });
+      });
+    });
+  } catch (error) {
+    console.error('Error in /api/oil/market-buy:', error);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+app.post('/api/oil/offer-sale', authenticateToken, async (req, res) => {
+  const userId = req.user.userId;
+  const { quantity, price_per_unit } = req.body;
+
+  if (!quantity || !price_per_unit || quantity <= 0 || price_per_unit <= 0) {
+    return res.status(400).json({ error: 'Invalid quantity or price.' });
+  }
+
+  try {
+    // 1. Check if user has enough Robot Oil
+    const robotOil = await dbGet(`SELECT quantity FROM inventory WHERE userID = ? AND itemID = 274`, [userId]);
+
+    if (!robotOil || robotOil.quantity < quantity) {
+      return res.status(400).json({ error: 'Not enough Robot Oil in inventory.' });
+    }
+
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+
+      // 2. Subtract Robot Oil from inventory
+      db.run(`UPDATE inventory SET quantity = quantity - ? WHERE userID = ? AND itemID = 274`, [quantity, userId]);
+
+      // 3. Remove rows where quantity hits 0
+      db.run(`DELETE FROM inventory WHERE userID = ? AND itemID = 274 AND quantity <= 0`, [userId]);
+
+      // 4. Insert listing into market
+      db.run(`
+        INSERT INTO robot_oil_market (seller_id, quantity, price_per_unit)
+        VALUES (?, ?, ?)
+      `, [userId, quantity, price_per_unit]);
+
+      db.run('COMMIT');
+
+      res.json({ success: true, message: `Listed ${quantity} Robot Oil for ⚡${price_per_unit} each!` });
+    });
+
+  } catch (error) {
+    console.error('Error in /api/oil/offer-sale:', error);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// Cancel a Robot Oil Listing
+app.post('/api/oil/cancel', authenticateToken, async (req, res) => {
+  const userId = req.user.userId; // From your JWT
+  const { listing_id } = req.body;
+
+  if (!listing_id) {
+    return res.status(400).json({ error: 'Listing ID is required.' });
+  }
+
+  try {
+    // Fetch the listing to confirm ownership
+    db.get(`
+      SELECT * FROM robot_oil_market WHERE listing_id = ?
+    `, [listing_id], async (err, listing) => {
+      if (err) {
+        console.error('Database error fetching listing:', err);
+        return res.status(500).json({ error: 'Database error.' });
+      }
+
+      if (!listing) {
+        return res.status(404).json({ error: 'Listing not found.' });
+      }
+
+      if (listing.seller_id !== userId) {
+        return res.status(403).json({ error: 'You do not own this listing.' });
+      }
+
+      db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
+
+        // 1. Return the oil barrels to the seller's inventory
+        db.run(`
+          INSERT INTO inventory (userID, itemID, quantity)
+          VALUES (?, ?, ?)
+          ON CONFLICT(userID, itemID) DO UPDATE SET quantity = quantity + excluded.quantity
+        `, [userId, 274, listing.quantity]); // 👈 274 is your Robot Oil item ID
+
+        // 2. Delete the listing
+        db.run(`
+          DELETE FROM robot_oil_market WHERE listing_id = ?
+        `, [listing_id]);
+
+        // 3. Log it in robot_oil_history
+        db.run(`
+          INSERT INTO robot_oil_history (event_type, buyer_id, seller_id, quantity, price_per_unit, total_price)
+          VALUES ('cancel', ?, ?, ?, ?, ?)
+        `, [userId, userId, listing.quantity, listing.price_per_unit, listing.price_per_unit * listing.quantity]);
+
+        db.run('COMMIT');
+
+        res.json({ success: true, message: `✅ Successfully canceled listing and returned ${listing.quantity} oil.` });
+      });
+    });
+
+  } catch (error) {
+    console.error('Error canceling listing:', error);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// POST /api/oil/offer-buy
+app.post('/api/oil/offer-buy', authenticateToken, (req, res) => {
+  const buyerId = req.user.userId; // From your JWT
+  const { quantity, price_per_unit } = req.body;
+
+  if (!quantity || !price_per_unit || quantity <= 0 || price_per_unit <= 0) {
+    return res.status(400).json({ error: 'Invalid quantity or price.' });
+  }
+
+  const totalCost = quantity * price_per_unit;
+
+  db.serialize(() => {
+    db.get(`SELECT wallet FROM economy WHERE userID = ?`, [buyerId], (err, user) => {
+      if (err) {
+        console.error('❌ Database error fetching user:', err);
+        return res.status(500).json({ error: 'Database error.' });
+      }
+
+      if (!user || user.wallet < totalCost) {
+        return res.status(400).json({ error: 'Not enough ⚡ to create purchase offer.' });
+      }
+
+      db.run('BEGIN TRANSACTION');
+
+      // 1. Deduct volts immediately
+      db.run(`UPDATE economy SET wallet = wallet - ? WHERE userID = ?`, [totalCost, buyerId]);
+
+      // 2. Insert the buy order
+      db.run(`
+        INSERT INTO robot_oil_buy_orders (buyer_id, quantity, price_per_unit)
+        VALUES (?, ?, ?)
+      `, [buyerId, quantity, price_per_unit], function (insertErr) {
+        if (insertErr) {
+          console.error('❌ Failed to create purchase offer:', insertErr);
+          db.run('ROLLBACK');
+          return res.status(500).json({ error: 'Failed to create purchase offer.' });
+        }
+
+        db.run('COMMIT');
+        res.json({ success: true, message: `✅ Purchase offer created successfully! (Order ID: ${this.lastID})` });
+      });
+    });
+  });
+});
 
 
 // Start the server

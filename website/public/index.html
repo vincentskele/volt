@@ -6,8 +6,10 @@
   <title>Volt</title>
   <link rel="stylesheet" href="css/styles.css">
   <link rel="icon" href="./favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
   
+
 <!-- Slim Login Modal with Form -->
 <div id="loginModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
   <div class="bg-white px-2 py-1 rounded shadow-lg flex items-center gap-2">
@@ -124,6 +126,7 @@
     <button id="showShopButton" class="btn">Shop</button>
     <button id="showDailyTasksButton" class="btn">Daily Quests</button>
     <button id="showJobListButton" class="btn">Quests</button>
+    <button id="showRobotOilButton" class="btn">Robot Oil</button>
     <button id="showLeaderboardButton" class="btn">Leaderboard</button>
     <button id="showAdminListButton" class="btn">Admin List</button>
     <button id="showConsoleButton" class="btn">Console</button>
@@ -175,6 +178,40 @@
 
   <button class="back-button">Home</button>
 </div>
+
+
+<!-- Robot Oil Section (ENTIRE block inside one div!) -->
+<div id="robotOilSection" class="content" style="display: none; flex-direction: column; gap: 20px; height: 100%;">
+  <h2>🛢️ Robot Oil Market</h2>
+
+<!-- Robot Oil Chart Container -->
+<div style="background: #1e293b; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+  <canvas id="oilChart" style="max-width: 100%; height: 300px;"></canvas>
+</div>
+
+
+  <!-- Order Books -->
+  <div id="orderBookSection" style="flex: 1 1 auto; overflow-y: auto; padding: 10px; background-color: #2d3e50; border-radius: 8px;">
+    <h3 style="text-align: center;">📋 Order Book</h3>
+    <div id="orderBookContent" style="padding: 10px; background: #1e293b; border-radius: 8px;">
+
+      <!-- listings go here -->
+    </div>
+  </div>
+
+  <!-- Buttons -->
+  <div style="margin-top: 20px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;">
+    <button id="marketBuyButton" class="btn" style="background-color: #4CAF50;">Market Buy</button>
+    <button id="offerSaleButton" class="btn" style="background-color: #FF9800;">Offer Sale</button>
+
+  </div>
+
+  <button class="back-button" style="margin-top: 20px;">Home</button>
+</div>
+
+
+
+
 
 
   <!-- Leaderboard Section -->
