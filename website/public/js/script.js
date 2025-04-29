@@ -1661,55 +1661,73 @@ function isMobileDevice() {
 
 const showRobotOilButton = document.getElementById("showRobotOilButton");
 const buyOilButton = document.getElementById("buyOilButton");
+const marketBuyButton = document.getElementById("marketBuyButton");
+const offerSaleButton = document.getElementById("offerSaleButton");
+const offerPurchaseButton = document.getElementById("offerBuyButton");
 
-if (showRobotOilButton) {
-  showRobotOilButton.addEventListener("click", () => {
-    showRobotOilMarket();
-  });
+if (showRobotOilButton) showRobotOilButton.addEventListener("click", showRobotOilMarket);
+if (buyOilButton) buyOilButton.addEventListener("click", () => handleMarketBuy('/api/oil/buy'));
+if (marketBuyButton) marketBuyButton.addEventListener("click", prepareMarketBuy);
+if (offerSaleButton) offerSaleButton.addEventListener("click", () => showOfferModal('sale'));
+if (offerPurchaseButton) offerPurchaseButton.addEventListener("click", () => showOfferModal('purchase'));
+
+async function handleMarketBuy(endpoint) {
+  const token = localStorage.getItem("token");
+  if (!token) return alert('You must be logged in!');
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quantity: 1 }),
+    });
+
+    const result = await response.json();
+    if (response.ok) {
+      showConfirmationPopup(result.message || '✅ Market buy successful!');
+      fetchVoltBalance();
+      await loadOrderBook();
+    } else {
+      showConfirmationPopup(`❌ Market buy failed: ${result.error}`);
+    }
+  } catch (error) {
+    console.error('Error processing market buy:', error);
+    showConfirmationPopup('❌ Failed to process market buy.');
+  }
 }
 
-if (buyOilButton) {
-  buyOilButton.addEventListener("click", async () => {
-    const confirmBuy = confirm("Buy 1 barrel of Robot Oil at current market price?");
-    if (!confirmBuy) return;
+async function prepareMarketBuy() {
+  try {
+    const response = await fetch('/api/oil-market');
+    const listings = await response.json();
+    const loggedInUserId = localStorage.getItem('discordUserID');
 
-    const token = localStorage.getItem("token");
-    if (!token) {
-      alert('You must be logged in!');
+    if (!Array.isArray(listings) || listings.length === 0) {
+      showConfirmationPopup('❌ No Robot Oil listings available.');
       return;
     }
 
-    try {
-      const response = await fetch('/api/oil/buy', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ quantity: 1 }),
-      });
+    listings.sort((a, b) => a.price_per_unit - b.price_per_unit);
+    const cheapest = listings[0];
 
-      const result = await response.json();
-      if (response.ok) {
-        showConfirmationPopup(`✅ Successfully bought 1 barrel of Robot Oil at market price!`);
-        fetchVoltBalance(); // Refresh Volt balance
-        await loadOrderBook(); // Refresh order book after buying
-      } else {
-        showConfirmationPopup(`❌ Purchase failed: ${result.error || 'Unknown error'}`);
-      }
-    } catch (error) {
-      console.error('Error buying Robot Oil:', error);
-      showConfirmationPopup('❌ Failed to process oil purchase.');
+    if (loggedInUserId && cheapest.seller_id === loggedInUserId) {
+      showConfirmationPopup('🚫 You cannot buy your own listing!');
+      return;
     }
-  });
+
+    const price = cheapest.price_per_unit;
+    customConfirm(`Buy 1 barrel of Robot Oil for ⚡${price}?`, async () => {
+      await handleMarketBuy('/api/oil/market-buy');
+    });
+  } catch (error) {
+    console.error('Error fetching market listings:', error);
+    showConfirmationPopup('❌ Failed to fetch market listings.');
+  }
 }
 
 async function showRobotOilMarket() {
   const oilChartCanvas = document.getElementById('oilChart');
-  if (!oilChartCanvas) {
-    console.error("No oilChart element found!");
-    return;
-  }
+  if (!oilChartCanvas) return console.error("No oilChart element found!");
 
   try {
     const response = await fetch('/api/oil-history');
@@ -1718,74 +1736,26 @@ async function showRobotOilMarket() {
     const labels = history.map(entry => entry.date);
     const prices = history.map(entry => entry.price);
 
-    // Clean old chart if it exists
-    if (window.oilChartInstance) {
-      window.oilChartInstance.destroy();
-    }
+    if (window.oilChartInstance) window.oilChartInstance.destroy();
 
     window.oilChartInstance = new Chart(oilChartCanvas, {
       type: 'line',
-      data: {
-        labels: labels,
-        datasets: [{
-          label: 'Robot Oil Price (⚡ per barrel)',
-          data: prices,
-          borderColor: 'yellow',
-          backgroundColor: 'rgba(255, 255, 0, 0.2)',
-          borderWidth: 2,
-          pointBackgroundColor: 'yellow',
-          pointBorderColor: 'yellow',
-        }]
-      },
+      data: { labels, datasets: [{ label: 'Robot Oil Price (⚡ per barrel)', data: prices, borderColor: 'yellow', backgroundColor: 'rgba(255, 255, 0, 0.2)', borderWidth: 2, pointBackgroundColor: 'yellow', pointBorderColor: 'yellow' }] },
       options: {
         responsive: true,
         plugins: {
-          legend: {
-            labels: {
-              color: '#fafafa', // 👈 White text for the legend
-              font: {
-                size: 14,
-                weight: 'bold'
-              }
-            }
-          },
-          tooltip: {
-            backgroundColor: '#27393F', // Dark tooltip background
-            titleColor: '#fafafa',       // White title text
-            bodyColor: '#fafafa'         // White body text
-          }
+          legend: { labels: { color: '#fafafa', font: { size: 14, weight: 'bold' } } },
+          tooltip: { backgroundColor: '#27393F', titleColor: '#fafafa', bodyColor: '#fafafa' }
         },
         scales: {
-          x: {
-            grid: {
-              color: '#405D67' // Dark subtle grid lines
-            },
-            ticks: {
-              color: '#fafafa', // 👈 White x-axis labels
-              font: {
-                size: 12
-              }
-            }
-          },
-          y: {
-            beginAtZero: true,
-            grid: {
-              color: '#405D67'
-            },
-            ticks: {
-              color: '#fafafa', // 👈 White y-axis labels
-              font: {
-                size: 12
-              }
-            }
-          }
+          x: { grid: { color: '#405D67' }, ticks: { color: '#fafafa', font: { size: 12 } } },
+          y: { beginAtZero: true, grid: { color: '#405D67' }, ticks: { color: '#fafafa', font: { size: 12 } } }
         }
       }
     });
-    
 
-    await loadOrderBook(); // ✅ Load Order Book alongside the chart
-    showSection('robotOilSection'); // ✅ Then show the page
+    await loadOrderBook();
+    showSection('robotOilSection');
   } catch (error) {
     console.error('Error loading oil history:', error);
   }
@@ -1795,19 +1765,16 @@ async function loadOrderBook() {
   try {
     const response = await fetch('/api/oil-market');
     const listings = await response.json();
-
     const orderBookContent = document.getElementById('orderBookContent');
-    orderBookContent.innerHTML = ''; // Clear previous
+    orderBookContent.innerHTML = '';
 
     if (listings.length === 0) {
       orderBookContent.innerHTML = `<p style="text-align:center; color: #ccc;">No listings available yet.</p>`;
       return;
     }
 
-    // 🧹 Sort by price ascending
     listings.sort((a, b) => a.price_per_unit - b.price_per_unit);
-
-    const loggedInUserId = localStorage.getItem('discordUserID'); // 🧠 YOUR userId saved at login!
+    const loggedInUserId = localStorage.getItem('discordUserID');
 
     listings.forEach(listing => {
       const listingDiv = document.createElement('div');
@@ -1825,19 +1792,19 @@ async function loadOrderBook() {
         <span>⚡ ${listing.price_per_unit} / barrel</span>
       `;
 
-      // ✅ If I'm the seller, add a CANCEL ❌ button
       if (loggedInUserId && listing.seller_id === loggedInUserId) {
         const cancelButton = document.createElement('button');
         cancelButton.textContent = '❌';
-        cancelButton.className = 'cancel-button'; // You can style this class small if you want
+        cancelButton.className = 'cancel-button';
         cancelButton.style.marginLeft = '10px';
         cancelButton.addEventListener('click', () => {
-          if (confirm('Are you sure you want to cancel this listing?')) {
-            cancelOilListing(listing.listing_id);
-          }
+          customConfirm('Are you sure you want to cancel this listing?', async () => {
+            await cancelOilListing(listing.listing_id);
+          });
         });
         listingDiv.appendChild(cancelButton);
       }
+      
 
       orderBookContent.appendChild(listingDiv);
     });
@@ -1848,25 +1815,19 @@ async function loadOrderBook() {
 
 async function cancelOilListing(listingId) {
   const token = localStorage.getItem('token');
-  if (!token) {
-    alert('You must be logged in!');
-    return;
-  }
+  if (!token) return alert('You must be logged in!');
 
   try {
     const response = await fetch('/api/oil/cancel', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ listing_id: listingId }),
     });
 
     const result = await response.json();
     if (response.ok) {
       showConfirmationPopup(`✅ ${result.message}`);
-      await loadOrderBook(); // Refresh order book!
+      await loadOrderBook();
     } else {
       showConfirmationPopup(`❌ Cancel failed: ${result.error}`);
     }
@@ -1876,67 +1837,6 @@ async function cancelOilListing(listingId) {
   }
 }
 
-
-const marketBuyButton = document.getElementById("marketBuyButton");
-
-if (marketBuyButton) {
-  marketBuyButton.addEventListener("click", async () => {
-    try {
-      // 🛢️ First fetch the cheapest oil listing
-      const response = await fetch('/api/oil-market');
-      const listings = await response.json();
-
-      if (!Array.isArray(listings) || listings.length === 0) {
-        showConfirmationPopup('❌ No Robot Oil listings available.');
-        return;
-      }
-
-      // Sort to make sure (safety)
-      listings.sort((a, b) => a.price_per_unit - b.price_per_unit);
-
-      const cheapest = listings[0];
-      const price = cheapest.price_per_unit;
-
-      customConfirm(
-        `Buy 1 barrel of Robot Oil for ⚡${price}?`,
-        async () => {
-          const token = localStorage.getItem("token");
-          if (!token) {
-            alert('You must be logged in!');
-            return;
-          }
-
-          try {
-            const buyResponse = await fetch('/api/oil/market-buy', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-              }
-            });
-
-            const buyResult = await buyResponse.json();
-            if (buyResponse.ok) {
-              showConfirmationPopup(buyResult.message || '✅ Market buy successful!');
-              fetchVoltBalance();
-              await loadOrderBook();
-            } else {
-              showConfirmationPopup(`❌ Market buy failed: ${buyResult.error}`);
-            }
-          } catch (error) {
-            console.error('Error processing market buy:', error);
-            showConfirmationPopup('❌ Failed to process market buy.');
-          }
-        }
-      );
-    } catch (error) {
-      console.error('Error fetching market listings:', error);
-      showConfirmationPopup('❌ Failed to fetch market listings.');
-    }
-  });
-}
-
-// Pixel-Modal Confirm (same)
 function customConfirm(message, onConfirm) {
   const modalOverlay = document.createElement("div");
   modalOverlay.className = "modal-overlay";
@@ -1965,144 +1865,52 @@ function customConfirm(message, onConfirm) {
   });
 }
 
-
-
-const offerSaleButton = document.getElementById('offerSaleButton');
-
-if (offerSaleButton) {
-  offerSaleButton.addEventListener("click", () => {
-    showOfferSaleModal();
-  });
-}
-
-function showOfferSaleModal() {
+function showOfferModal(type) {
   const modalOverlay = document.createElement("div");
   modalOverlay.className = "modal-overlay";
 
   const modalBox = document.createElement("div");
   modalBox.className = "modal-box";
   modalBox.innerHTML = `
-    <h2>OFFER SALE</h2>
+    <h2>${type === 'sale' ? 'OFFER SALE' : 'OFFER PURCHASE'}</h2>
     <p>Enter quantity and price per barrel:</p>
-    <input type="number" id="offerQuantity" placeholder="Quantity" style="margin:5px 0; width: 100%; padding: 5px;" min="1" />
-    <input type="number" id="offerPrice" placeholder="Price per unit (⚡)" style="margin:5px 0; width: 100%; padding: 5px;" min="1" />
+    <input type="number" id="modalQuantity" placeholder="Quantity" style="margin:5px 0; width: 100%; padding: 5px;" min="1" />
+    <input type="number" id="modalPrice" placeholder="Price per unit (⚡)" style="margin:5px 0; width: 100%; padding: 5px;" min="1" />
     <div style="margin-top: 10px;">
-      <button id="confirmOfferSale" class="confirm-button">Confirm</button>
-      <button id="cancelOfferSale" class="cancel-button">Cancel</button>
+      <button id="confirmModal" class="confirm-button">Confirm</button>
+      <button id="cancelModal" class="cancel-button">Cancel</button>
     </div>
   `;
 
   modalOverlay.appendChild(modalBox);
   document.body.appendChild(modalOverlay);
 
-  document.getElementById("confirmOfferSale").addEventListener("click", async () => {
-    const quantity = parseInt(document.getElementById("offerQuantity").value, 10);
-    const price = parseInt(document.getElementById("offerPrice").value, 10);
+  document.getElementById("confirmModal").addEventListener("click", async () => {
+    const quantity = parseInt(document.getElementById("modalQuantity").value, 10);
+    const price = parseInt(document.getElementById("modalPrice").value, 10);
 
     if (isNaN(quantity) || isNaN(price) || quantity <= 0 || price <= 0) {
       alert('⚠️ Please enter valid positive numbers.');
       return;
     }
 
-    await offerSale(quantity, price);
+    await submitOffer(type === 'sale' ? '/api/oil/offer-sale' : '/api/oil/offer-buy', quantity, price);
     modalOverlay.remove();
   });
 
-  document.getElementById("cancelOfferSale").addEventListener("click", () => {
+  document.getElementById("cancelModal").addEventListener("click", () => {
     modalOverlay.remove();
   });
 }
 
-async function offerSale(quantity, price) {
+async function submitOffer(url, quantity, price) {
   const token = localStorage.getItem("token");
-  if (!token) {
-    alert('You must be logged in!');
-    return;
-  }
+  if (!token) return alert('You must be logged in!');
 
   try {
-    const response = await fetch('/api/oil/offer-sale', {
+    const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ quantity, price_per_unit: price }),
-    });
-
-    const result = await response.json();
-    if (response.ok) {
-      showConfirmationPopup(`✅ ${result.message}`);
-      await loadOrderBook(); // Refresh listings
-    } else {
-      showConfirmationPopup(`❌ Offer Sale failed: ${result.error}`);
-    }
-  } catch (error) {
-    console.error('Error processing offer sale:', error);
-    showConfirmationPopup('❌ Failed to create offer.');
-  }
-}
-
-const offerPurchaseButton = document.getElementById('offerBuyButton');
-
-if (offerPurchaseButton) {
-  offerPurchaseButton.addEventListener("click", () => {
-    showOfferPurchaseModal();
-  });
-}
-
-function showOfferPurchaseModal() {
-  const modalOverlay = document.createElement("div");
-  modalOverlay.className = "modal-overlay";
-
-  const modalBox = document.createElement("div");
-  modalBox.className = "modal-box";
-  modalBox.innerHTML = `
-    <h2>OFFER PURCHASE</h2>
-    <p>Enter quantity and price per barrel:</p>
-    <input type="number" id="purchaseQuantity" placeholder="Quantity" style="margin:5px 0; width: 100%; padding: 5px;" min="1" />
-    <input type="number" id="purchasePrice" placeholder="Offer price per barrel (⚡)" style="margin:5px 0; width: 100%; padding: 5px;" min="1" />
-    <div style="margin-top: 10px;">
-      <button id="confirmOfferPurchase" class="confirm-button">Confirm</button>
-      <button id="cancelOfferPurchase" class="cancel-button">Cancel</button>
-    </div>
-  `;
-
-  modalOverlay.appendChild(modalBox);
-  document.body.appendChild(modalOverlay);
-
-  document.getElementById("confirmOfferPurchase").addEventListener("click", async () => {
-    const quantity = parseInt(document.getElementById("purchaseQuantity").value, 10);
-    const price = parseInt(document.getElementById("purchasePrice").value, 10);
-
-    if (isNaN(quantity) || isNaN(price) || quantity <= 0 || price <= 0) {
-      alert('⚠️ Please enter valid positive numbers.');
-      return;
-    }
-
-    await submitPurchaseOffer(quantity, price);
-    modalOverlay.remove();
-  });
-
-  document.getElementById("cancelOfferPurchase").addEventListener("click", () => {
-    modalOverlay.remove();
-  });
-}
-
-async function submitPurchaseOffer(quantity, price) {
-  const token = localStorage.getItem("token");
-  if (!token) {
-    alert('You must be logged in!');
-    return;
-  }
-
-  try {
-    const response = await fetch('/api/oil/offer-buy', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ quantity, price_per_unit: price }),
     });
 
@@ -2110,15 +1918,16 @@ async function submitPurchaseOffer(quantity, price) {
     if (response.ok) {
       showConfirmationPopup(`✅ ${result.message}`);
       fetchVoltBalance();
-      await loadOrderBook(); // reload sell + buy orders
+      await loadOrderBook();
     } else {
-      showConfirmationPopup(`❌ Offer Buy failed: ${result.error}`);
+      showConfirmationPopup(`❌ Offer failed: ${result.error}`);
     }
   } catch (error) {
-    console.error('Error submitting purchase offer:', error);
-    showConfirmationPopup('❌ Failed to create purchase offer.');
+    console.error('Error submitting offer:', error);
+    showConfirmationPopup('❌ Failed to create offer.');
   }
 }
+
 
 
 //

@@ -1683,6 +1683,12 @@ async function buyRobotOilFromMarket(buyerID, listingID, quantityRequested) {
         });
 
         if (!listing) return reject(new Error('🚫 Listing not found.'));
+
+        // 🔥 Strong self-buy prevention
+        if (String(buyerID).trim() === String(listing.seller_id).trim()) {
+          return reject(new Error('🚫 You cannot buy your own listing.'));
+        }
+
         if (quantityRequested > listing.quantity) return reject(new Error('🚫 Not enough Robot Oil available.'));
 
         const totalCost = quantityRequested * listing.price_per_unit;
@@ -1692,6 +1698,9 @@ async function buyRobotOilFromMarket(buyerID, listingID, quantityRequested) {
           return reject(new Error('🚫 Insufficient funds.'));
         }
 
+        const robotOil = await getShopItemByName('Robot Oil');
+        if (!robotOil) return reject(new Error('🚫 Robot Oil item missing.'));
+
         // Begin Transaction
         db.run('BEGIN TRANSACTION');
 
@@ -1700,12 +1709,6 @@ async function buyRobotOilFromMarket(buyerID, listingID, quantityRequested) {
 
         // Add to seller's wallet
         db.run(`UPDATE economy SET wallet = wallet + ? WHERE userID = ?`, [totalCost, listing.seller_id]);
-
-        const robotOil = await getShopItemByName('Robot Oil');
-        if (!robotOil) {
-          db.run('ROLLBACK');
-          return reject('🚫 Robot Oil item missing.');
-        }
 
         // Add Robot Oil to buyer's inventory
         db.run(`
@@ -1730,7 +1733,7 @@ async function buyRobotOilFromMarket(buyerID, listingID, quantityRequested) {
         db.run('COMMIT', (err) => {
           if (err) {
             db.run('ROLLBACK');
-            return reject('Transaction commit failed.');
+            return reject(new Error('Transaction commit failed.'));
           }
           resolve(`✅ Purchased ${quantityRequested} Robot Oil for ${totalCost} coins!`);
         });
@@ -1742,6 +1745,7 @@ async function buyRobotOilFromMarket(buyerID, listingID, quantityRequested) {
     });
   });
 }
+
 
 
 async function cancelRobotOilListing(userID, listingID) {
