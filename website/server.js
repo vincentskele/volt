@@ -910,8 +910,8 @@ app.post('/api/oil/market-buy', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: 'Not enough ⚡ to buy 1 barrel.' });
       }
 
-      // 3. Hardcode the Robot Oil item ID (we know it's 274)
-      const ROBOT_OIL_ITEM_ID = 274;
+      // 3. Hardcode the Robot Oil item ID (we know it's 88)
+      const ROBOT_OIL_ITEM_ID = 88;
 
       db.serialize(() => {
         db.run('BEGIN TRANSACTION');
@@ -963,7 +963,7 @@ app.post('/api/oil/offer-sale', authenticateToken, async (req, res) => {
 
   try {
     // 1. Check if user has enough Robot Oil
-    const robotOil = await dbGet(`SELECT quantity FROM inventory WHERE userID = ? AND itemID = 274`, [userId]);
+    const robotOil = await dbGet(`SELECT quantity FROM inventory WHERE userID = ? AND itemID = 88`, [userId]);
 
     if (!robotOil || robotOil.quantity < quantity) {
       return res.status(400).json({ error: 'Not enough Robot Oil in inventory.' });
@@ -973,10 +973,10 @@ app.post('/api/oil/offer-sale', authenticateToken, async (req, res) => {
       db.run('BEGIN TRANSACTION');
 
       // 2. Subtract Robot Oil from inventory
-      db.run(`UPDATE inventory SET quantity = quantity - ? WHERE userID = ? AND itemID = 274`, [quantity, userId]);
+      db.run(`UPDATE inventory SET quantity = quantity - ? WHERE userID = ? AND itemID = 88`, [quantity, userId]);
 
       // 3. Remove rows where quantity hits 0
-      db.run(`DELETE FROM inventory WHERE userID = ? AND itemID = 274 AND quantity <= 0`, [userId]);
+      db.run(`DELETE FROM inventory WHERE userID = ? AND itemID = 88 AND quantity <= 0`, [userId]);
 
       // 4. Insert listing into market
       db.run(`
@@ -1030,7 +1030,7 @@ app.post('/api/oil/cancel', authenticateToken, async (req, res) => {
           INSERT INTO inventory (userID, itemID, quantity)
           VALUES (?, ?, ?)
           ON CONFLICT(userID, itemID) DO UPDATE SET quantity = quantity + excluded.quantity
-        `, [userId, 274, listing.quantity]); // 👈 274 is your Robot Oil item ID
+        `, [userId, 88, listing.quantity]); // 👈 88 is your Robot Oil item ID
 
         // 2. Delete the listing
         db.run(`
