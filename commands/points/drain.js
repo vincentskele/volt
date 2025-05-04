@@ -24,7 +24,7 @@ module.exports = {
 
     try {
       // Fetch the attacker's balance
-      const attackerBalance = await db.getUserBalance(interaction.user.id);
+      const attackerBalance = await db.getBalances(interaction.user.id);
 
       // Block if attacker has less than 1 Volt
       if (!attackerBalance || attackerBalance < 1) {
