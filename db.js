@@ -436,7 +436,7 @@ async function robUser(robberId, targetId) {
           });
         }
         const isSuccessful = Math.random() < 0.5;
-        const amountStolen = Math.min(targetWallet, 100);
+        const amountStolen = Math.min(targetWallet, 50);
         const penalty = 50;
         if (isSuccessful) {
           db.run(`UPDATE economy SET wallet = wallet - ? WHERE userID = ?`, [amountStolen, targetId], (err) => {
