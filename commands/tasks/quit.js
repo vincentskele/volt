@@ -5,30 +5,30 @@ const { formatCurrency } = require('../../points'); // Import points module
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('quit')
-    .setDescription('Quit your active job without receiving a reward.'),
+    .setDescription('Quit your active Quest without receiving a reward.'),
 
   async execute(interaction) {
     const { user } = interaction;
 
     try {
-      // Get the user's active job
+      // Get the user's active Quest
       const activeJob = await db.getActiveJob(user.id);
       if (!activeJob) {
-        return interaction.reply({ content: `🚫 You do not have an active job to quit.`, ephemeral: true });
+        return interaction.reply({ content: `🚫 You do not have an active Quest to quit.`, ephemeral: true });
       }
 
-      // Quit the job (same as completing with reward 0)
+      // Quit the Quest (same as completing with reward 0)
       const result = await db.completeJob(user.id, 0);
       if (!result.success) {
-        return interaction.reply({ content: `🚫 Failed to quit your job.`, ephemeral: true });
+        return interaction.reply({ content: `🚫 Failed to quit your Quest.`, ephemeral: true });
       }
 
       return interaction.reply(
-        `😆 OOOHHH NICE TRY, BUT JOB INCOMPLETE! <@${user.id}> didn't get any reward!`
+        `😆 OOOHHH NICE TRY, BUT Quest INCOMPLETE! <@${user.id}> didn't get any reward!`
       );
     } catch (err) {
-      console.error('Quit Job Slash Error:', err);
-      return interaction.reply({ content: `🚫 Quit job failed: ${err.message || err}`, ephemeral: true });
+      console.error('Quit Quest Slash Error:', err);
+      return interaction.reply({ content: `🚫 Quit Quest failed: ${err.message || err}`, ephemeral: true });
     }
   },
 };
