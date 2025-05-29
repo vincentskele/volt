@@ -1,6 +1,6 @@
 # Environment variable file (to keep credentials like the Discord token secure)
 .env
-.questions.json
+questions.json
 
 # Node.js dependencies
 /node_modules
