@@ -904,6 +904,47 @@ scheduleDailyTriviaQuestions(); // Safe to run once, schedules based on remainin
 scheduleTriviaReset();
 
 // ==========================
+// 🚫 BANLIST – IGNORE ALL EVENTS FROM BANNED USERS
+// ==========================
+const BANLIST = new Set(
+  (process.env.BANLIST || '')
+    .split(',')
+    .map(id => id.trim())
+    .filter(Boolean)
+);
+
+const _origEmit = client.emit;
+client.emit = function(event, ...args) {
+  let userId;
+
+  // map the event to the Discord user ID involved
+  switch (event) {
+    case 'messageCreate':
+      userId = args[0]?.author?.id;
+      break;
+    case 'messageReactionAdd':
+    case 'messageReactionRemove':
+      userId = args[1]?.id;
+      break;
+    case 'interactionCreate':
+      userId = args[0]?.user?.id;
+      break;
+    case 'voiceStateUpdate':
+      userId = args[1]?.member?.user?.id;
+      break;
+  }
+
+  // if it’s a bot or a banned user, drop the event entirely
+  if (userId && BANLIST.has(userId)) {
+    console.log(`🚫 Ignored ${event} from banned user ${userId}`);
+    return false;
+  }
+
+  // otherwise carry on as normal
+  return _origEmit.call(this, event, ...args);
+};
+
+// ==========================
 // EXPORT THE CLIENT
 // ==========================
 module.exports = { client };
