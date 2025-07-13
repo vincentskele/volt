@@ -9,7 +9,6 @@ const path = require('path');
 const RPS_WIN_TRACKER_PATH = path.join(__dirname, '../../rpsWinTracker.json');
 let rpsWinTracker = new Map();
 
-// Load existing tracker from file
 try {
   if (fs.existsSync(RPS_WIN_TRACKER_PATH)) {
     const raw = fs.readFileSync(RPS_WIN_TRACKER_PATH, 'utf8');
@@ -26,16 +25,10 @@ function saveRPSWinTracker() {
 
 function getTodayDate() {
   const now = new Date();
-  // crude EST (UTC-5)
   const est = new Date(now.getTime() - 5 * 60 * 60 * 1000);
   return est.toISOString().split('T')[0];
 }
 
-/**
- * Awards the daily RPS bonus and returns the current win count for today.
- * @param {string} userId
- * @returns {Promise<number>} win count for today
- */
 async function awardRPSBonus(userId) {
   const today = getTodayDate();
   const entry = rpsWinTracker.get(userId) || { date: today, wins: 0 };
@@ -46,22 +39,18 @@ async function awardRPSBonus(userId) {
   }
 
   entry.wins++;
-  const winNumber = entry.wins;
-  if (winNumber <= 3) {
-    // First three wins each day get +8 volts
+  if (entry.wins <= 3) {
     await updateWallet(userId, 8);
-    console.log(`🎉 Bonus: +8 volts for user ${userId} (daily win #${winNumber}).`);
+    console.log(`🎉 Bonus: +8 volts for user ${userId} (daily win #${entry.wins}).`);
   }
 
   rpsWinTracker.set(userId, entry);
   saveRPSWinTracker();
-  return winNumber;
+  return entry.wins;
 }
 
-// === DAILY RESET FOR RPS BONUS TRACKER ===
 function scheduleRPSReset() {
   const now = new Date();
-  // EST midnight is 05:00 UTC
   const estMidnight = new Date(now.toISOString().split('T')[0] + 'T05:00:00.000Z');
   let delay = estMidnight.getTime() - now.getTime();
   if (delay < 0) delay += 24 * 60 * 60 * 1000;
@@ -74,24 +63,29 @@ function scheduleRPSReset() {
   }, delay);
 }
 
-// Start daily reset scheduler
 scheduleRPSReset();
 
 // === RPS GAME LOGIC ===
-const GAME_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2h
+const GAME_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 const activeRPSGames = loadGames();
-const userToGame = new Map();
 
-// Rehydrate on startup
 for (const [gameId, game] of activeRPSGames.entries()) {
-  userToGame.set(game.challengerId, gameId);
-  userToGame.set(game.opponentId, gameId);
   game.timeout = setTimeout(() => {
     activeRPSGames.delete(gameId);
-    userToGame.delete(game.challengerId);
-    userToGame.delete(game.opponentId);
     saveGames(activeRPSGames);
   }, GAME_TIMEOUT_MS);
+}
+
+function findSingleOpponent(me) {
+  const games = [];
+  for (const g of activeRPSGames.values()) {
+    if (g.challengerId === me || g.opponentId === me) games.push(g);
+  }
+  if (games.length === 1) {
+    const g = games[0];
+    return g.challengerId === me ? g.opponentId : g.challengerId;
+  }
+  return games.length === 0 ? 'none' : 'multiple';
 }
 
 module.exports = {
@@ -100,7 +94,7 @@ module.exports = {
     .setDescription('Rock Paper Scissors for volts.')
     .addSubcommand(sc =>
       sc.setName('challenge')
-        .setDescription('Start a new RPS game (and lock in your first move).')
+        .setDescription('Start a new RPS game (lock in your first move).')
         .addUserOption(o =>
           o.setName('opponent')
             .setDescription('Who you want to challenge')
@@ -129,34 +123,56 @@ module.exports = {
               { name: 'Rock', value: 'rock' },
               { name: 'Paper', value: 'paper' },
               { name: 'Scissors', value: 'scissors' }
-            )) )
+            ))
+        .addUserOption(o =>
+          o.setName('opponent')
+            .setDescription('Who challenged you (optional if only one active game)')
+            .setRequired(false)))
     .addSubcommand(sc =>
       sc.setName('cancel')
-        .setDescription('Cancel your active RPS game.')),
+        .setDescription('Cancel your active RPS game.')
+        .addUserOption(o =>
+          o.setName('opponent')
+            .setDescription('Which opponent’s game to cancel (optional if only one active game)')
+            .setRequired(false))),
 
   async execute(interaction) {
     const me = interaction.user.id;
     const sub = interaction.options.getSubcommand();
 
-    // ── CANCEL ─────
+    function resolveOpponent() {
+      const opt = interaction.options.getUser('opponent');
+      if (opt) return opt.id;
+      const res = findSingleOpponent(me);
+      if (res === 'none') return null;
+      if (res === 'multiple') return 'many';
+      return res;
+    }
+
     if (sub === 'cancel') {
-      const gameId = userToGame.get(me);
-      if (!gameId) return interaction.reply({ content: '⚠️ You have no active RPS game.', ephemeral: true });
+      const opp = resolveOpponent();
+      if (!opp) return interaction.reply({ content: '⚠️ You have no active RPS games.', ephemeral: true });
+      if (opp === 'many') return interaction.reply({ content: '⚠️ You have multiple active games; please specify an opponent.', ephemeral: true });
+
+      const [A, B] = [me, opp].sort();
+      const gameId = `${A}:${B}`;
       const g = activeRPSGames.get(gameId);
       clearTimeout(g.timeout);
       activeRPSGames.delete(gameId);
-      userToGame.delete(g.challengerId);
-      userToGame.delete(g.opponentId);
       saveGames(activeRPSGames);
       return interaction.reply({ content: '❌ Your RPS game has been cancelled.', ephemeral: true });
     }
 
-    // ── RESPOND ─────
     if (sub === 'respond') {
       const choice = interaction.options.getString('choice');
-      const gameId = userToGame.get(me);
-      if (!gameId) return interaction.reply({ content: '⚠️ You have no active RPS game.', ephemeral: true });
+      const opp = resolveOpponent();
+      if (!opp) return interaction.reply({ content: '⚠️ You have no active RPS games.', ephemeral: true });
+      if (opp === 'many') return interaction.reply({ content: '⚠️ You have multiple active games; please specify an opponent.', ephemeral: true });
+
+      const [A, B] = [me, opp].sort();
+      const gameId = `${A}:${B}`;
       const g = activeRPSGames.get(gameId);
+      if (!g) return interaction.reply({ content: '⚠️ No active game found with that user.', ephemeral: true });
       if (me !== g.opponentId) return interaction.reply({ content: '🚫 You weren’t challenged to respond.', ephemeral: true });
       if (g.choices[me]) return interaction.reply({ content: '⚠️ You already submitted your move.', ephemeral: true });
 
@@ -168,7 +184,7 @@ module.exports = {
       const o = g.choices[g.opponentId];
       let result = 0;
       if (c === o) result = 0;
-      else if ((c==='rock' && o==='scissors') || (c==='paper' && o==='rock') || (c==='scissors' && o==='paper')) result = 1;
+      else if ((c === 'rock' && o === 'scissors') || (c === 'paper' && o === 'rock') || (c === 'scissors' && o === 'paper')) result = 1;
       else result = 2;
 
       let summary;
@@ -176,7 +192,7 @@ module.exports = {
         summary = `🤝 It's a draw! No volts exchanged.`;
       } else {
         const winner = result === 1 ? g.challengerId : g.opponentId;
-        const loser  = result === 1 ? g.opponentId : g.challengerId;
+        const loser = result === 1 ? g.opponentId : g.challengerId;
         await updateWallet(winner, g.wager);
         await updateWallet(loser, -g.wager);
         const bonusCount = await awardRPSBonus(winner);
@@ -185,62 +201,46 @@ module.exports = {
       }
 
       const chan = await interaction.client.channels.fetch(g.channelId).catch(() => null);
-      if (chan) {
-        chan.send(
-          `🪨📄✂️ **RPS result** between <@${g.challengerId}> and <@${g.opponentId}>:\n` +
-          `• <@${g.challengerId}> chose **${c}**\n` +
-          `• <@${g.opponentId}> chose **${o}**\n\n` + summary
-        ).catch(() => {});
-      }
+      if (chan) chan.send(
+        `🪨📄✂️ **RPS result** between <@${g.challengerId}> and <@${g.opponentId}>:\n` +
+        `• <@${g.challengerId}> chose **${c}**\n` +
+        `• <@${g.opponentId}> chose **${o}**\n\n` + summary
+      ).catch(() => {});
 
       activeRPSGames.delete(gameId);
-      userToGame.delete(g.challengerId);
-      userToGame.delete(g.opponentId);
       saveGames(activeRPSGames);
       return;
     }
 
-    // ── CHALLENGE ─────
-    const opponent = interaction.options.getUser('opponent');
-    const them     = opponent.id;
-    const wager    = interaction.options.getInteger('wager');
-    const choice   = interaction.options.getString('choice');
-
+    // CHALLENGE
+    const opponent = interaction.options.getUser('opponent').id;
+    const wager = interaction.options.getInteger('wager');
+    const choice = interaction.options.getString('choice');
+    const them = opponent;
     if (me === them) return interaction.reply({ content: '🚫 You cannot challenge yourself.', ephemeral: true });
     if (wager <= 0) return interaction.reply({ content: '🚫 Wager must be positive.', ephemeral: true });
-    if (userToGame.has(me) || userToGame.has(them)) return interaction.reply({ content: '⚠️ One of you is already in an RPS game.', ephemeral: true });
-
-    const b1 = await getBalances(me);
-    const b2 = await getBalances(them);
-    if (b1.wallet < wager || b2.wallet < wager) return interaction.reply({ content: '🚫 Both users must have enough volts.', ephemeral: true });
 
     const [A, B] = [me, them].sort();
     const gameId = `${A}:${B}`;
-    const g = {
-      challengerId: me,
-      opponentId:   them,
-      channelId:    interaction.channel.id,
-      wager,
-      choices:      { [me]: choice },
-      timeout:      null
-    };
+    if (activeRPSGames.has(gameId))
+      return interaction.reply({ content: '⚠️ You already have an active game against that user.', ephemeral: true });
+
+    const b1 = await getBalances(me);
+    const b2 = await getBalances(them);
+    if (b1.wallet < wager || b2.wallet < wager)
+      return interaction.reply({ content: '🚫 Both users must have enough volts.', ephemeral: true });
+
+    const g = { challengerId: me, opponentId: them, channelId: interaction.channel.id, wager, choices: { [me]: choice }, timeout: null };
     g.timeout = setTimeout(() => {
       activeRPSGames.delete(gameId);
-      userToGame.delete(me);
-      userToGame.delete(them);
       saveGames(activeRPSGames);
       interaction.channel.send(`⏰ RPS between <@${me}> and <@${them}> expired.`);
     }, GAME_TIMEOUT_MS);
 
     activeRPSGames.set(gameId, g);
-    userToGame.set(me,    gameId);
-    userToGame.set(them,  gameId);
     saveGames(activeRPSGames);
 
     await interaction.reply({ content: `✅ Challenged <@${them}> for **${wager}** volts (you chose **${choice}**).`, ephemeral: true });
     interaction.channel.send(`🎮 <@${me}> challenged <@${them}> for **${wager}** volts — first move locked in!`).catch(() => {});
-  },
-
-  activeRPSGames,
-  userToGame
+  }
 };
