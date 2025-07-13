@@ -88,6 +88,14 @@ function findSingleOpponent(me) {
   return games.length === 0 ? 'none' : 'multiple';
 }
 
+function getReservedVolts(userId) {
+  let reserved = 0;
+  for (const g of activeRPSGames.values()) {
+    if (g.challengerId === userId) reserved += g.wager;
+  }
+  return reserved;
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('rps')
@@ -157,6 +165,8 @@ module.exports = {
       const [A, B] = [me, opp].sort();
       const gameId = `${A}:${B}`;
       const g = activeRPSGames.get(gameId);
+      if (!g) return interaction.reply({ content: '⚠️ No active game with that user.', ephemeral: true });
+
       clearTimeout(g.timeout);
       activeRPSGames.delete(gameId);
       saveGames(activeRPSGames);
@@ -213,10 +223,11 @@ module.exports = {
     }
 
     // CHALLENGE
-    const opponent = interaction.options.getUser('opponent').id;
+    const opponentUser = interaction.options.getUser('opponent');
     const wager = interaction.options.getInteger('wager');
     const choice = interaction.options.getString('choice');
-    const them = opponent;
+    const them = opponentUser.id;
+
     if (me === them) return interaction.reply({ content: '🚫 You cannot challenge yourself.', ephemeral: true });
     if (wager <= 0) return interaction.reply({ content: '🚫 Wager must be positive.', ephemeral: true });
 
@@ -227,8 +238,13 @@ module.exports = {
 
     const b1 = await getBalances(me);
     const b2 = await getBalances(them);
-    if (b1.wallet < wager || b2.wallet < wager)
-      return interaction.reply({ content: '🚫 Both users must have enough volts.', ephemeral: true });
+    const reserved = getReservedVolts(me);
+    const available = b1.wallet - reserved;
+
+    if (available < wager)
+      return interaction.reply({ content: `🚫 You need at least ${wager} available volts (after ${reserved} reserved) to challenge.`, ephemeral: true });
+    if (b2.wallet < wager)
+      return interaction.reply({ content: `🚫 <@${them}> does not have enough volts.`, ephemeral: true });
 
     const g = { challengerId: me, opponentId: them, channelId: interaction.channel.id, wager, choices: { [me]: choice }, timeout: null };
     g.timeout = setTimeout(() => {
