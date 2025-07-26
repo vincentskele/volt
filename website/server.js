@@ -803,22 +803,30 @@ app.post("/api/submit-job", upload.single("image"), async (req, res) => {
     const channel = await client.channels.fetch(process.env.SUBMISSION_CHANNEL_ID);
     if (!channel) return res.status(500).json({ error: "Submission channel not found." });
 
+    // ✅ Try to resolve user tag
+    let footerText = `Submitted by: <@${userID}>`; // fallback
+    try {
+      const user = await client.users.fetch(userID);
+      footerText = `Submitted by: ${user.tag} (<@${user.id}>)`;
+    } catch (err) {
+      console.warn(`⚠️ Could not resolve user tag for ${userID}:`, err.message);
+    }
+
     console.log("📤 Sending embed to Discord...");
     const embed = new EmbedBuilder()
       .setTitle("📢 New Job Submission!")
       .setColor("#0099ff")
       .setDescription(`**Title:** ${title}\n**Description:** ${description}`)
-      .setFooter({ text: `Submitted by: <@${userID}>` })
+      .setFooter({ text: footerText })
       .setTimestamp();
 
-// ✅ Attach image URL in embed as a field
-if (req.file) {
-  const imageUrl = `https://volt.solarians.world/uploads/${encodeURIComponent(req.file.filename)}`; //HARDCODED - CHANGE THIS FOR RUNNING CUSTOM
-  console.log("🖼️ Image URL for embed:", imageUrl);
+    // ✅ Attach image URL in embed as a field
+    if (req.file) {
+      const imageUrl = `https://volt.solarians.world/uploads/${encodeURIComponent(req.file.filename)}`;
+      console.log("🖼️ Image URL for embed:", imageUrl);
 
-  embed.addFields({ name: "📷 Image URL", value: `[Click to View](${imageUrl})` });
-}
-
+      embed.addFields({ name: "📷 Image URL", value: `[Click to View](${imageUrl})` });
+    }
 
     await channel.send({ embeds: [embed] });
 
@@ -829,6 +837,7 @@ if (req.file) {
     res.status(500).json({ error: `Failed to send job submission. Reason: ${error.message}` });
   }
 });
+
 
 
 
