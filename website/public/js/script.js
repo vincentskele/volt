@@ -1660,16 +1660,44 @@ function isMobileDevice() {
 // ===========================
 
 const showRobotOilButton = document.getElementById("showRobotOilButton");
-const buyOilButton = document.getElementById("buyOilButton");
 const marketBuyButton = document.getElementById("marketBuyButton");
+const marketSellButton = document.getElementById("marketSellButton");
 const offerSaleButton = document.getElementById("offerSaleButton");
 const offerPurchaseButton = document.getElementById("offerBuyButton");
 
 if (showRobotOilButton) showRobotOilButton.addEventListener("click", showRobotOilMarket);
-if (buyOilButton) buyOilButton.addEventListener("click", () => handleMarketBuy('/api/oil/buy'));
 if (marketBuyButton) marketBuyButton.addEventListener("click", prepareMarketBuy);
+if (marketSellButton) marketSellButton.addEventListener("click", prepareMarketSell);
 if (offerSaleButton) offerSaleButton.addEventListener("click", () => showOfferModal('sale'));
 if (offerPurchaseButton) offerPurchaseButton.addEventListener("click", () => showOfferModal('purchase'));
+
+function customConfirm(message, onConfirm) {
+  const modalOverlay = document.createElement("div");
+  modalOverlay.className = "modal-overlay";
+
+  const modalBox = document.createElement("div");
+  modalBox.className = "modal-box";
+  modalBox.innerHTML = `
+    <h2>Confirm</h2>
+    <p>${message}</p>
+    <div style="margin-top: 10px;">
+      <button id="confirmYes" class="confirm-button">Yes</button>
+      <button id="confirmNo" class="cancel-button">No</button>
+    </div>
+  `;
+
+  modalOverlay.appendChild(modalBox);
+  document.body.appendChild(modalOverlay);
+
+  document.getElementById("confirmYes").addEventListener("click", () => {
+    onConfirm();
+    modalOverlay.remove();
+  });
+
+  document.getElementById("confirmNo").addEventListener("click", () => {
+    modalOverlay.remove();
+  });
+}
 
 async function handleMarketBuy(endpoint) {
   const token = localStorage.getItem("token");
@@ -1684,15 +1712,15 @@ async function handleMarketBuy(endpoint) {
 
     const result = await response.json();
     if (response.ok) {
-      showConfirmationPopup(result.message || '✅ Market buy successful!');
+      showConfirmationPopup(result.message || '✅ Market action successful!');
       fetchVoltBalance();
       await loadOrderBook();
     } else {
-      showConfirmationPopup(`❌ Market buy failed: ${result.error}`);
+      showConfirmationPopup(`❌ Market action failed: ${result.error}`);
     }
   } catch (error) {
-    console.error('Error processing market buy:', error);
-    showConfirmationPopup('❌ Failed to process market buy.');
+    console.error('Error processing market order:', error);
+    showConfirmationPopup('❌ Failed to process market order.');
   }
 }
 
@@ -1702,26 +1730,47 @@ async function prepareMarketBuy() {
     const listings = await response.json();
     const loggedInUserId = localStorage.getItem('discordUserID');
 
-    if (!Array.isArray(listings) || listings.length === 0) {
-      showConfirmationPopup('❌ No Robot Oil listings available.');
-      return;
-    }
+    const sellOrders = listings.filter(l => l.type === 'sale');
+    if (sellOrders.length === 0) return showConfirmationPopup('❌ No sell listings available.');
 
-    listings.sort((a, b) => a.price_per_unit - b.price_per_unit);
-    const cheapest = listings[0];
+    sellOrders.sort((a, b) => a.price_per_unit - b.price_per_unit);
+    const cheapest = sellOrders[0];
 
     if (loggedInUserId && cheapest.seller_id === loggedInUserId) {
-      showConfirmationPopup('🚫 You cannot buy your own listing!');
-      return;
+      return showConfirmationPopup('🚫 You cannot buy your own listing!');
     }
 
-    const price = cheapest.price_per_unit;
-    customConfirm(`Buy 1 barrel of Robot Oil for ⚡${price}?`, async () => {
+    customConfirm(`Buy 1 barrel for ⚡${cheapest.price_per_unit}?`, async () => {
       await handleMarketBuy('/api/oil/market-buy');
     });
   } catch (error) {
-    console.error('Error fetching market listings:', error);
-    showConfirmationPopup('❌ Failed to fetch market listings.');
+    console.error('Error fetching market data:', error);
+    showConfirmationPopup('❌ Failed to fetch listings.');
+  }
+}
+
+async function prepareMarketSell() {
+  try {
+    const response = await fetch('/api/oil-market');
+    const listings = await response.json();
+    const loggedInUserId = localStorage.getItem('discordUserID');
+
+    const buyOrders = listings.filter(l => l.type === 'purchase');
+    if (buyOrders.length === 0) return showConfirmationPopup('❌ No buy listings available.');
+
+    buyOrders.sort((a, b) => b.price_per_unit - a.price_per_unit);
+    const highestBid = buyOrders[0];
+
+    if (loggedInUserId && highestBid.seller_id === loggedInUserId) {
+      return showConfirmationPopup('🚫 You cannot sell to your own bid!');
+    }
+
+    customConfirm(`Sell 1 barrel for ⚡${highestBid.price_per_unit}?`, async () => {
+      await handleMarketBuy('/api/oil/market-sell');
+    });
+  } catch (error) {
+    console.error('Error fetching market data:', error);
+    showConfirmationPopup('❌ Failed to fetch listings.');
   }
 }
 
@@ -1740,7 +1789,18 @@ async function showRobotOilMarket() {
 
     window.oilChartInstance = new Chart(oilChartCanvas, {
       type: 'line',
-      data: { labels, datasets: [{ label: 'Robot Oil Price (⚡ per barrel)', data: prices, borderColor: 'yellow', backgroundColor: 'rgba(255, 255, 0, 0.2)', borderWidth: 2, pointBackgroundColor: 'yellow', pointBorderColor: 'yellow' }] },
+      data: {
+        labels,
+        datasets: [{
+          label: 'Robot Oil Price (⚡ per barrel)',
+          data: prices,
+          borderColor: 'yellow',
+          backgroundColor: 'rgba(255, 255, 0, 0.2)',
+          borderWidth: 2,
+          pointBackgroundColor: 'yellow',
+          pointBorderColor: 'yellow'
+        }]
+      },
       options: {
         responsive: true,
         plugins: {
@@ -1748,8 +1808,8 @@ async function showRobotOilMarket() {
           tooltip: { backgroundColor: '#27393F', titleColor: '#fafafa', bodyColor: '#fafafa' }
         },
         scales: {
-          x: { grid: { color: '#405D67' }, ticks: { color: '#fafafa', font: { size: 12 } } },
-          y: { beginAtZero: true, grid: { color: '#405D67' }, ticks: { color: '#fafafa', font: { size: 12 } } }
+          x: { grid: { color: '#405D67' }, ticks: { color: '#fafafa' } },
+          y: { beginAtZero: true, grid: { color: '#405D67' }, ticks: { color: '#fafafa' } }
         }
       }
     });
@@ -1765,29 +1825,22 @@ async function loadOrderBook() {
   try {
     const response = await fetch('/api/oil-market');
     const listings = await response.json();
-    const orderBookContent = document.getElementById('orderBookContent');
-    orderBookContent.innerHTML = '';
-
-    if (listings.length === 0) {
-      orderBookContent.innerHTML = `<p style="text-align:center; color: #ccc;">No listings available yet.</p>`;
-      return;
-    }
-
-    listings.sort((a, b) => a.price_per_unit - b.price_per_unit);
     const loggedInUserId = localStorage.getItem('discordUserID');
 
-    listings.forEach(listing => {
-      const listingDiv = document.createElement('div');
-      listingDiv.style.marginBottom = '10px';
-      listingDiv.style.padding = '8px';
-      listingDiv.style.background = '#3b4c5a';
-      listingDiv.style.borderRadius = '6px';
-      listingDiv.style.display = 'flex';
-      listingDiv.style.justifyContent = 'space-between';
-      listingDiv.style.alignItems = 'center';
+    const sellOrders = listings.filter(l => l.type === 'sale').sort((a, b) => a.price_per_unit - b.price_per_unit);
+    const buyOrders = listings.filter(l => l.type === 'purchase').sort((a, b) => b.price_per_unit - a.price_per_unit);
 
-      listingDiv.innerHTML = `
-        <span>🧑 Seller: ${listing.seller_id}</span>
+    const sellContainer = document.getElementById('sellOrders');
+    const buyContainer = document.getElementById('buyOrders');
+    sellContainer.innerHTML = '';
+    buyContainer.innerHTML = '';
+
+    const renderOrder = (listing, container) => {
+      const div = document.createElement('div');
+      div.className = 'listing-row';
+      div.style.cssText = 'margin-bottom: 10px; padding: 8px; background: #3b4c5a; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;';
+      div.innerHTML = `
+        <span>🧑 ${listing.seller_id}</span>
         <span>🛢️ Qty: ${listing.quantity}</span>
         <span>⚡ ${listing.price_per_unit} / barrel</span>
       `;
@@ -1796,32 +1849,34 @@ async function loadOrderBook() {
         const cancelButton = document.createElement('button');
         cancelButton.textContent = '❌';
         cancelButton.className = 'cancel-button';
-        cancelButton.style.marginLeft = '10px';
         cancelButton.addEventListener('click', () => {
-          customConfirm('Are you sure you want to cancel this listing?', async () => {
-            await cancelOilListing(listing.listing_id);
-          });
+          customConfirm('Cancel this listing?', () => cancelOilListing(listing.listing_id, listing.type));
         });
-        listingDiv.appendChild(cancelButton);
+        div.appendChild(cancelButton);
       }
-      
 
-      orderBookContent.appendChild(listingDiv);
-    });
+      container.appendChild(div);
+    };
+
+    sellOrders.forEach(l => renderOrder(l, sellContainer));
+    buyOrders.forEach(l => renderOrder(l, buyContainer));
   } catch (error) {
     console.error('Failed to load order book:', error);
   }
 }
 
-async function cancelOilListing(listingId) {
+async function cancelOilListing(listingId, type) {
   const token = localStorage.getItem('token');
   if (!token) return alert('You must be logged in!');
 
   try {
     const response = await fetch('/api/oil/cancel', {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ listing_id: listingId }),
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ listing_id: listingId, type }),
     });
 
     const result = await response.json();
@@ -1835,34 +1890,6 @@ async function cancelOilListing(listingId) {
     console.error('Error canceling listing:', error);
     showConfirmationPopup('❌ Failed to cancel listing.');
   }
-}
-
-function customConfirm(message, onConfirm) {
-  const modalOverlay = document.createElement("div");
-  modalOverlay.className = "modal-overlay";
-
-  const modalBox = document.createElement("div");
-  modalBox.className = "modal-box";
-  modalBox.innerHTML = `
-    <h2>⚡ Confirm</h2>
-    <p style="margin: 10px 0 20px;">${message}</p>
-    <div class="modal-buttons">
-      <button id="confirmYes" class="confirm-button">Yes</button>
-      <button id="confirmNo" class="cancel-button">No</button>
-    </div>
-  `;
-
-  modalOverlay.appendChild(modalBox);
-  document.body.appendChild(modalOverlay);
-
-  document.getElementById("confirmYes").addEventListener("click", () => {
-    onConfirm();
-    modalOverlay.remove();
-  });
-
-  document.getElementById("confirmNo").addEventListener("click", () => {
-    modalOverlay.remove();
-  });
 }
 
 function showOfferModal(type) {
@@ -1888,13 +1915,12 @@ function showOfferModal(type) {
   document.getElementById("confirmModal").addEventListener("click", async () => {
     const quantity = parseInt(document.getElementById("modalQuantity").value, 10);
     const price = parseInt(document.getElementById("modalPrice").value, 10);
-
     if (isNaN(quantity) || isNaN(price) || quantity <= 0 || price <= 0) {
       alert('⚠️ Please enter valid positive numbers.');
       return;
     }
-
-    await submitOffer(type === 'sale' ? '/api/oil/offer-sale' : '/api/oil/offer-buy', quantity, price);
+    const endpoint = type === 'sale' ? '/api/oil/offer-sale' : '/api/oil/offer-buy';
+    await submitOffer(endpoint, quantity, price);
     modalOverlay.remove();
   });
 
@@ -1927,7 +1953,6 @@ async function submitOffer(url, quantity, price) {
     showConfirmationPopup('❌ Failed to create offer.');
   }
 }
-
 
 
 //

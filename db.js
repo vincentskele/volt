@@ -90,21 +90,44 @@ function initializeDatabase() {
     });
 
     
-    // Robot Oil Market Table
+// Robot Oil Market Table
 db.run(`
   CREATE TABLE IF NOT EXISTS robot_oil_market (
-    listing_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    seller_id TEXT NOT NULL,
-    quantity INTEGER NOT NULL,
-    price_per_unit INTEGER NOT NULL,
-    created_at INTEGER DEFAULT (strftime('%s', 'now'))
-  )
+  listing_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  seller_id TEXT NOT NULL,
+  quantity INTEGER NOT NULL,
+  price_per_unit INTEGER NOT NULL,
+  type TEXT DEFAULT 'sale',  -- ✅ Add this line
+  created_at INTEGER DEFAULT (strftime('%s', 'now'))
+)
+
 `, (err) => {
-  if (err) console.error('❌ Error creating robot_oil_market table:', err);
-  else console.log('✅ Robot Oil Market table is ready.');
+  if (err) {
+    console.error('❌ Error creating robot_oil_market table:', err);
+  } else {
+    console.log('✅ Robot Oil Market table is ready.');
+
+    // Check for and migrate 'type' column
+    db.all(`PRAGMA table_info(robot_oil_market)`, (err, columns) => {
+      if (err) {
+        console.error('❌ Failed to inspect robot_oil_market table:', err);
+        return;
+      }
+
+      const hasTypeColumn = columns.some(col => col.name === 'type');
+
+      if (!hasTypeColumn) {
+        db.serialize(() => {
+          db.run(`ALTER TABLE robot_oil_market ADD COLUMN type TEXT DEFAULT 'sale'`);
+          db.run(`UPDATE robot_oil_market SET type = 'sale' WHERE type IS NULL`);
+          console.log('⚙️ Migrated: Added "type" column to robot_oil_market');
+        });
+      } else {
+        console.log('✅ "type" column already exists in robot_oil_market');
+      }
+    });
+  }
 });
-
-
 
 // Robot Oil History Table
 db.run(`
@@ -122,6 +145,7 @@ db.run(`
   if (err) console.error('❌ Error creating robot_oil_history table:', err);
   else console.log('✅ Robot Oil History table is ready.');
 });
+
 
 
 
@@ -1596,16 +1620,8 @@ async function listRobotOilForSale(userID, quantity, pricePerUnit) {
   return new Promise((resolve, reject) => {
     db.serialize(async () => {
       try {
-        const robotOil = await new Promise((res, rej) => {
-          db.get(`SELECT itemID FROM items WHERE name = 'Robot Oil'`, [], (err, row) => {
-            if (err) return rej(err);
-            res(row);
-          });
-        });
-
-        if (!robotOil) {
-          return reject(new Error('Robot Oil item not found in the shop.'));
-        }
+        const robotOil = await getShopItemByName('Robot Oil');
+        if (!robotOil) return reject(new Error('Robot Oil item not found.'));
 
         const userInventory = await new Promise((res, rej) => {
           db.get(`SELECT quantity FROM inventory WHERE userID = ? AND itemID = ?`, [userID, robotOil.itemID], (err, row) => {
@@ -1627,29 +1643,66 @@ async function listRobotOilForSale(userID, quantity, pricePerUnit) {
         `, [quantity, userID, robotOil.itemID]);
 
         db.run(`
-          INSERT INTO robot_oil_market (seller_id, quantity, price_per_unit)
-          VALUES (?, ?, ?)
+          INSERT INTO robot_oil_market (seller_id, quantity, price_per_unit, type)
+          VALUES (?, ?, ?, 'sale')
         `, [userID, quantity, pricePerUnit], function (err) {
           if (err) {
-            console.error('❌ Error inserting listing:', err);
             db.run('ROLLBACK');
-            return reject(new Error('Failed to create Robot Oil listing.'));
+            return reject(new Error('❌ Failed to create listing.'));
           }
 
           db.run('COMMIT', (commitErr) => {
             if (commitErr) {
-              console.error('❌ Commit error:', commitErr);
               db.run('ROLLBACK');
-              return reject(new Error('Failed to finalize listing.'));
+              return reject(new Error('❌ Commit failed.'));
             }
-            resolve(`✅ Successfully listed ${quantity} Robot Oil at ${pricePerUnit} coins each.`);
+            resolve(`✅ Listed ${quantity} Robot Oil at ⚡${pricePerUnit} each.`);
           });
         });
 
       } catch (error) {
-        console.error('❌ Error listing Robot Oil:', error);
         db.run('ROLLBACK');
         reject(error);
+      }
+    });
+  });
+}
+
+async function placeRobotOilBid(userID, quantity, pricePerUnit) {
+  return new Promise((resolve, reject) => {
+    const totalCost = quantity * pricePerUnit;
+
+    db.serialize(async () => {
+      try {
+        const user = await getBalances(userID);
+        if (!user || user.wallet < totalCost) {
+          return reject(new Error('🚫 Not enough ⚡ to place bid.'));
+        }
+
+        db.run('BEGIN TRANSACTION');
+
+        db.run(`UPDATE economy SET wallet = wallet - ? WHERE userID = ?`, [totalCost, userID]);
+
+        db.run(`
+          INSERT INTO robot_oil_market (seller_id, quantity, price_per_unit, type)
+          VALUES (?, ?, ?, 'purchase')
+        `, [userID, quantity, pricePerUnit], function (err) {
+          if (err) {
+            db.run('ROLLBACK');
+            return reject(new Error('❌ Failed to place bid.'));
+          }
+
+          db.run('COMMIT', (commitErr) => {
+            if (commitErr) {
+              db.run('ROLLBACK');
+              return reject(new Error('❌ Commit failed.'));
+            }
+            resolve(`✅ Bid placed for ${quantity} Robot Oil at ⚡${pricePerUnit} each.`);
+          });
+        });
+      } catch (err) {
+        db.run('ROLLBACK');
+        reject(err);
       }
     });
   });
@@ -1662,7 +1715,6 @@ async function getRobotOilMarketListings() {
       ORDER BY price_per_unit ASC
     `, [], (err, rows) => {
       if (err) {
-        console.error('❌ Error fetching market listings:', err);
         reject(err);
       } else {
         resolve(rows);
@@ -1683,47 +1735,66 @@ async function buyRobotOilFromMarket(buyerID, listingID, quantityRequested) {
         });
 
         if (!listing) return reject(new Error('🚫 Listing not found.'));
-
-        // 🔥 Strong self-buy prevention
-        if (String(buyerID).trim() === String(listing.seller_id).trim()) {
-          return reject(new Error('🚫 You cannot buy your own listing.'));
-        }
-
-        if (quantityRequested > listing.quantity) return reject(new Error('🚫 Not enough Robot Oil available.'));
+        if (quantityRequested > listing.quantity) return reject(new Error('🚫 Not enough quantity available.'));
 
         const totalCost = quantityRequested * listing.price_per_unit;
-
-        const buyer = await getBalances(buyerID);
-        if (!buyer || buyer.wallet < totalCost) {
-          return reject(new Error('🚫 Insufficient funds.'));
-        }
 
         const robotOil = await getShopItemByName('Robot Oil');
         if (!robotOil) return reject(new Error('🚫 Robot Oil item missing.'));
 
-        // Begin Transaction
         db.run('BEGIN TRANSACTION');
 
-        // Deduct from buyer's wallet
-        db.run(`UPDATE economy SET wallet = wallet - ? WHERE userID = ?`, [totalCost, buyerID]);
+        if (listing.type === 'sale') {
+          if (String(buyerID) === String(listing.seller_id)) {
+            return reject(new Error('🚫 You cannot buy your own sale listing.'));
+          }
 
-        // Add to seller's wallet
-        db.run(`UPDATE economy SET wallet = wallet + ? WHERE userID = ?`, [totalCost, listing.seller_id]);
+          const buyer = await getBalances(buyerID);
+          if (!buyer || buyer.wallet < totalCost) {
+            return reject(new Error('🚫 Insufficient ⚡ to buy.'));
+          }
 
-        // Add Robot Oil to buyer's inventory
-        db.run(`
-          INSERT INTO inventory (userID, itemID, quantity)
-          VALUES (?, ?, ?)
-          ON CONFLICT(userID, itemID) DO UPDATE SET quantity = quantity + excluded.quantity
-        `, [buyerID, robotOil.itemID, quantityRequested]);
+          db.run(`UPDATE economy SET wallet = wallet - ? WHERE userID = ?`, [totalCost, buyerID]);
+          db.run(`UPDATE economy SET wallet = wallet + ? WHERE userID = ?`, [totalCost, listing.seller_id]);
 
-        // Insert into robot_oil_history
-        db.run(`
-          INSERT INTO robot_oil_history (event_type, buyer_id, seller_id, quantity, price_per_unit, total_price)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `, ['purchase', buyerID, listing.seller_id, quantityRequested, listing.price_per_unit, totalCost]);
+          db.run(`
+            INSERT INTO inventory (userID, itemID, quantity)
+            VALUES (?, ?, ?)
+            ON CONFLICT(userID, itemID) DO UPDATE SET quantity = quantity + excluded.quantity
+          `, [buyerID, robotOil.itemID, quantityRequested]);
 
-        // Update or delete listing
+          db.run(`
+            INSERT INTO robot_oil_history (event_type, buyer_id, seller_id, quantity, price_per_unit, total_price)
+            VALUES ('purchase', ?, ?, ?, ?, ?)
+          `, [buyerID, listing.seller_id, quantityRequested, listing.price_per_unit, totalCost]);
+        }
+
+        else if (listing.type === 'purchase') {
+          if (String(buyerID) === String(listing.seller_id)) {
+            return reject(new Error('🚫 You cannot fulfill your own bid.'));
+          }
+
+          const userInventory = await getInventoryItem(buyerID, robotOil.itemID);
+          if (!userInventory || userInventory.quantity < quantityRequested) {
+            return reject(new Error('🚫 Not enough Robot Oil to sell.'));
+          }
+
+          db.run(`UPDATE inventory SET quantity = quantity - ? WHERE userID = ? AND itemID = ?`, [quantityRequested, buyerID, robotOil.itemID]);
+          db.run(`UPDATE economy SET wallet = wallet + ? WHERE userID = ?`, [totalCost, buyerID]);
+
+          db.run(`
+            INSERT INTO inventory (userID, itemID, quantity)
+            VALUES (?, ?, ?)
+            ON CONFLICT(userID, itemID) DO UPDATE SET quantity = quantity + excluded.quantity
+          `, [listing.seller_id, robotOil.itemID, quantityRequested]);
+
+          db.run(`
+            INSERT INTO robot_oil_history (event_type, buyer_id, seller_id, quantity, price_per_unit, total_price)
+            VALUES ('market_sell', ?, ?, ?, ?, ?)
+          `, [listing.seller_id, buyerID, quantityRequested, listing.price_per_unit, totalCost]);
+        }
+
+        // Adjust listing quantity or remove
         if (quantityRequested === listing.quantity) {
           db.run(`DELETE FROM robot_oil_market WHERE listing_id = ?`, [listingID]);
         } else {
@@ -1733,14 +1804,69 @@ async function buyRobotOilFromMarket(buyerID, listingID, quantityRequested) {
         db.run('COMMIT', (err) => {
           if (err) {
             db.run('ROLLBACK');
-            return reject(new Error('Transaction commit failed.'));
+            return reject(new Error('❌ Transaction failed.'));
           }
-          resolve(`✅ Purchased ${quantityRequested} Robot Oil for ${totalCost} coins!`);
+          resolve(`✅ Completed market transaction for ${quantityRequested} unit(s).`);
         });
+
       } catch (error) {
-        console.error('❌ Error in buyRobotOilFromMarket transaction:', error);
         db.run('ROLLBACK');
         reject(error);
+      }
+    });
+  });
+}
+
+async function cancelRobotOilListing(userID, listingID) {
+  return new Promise((resolve, reject) => {
+    db.serialize(async () => {
+      try {
+        const listing = await new Promise((res, rej) => {
+          db.get(`SELECT * FROM robot_oil_market WHERE listing_id = ?`, [listingID], (err, row) => {
+            if (err) return rej(err);
+            res(row);
+          });
+        });
+
+        if (!listing) return reject('🚫 Listing not found.');
+        if (listing.seller_id !== userID) return reject('🚫 You can only cancel your own listings.');
+
+        const robotOil = await getShopItemByName('Robot Oil');
+        if (!robotOil) return reject('🚫 Robot Oil item missing.');
+
+        db.run('BEGIN TRANSACTION');
+
+        if (listing.type === 'sale') {
+          db.run(`
+            INSERT INTO inventory (userID, itemID, quantity)
+            VALUES (?, ?, ?)
+            ON CONFLICT(userID, itemID) DO UPDATE SET quantity = quantity + excluded.quantity
+          `, [userID, robotOil.itemID, listing.quantity]);
+        }
+
+        if (listing.type === 'purchase') {
+          const refund = listing.quantity * listing.price_per_unit;
+          db.run(`UPDATE economy SET wallet = wallet + ? WHERE userID = ?`, [refund, userID]);
+        }
+
+        db.run(`
+          INSERT INTO robot_oil_history (event_type, buyer_id, seller_id, quantity, price_per_unit, total_price)
+          VALUES ('cancel', NULL, ?, ?, ?, ?)
+        `, [userID, listing.quantity, listing.price_per_unit, listing.quantity * listing.price_per_unit]);
+
+        db.run(`DELETE FROM robot_oil_market WHERE listing_id = ?`, [listingID]);
+
+        db.run('COMMIT', (err) => {
+          if (err) {
+            db.run('ROLLBACK');
+            return reject('❌ Commit failed.');
+          }
+          resolve(`✅ Listing canceled and resources returned.`);
+        });
+
+      } catch (err) {
+        db.run('ROLLBACK');
+        reject('Failed to cancel listing.');
       }
     });
   });
