@@ -893,68 +893,115 @@ app.get('/api/oil-market', async (req, res) => {
 
 
 app.post('/api/oil/market-buy', authenticateToken, async (req, res) => {
-  const userId = req.user.userId;
+  const buyerId = req.user.userId;
+  const ROBOT_OIL_ITEM_ID = 88;
 
   try {
-    // 1. Fetch the cheapest listing
+    // 1) Get the cheapest SELL listing only
     db.get(`
-      SELECT * FROM robot_oil_market
-      ORDER BY price_per_unit ASC
+      SELECT listing_id, seller_id, quantity, price_per_unit, type
+      FROM robot_oil_market
+      WHERE type IS NULL OR type = 'sale'
+      ORDER BY price_per_unit ASC, created_at ASC
       LIMIT 1
     `, async (err, listing) => {
       if (err) {
-        console.error('Error fetching cheapest oil listing:', err);
+        console.error('Error fetching cheapest sell listing:', err);
         return res.status(500).json({ error: 'Database error.' });
       }
+      if (!listing) return res.status(404).json({ error: 'No oil available for sale.' });
 
-      if (!listing) {
-        return res.status(404).json({ error: 'No oil available for sale.' });
+      if (listing.seller_id === buyerId) {
+        return res.status(400).json({ error: 'You cannot buy your own listing.' });
       }
 
-      const oilPrice = listing.price_per_unit;
-      const availableQuantity = listing.quantity;
+      const price = listing.price_per_unit;
 
-      // 2. Check user's wallet
-      const user = await dbGet(`SELECT wallet FROM economy WHERE userID = ?`, [userId]);
-      if (!user || user.wallet < oilPrice) {
+      // 2) Check buyer wallet
+      const buyer = await dbGet(`SELECT wallet FROM economy WHERE userID = ?`, [buyerId]);
+      if (!buyer) return res.status(400).json({ error: 'Buyer not found in economy.' });
+      if ((buyer.wallet ?? 0) < price) {
         return res.status(400).json({ error: 'Not enough ⚡ to buy 1 barrel.' });
       }
 
-      // 3. Hardcode the Robot Oil item ID (we know it's 88)
-      const ROBOT_OIL_ITEM_ID = 88;
-
       db.serialize(() => {
-        db.run('BEGIN TRANSACTION');
+        // BEGIN IMMEDIATE to avoid race on the same listing
+        db.run('BEGIN IMMEDIATE');
 
-        // 4. Deduct Volts from the buyer
-        db.run(`UPDATE economy SET wallet = wallet - ? WHERE userID = ?`, [oilPrice, userId]);
+        // 3) Debit buyer
+        db.run(
+          `UPDATE economy SET wallet = wallet - ? WHERE userID = ?`,
+          [price, buyerId],
+          function (e1) {
+            if (e1) { db.run('ROLLBACK'); return res.status(500).json({ error: 'Failed to debit wallet.' }); }
+            if (this.changes !== 1) { db.run('ROLLBACK'); return res.status(400).json({ error: 'Wallet debit failed (user not found).' }); }
 
-        // 5. Add 1 Robot Oil barrel to buyer's inventory
-        db.run(`
-          INSERT INTO inventory (userID, itemID, quantity)
-          VALUES (?, ?, 1)
-          ON CONFLICT(userID, itemID) DO UPDATE SET quantity = quantity + 1
-        `, [userId, ROBOT_OIL_ITEM_ID]);
+            // 4) Credit seller
+            db.run(
+              `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
+              [price, listing.seller_id],
+              function (e2) {
+                if (e2) { db.run('ROLLBACK'); return res.status(500).json({ error: 'Failed to credit seller.' }); }
+                if (this.changes !== 1) { db.run('ROLLBACK'); return res.status(400).json({ error: 'Seller not found for credit.' }); }
 
-        // 6. Pay the seller
-        db.run(`UPDATE economy SET wallet = wallet + ? WHERE userID = ?`, [oilPrice, listing.seller_id]);
+                // 5) Give buyer 1 oil
+                db.run(`
+                  INSERT INTO inventory (userID, itemID, quantity)
+                  VALUES (?, ?, 1)
+                  ON CONFLICT(userID, itemID) DO UPDATE SET quantity = quantity + 1
+                `, [buyerId, ROBOT_OIL_ITEM_ID], function (e3) {
+                  if (e3) { db.run('ROLLBACK'); return res.status(500).json({ error: 'Failed to add oil to inventory.' }); }
 
-        // 7. Reduce or delete the listing
-        if (availableQuantity > 1) {
-          db.run(`UPDATE robot_oil_market SET quantity = quantity - 1 WHERE listing_id = ?`, [listing.listing_id]);
-        } else {
-          db.run(`DELETE FROM robot_oil_market WHERE listing_id = ?`, [listing.listing_id]);
-        }
+                  // 6) Reduce or delete the listing (consume 1 unit)
+                  if (listing.quantity > 1) {
+                    db.run(
+                      `UPDATE robot_oil_market SET quantity = quantity - 1 WHERE listing_id = ?`,
+                      [listing.listing_id],
+                      function (e4) {
+                        if (e4) { db.run('ROLLBACK'); return res.status(500).json({ error: 'Failed to decrement listing.' }); }
+                        finalize();
+                      }
+                    );
+                  } else {
+                    db.run(
+                      `DELETE FROM robot_oil_market WHERE listing_id = ?`,
+                      [listing.listing_id],
+                      function (e4) {
+                        if (e4) { db.run('ROLLBACK'); return res.status(500).json({ error: 'Failed to delete listing.' }); }
+                        finalize();
+                      }
+                    );
+                  }
 
-        // 8. Log the transaction
-        db.run(`
-          INSERT INTO robot_oil_history (event_type, buyer_id, seller_id, quantity, price_per_unit, total_price)
-          VALUES ('market_buy', ?, ?, 1, ?, ?)
-        `, [userId, listing.seller_id, oilPrice, oilPrice]);
+                  function finalize() {
+                    // 7) History
+                    db.run(`
+                      INSERT INTO robot_oil_history (event_type, buyer_id, seller_id, quantity, price_per_unit, total_price)
+                      VALUES ('market_buy', ?, ?, 1, ?, ?)
+                    `, [buyerId, listing.seller_id, price, price], async function (e5) {
+                      if (e5) { db.run('ROLLBACK'); return res.status(500).json({ error: 'Failed to log history.' }); }
 
-        db.run('COMMIT');
+                      db.run('COMMIT', async (e6) => {
+                        if (e6) { return res.status(500).json({ error: 'Commit failed.' }); }
 
-        res.json({ success: true, message: `✅ Bought 1 barrel for ⚡${oilPrice}.` });
+                        // Return fresh balances so the client can reflect immediately
+                        const after = await dbGet(`SELECT wallet FROM economy WHERE userID = ?`, [buyerId]);
+                        const inv = await dbGet(`SELECT quantity FROM inventory WHERE userID = ? AND itemID = ?`, [buyerId, ROBOT_OIL_ITEM_ID]);
+
+                        res.json({
+                          success: true,
+                          message: `✅ Bought 1 barrel for ⚡${price}.`,
+                          wallet: after?.wallet ?? null,
+                          oilQuantity: inv?.quantity ?? 0,
+                        });
+                      });
+                    });
+                  }
+                });
+              }
+            );
+          }
+        );
       });
     });
   } catch (error) {
@@ -962,6 +1009,7 @@ app.post('/api/oil/market-buy', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Internal server error.' });
   }
 });
+
 
 app.post('/api/oil/offer-sale', authenticateToken, async (req, res) => {
   const userId = req.user.userId;
