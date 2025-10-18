@@ -688,11 +688,32 @@ client.on('messageReactionRemove', async (reaction, user) => {
 });
 
 // ==========================
-// 🎧 VOICE PRESENCE REWARDS (DAO Call)
+// 🎧 VOICE PRESENCE REWARDS (DAO Call) — Fixed window clamp + weekly reset
 // ==========================
 
-const voicePresenceMap = new Map(); // { userId: { joinedAt, totalMinutes, rewardedToday } }
+const voicePresenceMap = new Map(); // { userId: { joinedAt: number|null, totalMinutes: number, rewardedThisWindow: boolean } }
 let hasLoggedWindowStart = false;
+
+function getWindowBounds(now) {
+  // Server-local clock. If you need a specific TZ, compute in UTC or use a TZ lib.
+  const rewardDay = parseInt(process.env.VOICE_REWARD_DAY, 10);   // 0=Sun ... 6=Sat
+  const rewardHour = parseInt(process.env.VOICE_REWARD_HOUR, 10); // 0..23
+  const rewardDuration = parseInt(process.env.VOICE_REWARD_DURATION, 10); // minutes
+
+  // If today is the reward day, compute today's window; otherwise return nulls.
+  if (now.getDay() !== rewardDay) return { inWindow: false };
+
+  const windowStart = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    rewardHour, 0, 0, 0
+  ).getTime();
+
+  const windowEnd = windowStart + rewardDuration * 60_000;
+  const nowMs = now.getTime();
+  return { windowStart, windowEnd, inWindow: nowMs >= windowStart && nowMs < windowEnd };
+}
 
 client.on('voiceStateUpdate', (oldState, newState) => {
   const userId = newState.member?.user?.id || oldState.member?.user?.id;
@@ -706,29 +727,17 @@ client.on('voiceStateUpdate', (oldState, newState) => {
   const leftTarget = leftChannelId === targetChannelId && joinedChannelId !== targetChannelId;
 
   if (joinedTarget) {
-    const now = new Date();
-    const currentDay = now.getDay();
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
+    const session = voicePresenceMap.get(userId) || {
+      joinedAt: null,
+      totalMinutes: 0,
+      rewardedThisWindow: false,
+    };
+    // Only set joinedAt if not already in a session
+    if (!session.joinedAt) session.joinedAt = Date.now();
+    voicePresenceMap.set(userId, session);
 
-    const rewardDay = parseInt(process.env.VOICE_REWARD_DAY, 10);
-    const rewardHour = parseInt(process.env.VOICE_REWARD_HOUR, 10);
-    const rewardDuration = parseInt(process.env.VOICE_REWARD_DURATION, 10);
-    const isInWindow = currentDay === rewardDay && currentHour === rewardHour && currentMinute < rewardDuration;
-
-    const existing = voicePresenceMap.get(userId);
-    if (!existing) {
-      voicePresenceMap.set(userId, {
-        joinedAt: Date.now(),
-        totalMinutes: 0,
-        rewardedToday: false,
-      });
-    } else if (!existing.joinedAt) {
-      existing.joinedAt = Date.now();
-      voicePresenceMap.set(userId, existing);
-    }
-
-    if (isInWindow) {
+    const { inWindow } = getWindowBounds(new Date());
+    if (inWindow) {
       const user = client.users.cache.get(userId);
       console.log(`🎙️ ${user?.tag || userId} joined the voice channel during the reward window.`);
     }
@@ -737,8 +746,21 @@ client.on('voiceStateUpdate', (oldState, newState) => {
   if (leftTarget && voicePresenceMap.has(userId)) {
     const session = voicePresenceMap.get(userId);
     if (session.joinedAt) {
-      const minutesInSession = Math.floor((Date.now() - session.joinedAt) / 60000);
-      session.totalMinutes += minutesInSession;
+      // Add only time that overlaps with the active window (if any)
+      const now = new Date();
+      const { inWindow, windowStart, windowEnd } = getWindowBounds(now);
+
+      const leftAt = Date.now();
+      let started = session.joinedAt;
+
+      if (inWindow) {
+        // clamp to [windowStart, now]
+        started = Math.max(started, windowStart);
+        const effectiveEnd = Math.min(leftAt, windowEnd);
+        const minutesInSession = Math.max(0, Math.floor((effectiveEnd - started) / 60000));
+        session.totalMinutes += minutesInSession;
+      }
+      // end session
       session.joinedAt = null;
       voicePresenceMap.set(userId, session);
     }
@@ -747,44 +769,59 @@ client.on('voiceStateUpdate', (oldState, newState) => {
 
 setInterval(() => {
   const now = new Date();
-  const currentDay = now.getDay(); // 0 = Sunday
-  const currentHour = now.getHours();
-  const currentMinute = now.getMinutes();
+  const { inWindow, windowStart, windowEnd } = getWindowBounds(now);
 
-  const rewardDay = parseInt(process.env.VOICE_REWARD_DAY, 10);
-  const rewardHour = parseInt(process.env.VOICE_REWARD_HOUR, 10);
-  const rewardDuration = parseInt(process.env.VOICE_REWARD_DURATION, 10);
   const requiredMinutes = parseInt(process.env.VOICE_REWARD_MINUTES_REQUIRED, 10);
   const rewardAmount = parseInt(process.env.VOICE_REWARD_AMOUNT, 10);
 
-  const isInWindow = currentDay === rewardDay && currentHour === rewardHour && currentMinute < rewardDuration;
-
-  if (isInWindow && !hasLoggedWindowStart) {
-    console.log(`🕒 DAO call reward window has started (${rewardDuration} min, requires ${requiredMinutes} min presence)`);
+  // On window open: log once and reset per-window state
+  if (inWindow && !hasLoggedWindowStart) {
+    console.log(`🕒 DAO call reward window has started (${Math.floor((windowEnd - windowStart)/60000)} min, requires ${requiredMinutes} min presence)`);
     hasLoggedWindowStart = true;
+
+    // Reset everyone for the new window; clamp any current join to windowStart
+    for (const session of voicePresenceMap.values()) {
+      session.totalMinutes = 0;
+      session.rewardedThisWindow = false;
+      if (session.joinedAt && session.joinedAt < windowStart) {
+        session.joinedAt = windowStart; // don't count pre-window time
+      }
+    }
   }
 
-  if (!isInWindow && hasLoggedWindowStart) {
+  // On window close: allow next week's open to log/reset again
+  if (!inWindow && hasLoggedWindowStart) {
     hasLoggedWindowStart = false;
+
+    // Optional: clear sessions entirely if you prefer a clean slate
+    // voicePresenceMap.clear();
   }
 
-  if (!isInWindow) return;
+  if (!inWindow) return;
 
+  // During the window, update running minutes and award if threshold reached
   for (const [userId, session] of voicePresenceMap.entries()) {
-    const activeMinutes = session.joinedAt ? Math.floor((Date.now() - session.joinedAt) / 60000) : 0;
+    // Calculate active minutes since joined, but CLAMP to the window bounds
+    let activeMinutes = 0;
+    if (session.joinedAt) {
+      const effectiveStart = Math.max(session.joinedAt, windowStart);
+      const effectiveNow = Math.min(Date.now(), windowEnd);
+      activeMinutes = Math.max(0, Math.floor((effectiveNow - effectiveStart) / 60000));
+    }
+
     const totalMinutes = session.totalMinutes + activeMinutes;
 
-    if (!session.rewardedToday && totalMinutes >= requiredMinutes) {
+    if (!session.rewardedThisWindow && totalMinutes >= requiredMinutes) {
       updateWallet(userId, rewardAmount);
-      session.rewardedToday = true;
+      session.rewardedThisWindow = true;
       voicePresenceMap.set(userId, session);
 
       const user = client.users.cache.get(userId);
       console.log(`🏆 ${user?.tag || userId} awarded ${rewardAmount} Volts for attending the DAO call (${totalMinutes} min).`);
-
     }
   }
 }, 60_000);
+
 
 // ==========================
 // 🎲 TRIVIA BOT
