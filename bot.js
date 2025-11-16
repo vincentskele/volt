@@ -831,14 +831,13 @@ const MS_IN_24_HOURS = 86400000;
 const triviaAskedToday = new Set();
 let triviaCountToday = 0;
 let activeCollector = null;
-let triviaInProgress = false; // NEW: ensure only one question at a time
+let triviaInProgress = false; // NEW: track if a question is active
 
 /**
- * Helper: ms until next midnight EST
+ * Get ms until next midnight EST
  */
 function getMsUntilMidnightEST() {
   const now = new Date();
-  // Midnight EST is 05:00:00Z of the same calendar date
   const midnightEST = new Date(now.toISOString().split('T')[0] + 'T05:00:00.000Z');
   let msUntilMidnight = midnightEST.getTime() - now.getTime();
   if (msUntilMidnight < 0) msUntilMidnight += MS_IN_24_HOURS;
@@ -855,41 +854,38 @@ function getRandomTrivia() {
 }
 
 /**
- * Schedule the *next* trivia question for today.
- * Won't schedule if:
- *  - a trivia question is already in progress
- *  - we've hit today's max
+ * Schedule the *next* trivia question (one at a time)
  */
 function scheduleNextTriviaQuestion() {
   const maxPerDay = parseInt(process.env.TRIVIA_QUESTIONS_PER_DAY, 10) || 3;
 
   if (triviaInProgress) {
-    console.log('⏳ Trivia already in progress; not scheduling another yet.');
+    console.log('⏳ Trivia already in progress; not scheduling another.');
     return;
   }
 
   if (triviaCountToday >= maxPerDay) {
-    console.log(`✅ Reached daily trivia limit (${maxPerDay}). No more questions today.`);
+    console.log(`✅ Daily trivia limit reached (${maxPerDay}).`);
     return;
   }
 
   const msUntilMidnight = getMsUntilMidnightEST();
   if (msUntilMidnight <= 0) {
-    console.log('⏰ It is midnight EST or later; not scheduling more trivia today.');
+    console.log('⏰ Past midnight EST; not scheduling more trivia today.');
     return;
   }
 
+  // Spread remaining questions somewhat evenly until midnight
   const remainingQuestions = maxPerDay - triviaCountToday;
-  // Rough average spacing for remaining questions
   const avgGap = msUntilMidnight / remainingQuestions;
 
-  // Random delay between 0.5x and 1.5x the average spacing
-  const minDelay = Math.max(1000 * 60, avgGap * 0.5); // at least 1 minute
+  // Random delay between 0.5x and 1.5x the average gap, min 1 min
+  const minDelay = Math.max(60_000, avgGap * 0.5);
   const maxDelay = avgGap * 1.5;
   const delay = Math.floor(minDelay + Math.random() * (maxDelay - minDelay));
 
   console.log(
-    `📅 Scheduling trivia #${triviaCountToday + 1} in ${Math.floor(delay / 60000)} minutes (within next ${Math.floor(msUntilMidnight / 60000)} minutes until midnight EST).`
+    `📅 Scheduling trivia #${triviaCountToday + 1} in ~${Math.floor(delay / 60000)} minutes.`
   );
 
   setTimeout(() => askTriviaQuestion(), delay);
@@ -901,37 +897,35 @@ function scheduleNextTriviaQuestion() {
 async function askTriviaQuestion() {
   const rewardAmount = parseInt(process.env.TRIVIA_REWARD_AMOUNT, 10) || 50;
   const channel = await client.channels.fetch(process.env.TRIVIA_CHANNEL_ID);
-
   if (!channel) {
     triviaInProgress = false;
-    return console.error('⚠️ Trivia channel not found.');
+    return console.error("⚠️ Trivia channel not found.");
   }
 
   const trivia = getRandomTrivia();
   if (!trivia) {
     triviaInProgress = false;
-    console.warn('⚠️ No unused trivia questions left today.');
-    return;
+    return console.warn("⚠️ No unused trivia questions left today.");
   }
 
   triviaInProgress = true;
   triviaAskedToday.add(trivia.question);
   triviaCountToday++;
 
-  // We *shouldn't* have an active collector now, but just in case:
+  // Just in case something weird left a collector behind
   if (activeCollector) {
     activeCollector.stop('force-stop');
     activeCollector = null;
   }
 
-  await channel.send(
-    `🎲 Trivia Time! First to answer correctly wins ${rewardAmount} Volts:\n**${trivia.question}**`
-  );
+  await channel.send(`🎲 Trivia Time! First to answer correctly wins ${rewardAmount} Volts:\n**${trivia.question}**`);
   console.log(`🧠 Trivia #${triviaCountToday} asked: ${trivia.question}`);
 
   const collector = channel.createMessageCollector({
     filter: msg => !msg.author.bot,
-    time: MS_IN_24_HOURS, // safety timeout
+    // You might want something like 10–15 minutes here instead of 24h:
+    // time: 15 * 60 * 1000,
+    time: MS_IN_24_HOURS,
   });
 
   activeCollector = collector;
@@ -939,17 +933,13 @@ async function askTriviaQuestion() {
   collector.on('collect', async msg => {
     const userAnswer = msg.content.toLowerCase().trim();
     const acceptedAnswers = trivia.answers || [trivia.answer];
-    const isCorrect = acceptedAnswers.some(ans =>
-      userAnswer.includes(ans.toLowerCase())
-    );
+    const isCorrect = acceptedAnswers.some(ans => userAnswer.includes(ans.toLowerCase()));
 
     if (isCorrect) {
       collector.stop('answered');
       await updateWallet(msg.author.id, rewardAmount);
       await channel.send(`✅ Correct! ${msg.author} wins ${rewardAmount} Volts!`);
-      console.log(
-        `🏆 ${msg.author.tag} won trivia #${triviaCountToday} (+${rewardAmount} Volts)`
-      );
+      console.log(`🏆 ${msg.author.tag} won trivia #${triviaCountToday} (+${rewardAmount} Volts)`);
     }
   });
 
@@ -960,13 +950,14 @@ async function askTriviaQuestion() {
     if (reason === 'answered') {
       console.log(`🎉 Trivia #${triviaCountToday} answered correctly.`);
     } else if (reason === 'reset') {
-      console.log('🔁 Trivia collector stopped due to daily reset.');
-      return; // Do NOT schedule next here; reset handler will do it
+      console.log("🔁 Trivia collector stopped due to daily reset.");
+      // Reset handler will schedule the next day's questions
+      return;
     } else {
       console.log(`❌ Trivia collector ended with reason: ${reason}`);
     }
 
-    // Only here do we "consider" the next question:
+    // Only *now* do we consider the next question
     scheduleNextTriviaQuestion();
   });
 }
@@ -988,9 +979,9 @@ function scheduleTriviaReset() {
 
     triviaInProgress = false;
 
-    console.log('🔄 Trivia reset for new day.');
+    console.log("🔄 Trivia reset for new day.");
 
-    // Start the new day’s chain of questions
+    // Kick off the new day's chain of questions
     scheduleNextTriviaQuestion();
 
     // Schedule the next midnight reset
@@ -999,9 +990,7 @@ function scheduleTriviaReset() {
 }
 
 // 🟢 Start trivia loop on bot start
-// Start by scheduling just the *first* question for today.
-// After each one is answered / times out, the next will be scheduled.
-scheduleNextTriviaQuestion();
+scheduleNextTriviaQuestion(); // start today's chain
 scheduleTriviaReset();
 
 // ==========================
