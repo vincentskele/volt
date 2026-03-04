@@ -1,11 +1,13 @@
 const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const path = require('path');
+const fs = require('fs');
 const {
   saveGiveaway,
   updateWallet,
   getShopItems,
   addItemToInventory,
-  getGiveawayEntries,  // Expects a giveaway auto-generated ID now
+  getGiveawayEntries,
+  getShopItemByName,
 } = require('../../db'); 
 require('dotenv').config();
 
@@ -45,6 +47,7 @@ module.exports = {
       option.setName('prize')
         .setDescription('Prize: either a points amount (number) or a shop item name (text)')
         .setRequired(true)
+        .setAutocomplete(true)
     )
     .addIntegerOption(option =>
       option.setName('repeat')
@@ -60,22 +63,26 @@ module.exports = {
     const prizeInput = interaction.options.getString('prize').trim();
     const repeat = interaction.options.getInteger('repeat') || 0;
 
+    // Validate prize if it's not a number (must be a valid shop item)
+    if (isNaN(prizeInput)) {
+      const shopItem = await getShopItemByName(prizeInput);
+      if (!shopItem) {
+        return interaction.reply({
+          content: `🚫 Invalid prize. "${prizeInput}" is not a valid shop item.`,
+          ephemeral: true
+        });
+      }
+    }
+
     console.log(`[INFO] Starting giveaway: "${giveawayName}" | Prize: "${prizeInput}" | Repeats: ${repeat}`);
 
     // Convert duration into milliseconds.
     let durationMs;
     switch (timeUnit) {
-      case 'minutes':
-        durationMs = duration * 60 * 1000;
-        break;
-      case 'hours':
-        durationMs = duration * 60 * 60 * 1000;
-        break;
-      case 'days':
-        durationMs = duration * 24 * 60 * 60 * 1000;
-        break;
-      default:
-        durationMs = duration * 60 * 1000;
+      case 'minutes': durationMs = duration * 60 * 1000; break;
+      case 'hours':   durationMs = duration * 60 * 60 * 1000; break;
+      case 'days':    durationMs = duration * 24 * 60 * 60 * 1000; break;
+      default:        durationMs = duration * 60 * 1000;
     }
 
     // Helper function to start a giveaway instance.
@@ -84,23 +91,28 @@ module.exports = {
 
       // Banner image for embed
       const bannerPath = path.join(__dirname, '../banner.png');
-      const bannerAttachment = new AttachmentBuilder(bannerPath, { name: 'banner.png' });
-      
-      // Create an embed for the giveaway announcement.
+      const files = [];
       const giveawayEmbed = new EmbedBuilder()
         .setTitle(`🎉 GIVEAWAY: ${giveawayName} 🎉`)
-        .setDescription(`**Duration:** ${duration} ${timeUnit}
-**Winners:** ${winners}
-**Prize:** ${prizeInput}
-        
-*React with 🎉 or use the online dashboard to enter!*`)
-        .setImage('attachment://banner.png')
+        .setDescription(
+          `**Duration:** ${duration} ${timeUnit}\n` +
+          `**Winners:** ${winners}\n` +
+          `**Prize:** ${prizeInput}\n\n` +
+          `*React with 🎉 or use the online dashboard to enter!*`
+        )
         .setColor(0xffa500);
+
+      if (fs.existsSync(bannerPath)) {
+        files.push(new AttachmentBuilder(bannerPath, { name: 'banner.png' }));
+        giveawayEmbed.setImage('attachment://banner.png');
+      } else {
+        console.warn(`[WARN] banner.png not found at: ${bannerPath} (sending without image)`);
+      }
 
       // Send the embed message.
       const giveawayMessage = await interaction.channel.send({
         embeds: [giveawayEmbed],
-        files: [bannerAttachment]
+        files,
       });
 
       const endTime = Date.now() + durationMs;
@@ -122,7 +134,6 @@ module.exports = {
       // Timer to conclude the giveaway after durationMs.
       setTimeout(async () => {
         try {
-          // Use the giveawayId to fetch participant IDs.
           const participantIDs = await getGiveawayEntries(giveawayId);
           console.log(`[INFO] Found ${participantIDs.length} entries for giveaway "${giveawayName}" (ID: ${giveawayId})`);
 
@@ -144,7 +155,6 @@ module.exports = {
 
           // Award prizes based on prize type.
           if (!isNaN(prizeInput)) {
-            // Numeric prize: update wallet balance.
             const prizeAmount = parseInt(prizeInput, 10);
             for (const winnerId of selectedWinners) {
               await interaction.channel.send(`🎉 Congrats <@${winnerId}>! You won **${giveawayName}** and received **${prizeAmount}${POINTS_SYMBOL}**.`);
@@ -152,7 +162,6 @@ module.exports = {
               console.log(`[SUCCESS] Awarded ${prizeAmount}${POINTS_SYMBOL} to ${winnerId}`);
             }
           } else {
-            // Shop item prize.
             const shopItems = await getShopItems();
             const shopItem = shopItems.find(item => item.name.toLowerCase() === prizeInput.toLowerCase());
             if (!shopItem || !shopItem.itemID) {
@@ -169,7 +178,6 @@ module.exports = {
         } catch (error) {
           console.error(`[ERROR] Error concluding giveaway "${giveawayName}":`, error);
         } finally {
-          // If there are repeats left, start the next giveaway.
           if (repeatCount > 0) {
             startGiveaway(repeatCount - 1);
           }
@@ -180,10 +188,18 @@ module.exports = {
     // Start the first giveaway.
     startGiveaway(repeat);
 
-    // Confirm to the user that the giveaway has started.
     await interaction.reply({
       content: `✅ Giveaway "${giveawayName}" started! Ends in ${duration} ${timeUnit}.${repeat ? ` It will repeat ${repeat} time(s).` : ''}`,
       ephemeral: true
     });
-  }
+  },
+
+  async autocomplete(interaction) {
+    const focusedValue = interaction.options.getFocused();
+    const shopItems = await getShopItems();
+    const filtered = shopItems
+      .map(item => ({ name: item.name, value: item.name }))
+      .filter(choice => choice.name.toLowerCase().includes(String(focusedValue).toLowerCase()));
+    await interaction.respond(filtered.slice(0, 25));
+  },
 };

@@ -1,5 +1,7 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
-const { EmbedBuilder, PermissionsBitField } = require('discord.js');
+const { EmbedBuilder, PermissionsBitField, AttachmentBuilder } = require('discord.js');
+const path = require('path');
+const fs = require('fs');
 const db = require('../../db');
 const { points, formatCurrency } = require('../../points');
 
@@ -118,6 +120,8 @@ module.exports = {
         ticketQuantity
       );
 
+      const bannerPath = path.join(__dirname, '../banner_title.png');
+      const files = [];
       const embed = new EmbedBuilder()
         .setTitle(`🎟️ Raffle Started: ${raffleName}`)
         .setDescription(
@@ -130,7 +134,14 @@ module.exports = {
         .setColor(0xFFD700)
         .setTimestamp(endDate);
 
-      await interaction.reply({ embeds: [embed] });
+      if (fs.existsSync(bannerPath)) {
+        files.push(new AttachmentBuilder(bannerPath, { name: 'banner_title.png' }));
+        embed.setImage('attachment://banner_title.png');
+      } else {
+        console.warn(`[WARN] banner_title.png not found at: ${bannerPath} (sending without image)`);
+      }
+
+      await interaction.reply({ embeds: [embed], files });
 
       // Schedule raffle conclusion
       setTimeout(async () => {

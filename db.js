@@ -876,11 +876,9 @@ function getShopItemByName(name) {
       if (err) {
         console.error(`Error looking up item "${name}":`, err);
         return reject('🚫 Unable to retrieve item information. Please try again.');
-      } else if (!row) {
-        return reject(`🚫 The item "${name}" is not available in the shop.`);
-      } else {
-        resolve(row);
       }
+      // Resolve with null if not found — callers must check for null
+      resolve(row || null);
     });
   });
 }
@@ -1204,7 +1202,371 @@ async function clearGiveawayEntries(giveawayId) {
     );
   });
 }
+// =========================================================================
+// Title Giveaways (separate rails from giveaways)
+// =========================================================================
+//
+// IMPORTANT:
+// - This is for "title-giveaway" as a *separate giveaway rail*, but prize = volts OR shop item.
+// - So we store the prize in a column named `prize` (NOT `title`).
+//
+// If you already created the old version with a `title` column:
+// - easiest dev fix: DROP the two tables and recreate (you’ll lose only title giveaway data)
+//   db.run(`DROP TABLE IF EXISTS title_giveaway_entries`);
+//   db.run(`DROP TABLE IF EXISTS title_giveaways`);
+//
+// Or ask me and I’ll give you a migration that preserves data.
 
+
+// =========================================================================
+// Title Giveaways Tables
+// =========================================================================
+db.run(`
+  CREATE TABLE IF NOT EXISTS title_giveaways (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    end_time INTEGER NOT NULL,
+    prize TEXT NOT NULL,
+    winners INTEGER NOT NULL,
+    giveaway_name TEXT NOT NULL DEFAULT 'Untitled Title Giveaway',
+    repeat INTEGER DEFAULT 0,
+    is_completed INTEGER DEFAULT 0
+  )
+`, (err) => {
+  if (err) console.error('❌ Error creating title_giveaways table:', err);
+  else console.log('✅ Title giveaways table is ready.');
+});
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS title_giveaway_entries (
+    title_giveaway_id INTEGER NOT NULL,
+    user_id TEXT NOT NULL,
+    PRIMARY KEY (title_giveaway_id, user_id),
+    FOREIGN KEY (title_giveaway_id) REFERENCES title_giveaways(id) ON DELETE CASCADE
+  )
+`, (err) => {
+  if (err) console.error('❌ Error creating title_giveaway_entries table:', err);
+  else console.log('✅ Title giveaway entries table is ready.');
+});
+
+
+// =========================================================================
+// Title Giveaway Functions (PATCHED: supports old `title` column + new `prize`)
+// =========================================================================
+//
+// What this does:
+// 1) On load, it checks if `title_giveaways` is missing the `prize` column.
+// 2) If missing, it ALTERs the table to add `prize`.
+// 3) If the old `title` column exists, it backfills prize = title for existing rows.
+// 4) All functions below use `prize` going forward.
+//
+// Paste this WHOLE block in place of your current "Title Giveaway Functions" block.
+// (You can put the migration helper right above the functions, same section.)
+
+function ensureTitleGiveawayPrizeColumn() {
+  db.all(`PRAGMA table_info(title_giveaways)`, (err, columns) => {
+    if (err) {
+      console.error('❌ Error checking title_giveaways table structure:', err);
+      return;
+    }
+
+    const hasPrize = columns.some(col => col.name === 'prize');
+    const hasTitle = columns.some(col => col.name === 'title');
+
+    if (!hasPrize) {
+      console.log('➕ Migrating title_giveaways: adding missing "prize" column...');
+      db.serialize(() => {
+        db.run(`ALTER TABLE title_giveaways ADD COLUMN prize TEXT`, (alterErr) => {
+          if (alterErr) {
+            console.error('❌ Error adding "prize" column to title_giveaways:', alterErr);
+            return;
+          }
+
+          if (hasTitle) {
+            db.run(`UPDATE title_giveaways SET prize = title WHERE prize IS NULL`, (copyErr) => {
+              if (copyErr) console.error('⚠️ Error backfilling prize from title:', copyErr);
+              else console.log('✅ Backfilled prize from old "title" column.');
+            });
+          }
+
+          console.log('✅ Migration complete: title_giveaways now has "prize".');
+        });
+      });
+    } else {
+      // Optional: keep quiet or log once
+      // console.log('✅ title_giveaways already has "prize" column.');
+    }
+  });
+}
+
+// Call this once on startup (db.js loads once, so this is fine)
+ensureTitleGiveawayPrizeColumn();
+
+
+// Save a new title giveaway (separate rails) and return its auto-generated id.
+async function saveTitleGiveaway(discordMessageId, channelId, endTime, prize, winners, name, repeat) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `INSERT INTO title_giveaways (message_id, channel_id, end_time, prize, winners, giveaway_name, repeat, is_completed)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+      [discordMessageId, channelId, endTime, prize, winners, name, repeat],
+      function (err) {
+        if (err) return reject(err);
+        resolve(this.lastID);
+      }
+    );
+  });
+}
+
+// Get all active title giveaways.
+async function getActiveTitleGiveaways() {
+  return new Promise((resolve, reject) => {
+    db.all(
+      'SELECT * FROM title_giveaways WHERE end_time > ? AND is_completed = 0',
+      [Date.now()],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      }
+    );
+  });
+}
+
+// Get a title giveaway by its message_id.
+async function getTitleGiveawayByMessageId(messageId) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      'SELECT * FROM title_giveaways WHERE message_id = ?',
+      [messageId],
+      (err, row) => {
+        if (err) reject(err);
+        else resolve(row || null);
+      }
+    );
+  });
+}
+
+// Delete a title giveaway by its message_id.
+async function deleteTitleGiveaway(messageId) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'DELETE FROM title_giveaways WHERE message_id = ?',
+      [messageId],
+      function (err) {
+        if (err) reject(err);
+        else resolve();
+      }
+    );
+  });
+}
+
+// Record a title giveaway entry (i.e. when a user reacts).
+async function addTitleGiveawayEntry(titleGiveawayId, userId) {
+  try {
+    const existingEntry = await new Promise((resolve, reject) => {
+      db.get(
+        'SELECT 1 FROM title_giveaway_entries WHERE title_giveaway_id = ? AND user_id = ?',
+        [titleGiveawayId, userId],
+        (err, row) => {
+          if (err) {
+            console.error(`❌ DB error checking entry for user ${userId} in title_giveaway ${titleGiveawayId}:`, err);
+            reject(err);
+          } else {
+            resolve(row);
+          }
+        }
+      );
+    });
+
+    if (existingEntry) {
+      console.log(`⚠️ User ${userId} already entered title_giveaway ${titleGiveawayId}. Skipping duplicate.`);
+      return;
+    }
+
+    await new Promise((resolve, reject) => {
+      db.run(
+        'INSERT INTO title_giveaway_entries (title_giveaway_id, user_id) VALUES (?, ?)',
+        [titleGiveawayId, userId],
+        function (err) {
+          if (err) {
+            console.error(`❌ DB error adding user ${userId} to title_giveaway ${titleGiveawayId}:`, err);
+            reject(err);
+          } else {
+            console.log(`✅ Successfully added user ${userId} to title_giveaway ${titleGiveawayId}.`);
+            resolve();
+          }
+        }
+      );
+    });
+  } catch (error) {
+    console.error(`❌ Error adding user ${userId} to title_giveaway ${titleGiveawayId}:`, error);
+  }
+}
+
+// Get all title giveaway entries (user IDs) for a specific title giveaway.
+async function getTitleGiveawayEntries(titleGiveawayId) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      'SELECT user_id FROM title_giveaway_entries WHERE title_giveaway_id = ?',
+      [titleGiveawayId],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve((rows || []).map(row => row.user_id));
+      }
+    );
+  });
+}
+
+// Remove a title giveaway entry when a reaction is removed.
+async function removeTitleGiveawayEntry(titleGiveawayId, userId) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'DELETE FROM title_giveaway_entries WHERE title_giveaway_id = ? AND user_id = ?',
+      [titleGiveawayId, userId],
+      function (err) {
+        if (err) {
+          console.error(`❌ DB error removing user ${userId} from title_giveaway ${titleGiveawayId}:`, err);
+          reject(err);
+        } else if (this.changes === 0) {
+          console.warn(`⚠️ No entry found for user ${userId} in title_giveaway ${titleGiveawayId}.`);
+          resolve(false);
+        } else {
+          console.log(`✅ Successfully removed user ${userId} from title_giveaway ${titleGiveawayId}.`);
+          resolve(true);
+        }
+      }
+    );
+  });
+}
+
+// Clear all title giveaway entries for a given title giveaway (useful when syncing reactions).
+async function clearTitleGiveawayEntries(titleGiveawayId) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'DELETE FROM title_giveaway_entries WHERE title_giveaway_id = ?',
+      [titleGiveawayId],
+      function (err) {
+        if (err) reject(err);
+        else resolve();
+      }
+    );
+  });
+}
+
+/**
+ * Prevent double-awarding.
+ * Returns true if it successfully marked the giveaway complete,
+ * false if it was already completed.
+ */
+async function markTitleGiveawayCompleted(titleGiveawayId) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'UPDATE title_giveaways SET is_completed = 1 WHERE id = ? AND is_completed = 0',
+      [titleGiveawayId],
+      function (err) {
+        if (err) return reject(err);
+        resolve(this.changes === 1);
+      }
+    );
+  });
+}
+
+// =========================================================================
+// MIGRATION: title_giveaways title->prize (fix NOT NULL constraint)
+// =========================================================================
+function migrateTitleGiveawaysToPrizeColumn() {
+  db.all(`PRAGMA table_info(title_giveaways)`, (err, cols) => {
+    if (err) {
+      console.error('❌ Failed to inspect title_giveaways:', err);
+      return;
+    }
+    if (!cols || cols.length === 0) return; // table might not exist yet
+
+    const hasTitle = cols.some(c => c.name === 'title');
+    const hasPrize = cols.some(c => c.name === 'prize');
+
+    // We need full migration if:
+    // - title exists and is NOT NULL (old schema), and/or
+    // - prize missing, or
+    // - title is still required in practice
+    const titleCol = cols.find(c => c.name === 'title');
+    const titleNotNull = titleCol ? titleCol.notnull === 1 : false;
+
+    if (!hasTitle) {
+      // Already on new schema (or different), nothing to do
+      return;
+    }
+
+    if (hasPrize && !titleNotNull) {
+      // You already added prize and title isn't blocking inserts anymore
+      return;
+    }
+
+    console.log('⚙️ Migrating title_giveaways schema: replacing NOT NULL `title` with NOT NULL `prize`...');
+
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+
+      // 1) Create new table with correct schema
+      db.run(`
+        CREATE TABLE IF NOT EXISTS title_giveaways_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          message_id TEXT NOT NULL,
+          channel_id TEXT NOT NULL,
+          end_time INTEGER NOT NULL,
+          prize TEXT NOT NULL,
+          winners INTEGER NOT NULL,
+          giveaway_name TEXT NOT NULL DEFAULT 'Untitled Title Giveaway',
+          repeat INTEGER DEFAULT 0,
+          is_completed INTEGER DEFAULT 0
+        )
+      `);
+
+      // 2) Copy data over (use existing prize if present, else fall back to old title)
+      //    Also preserve ids so foreign keys / references keep working.
+      db.run(`
+        INSERT INTO title_giveaways_new (id, message_id, channel_id, end_time, prize, winners, giveaway_name, repeat, is_completed)
+        SELECT
+          id,
+          message_id,
+          channel_id,
+          end_time,
+          COALESCE(prize, title),
+          winners,
+          giveaway_name,
+          repeat,
+          is_completed
+        FROM title_giveaways
+      `);
+
+      // 3) Swap tables
+      db.run(`DROP TABLE title_giveaways`);
+      db.run(`ALTER TABLE title_giveaways_new RENAME TO title_giveaways`);
+
+      // 4) Recreate entries table FK cleanly (safest)
+      //    (Because the old entries table FK referenced the old table definition)
+      db.run(`DROP TABLE IF EXISTS title_giveaway_entries`);
+      db.run(`
+        CREATE TABLE IF NOT EXISTS title_giveaway_entries (
+          title_giveaway_id INTEGER NOT NULL,
+          user_id TEXT NOT NULL,
+          PRIMARY KEY (title_giveaway_id, user_id),
+          FOREIGN KEY (title_giveaway_id) REFERENCES title_giveaways(id) ON DELETE CASCADE
+        )
+      `);
+
+      db.run('COMMIT', (commitErr) => {
+        if (commitErr) {
+          console.error('❌ Migration commit failed:', commitErr);
+          db.run('ROLLBACK');
+        } else {
+          console.log('✅ Migration complete: title_giveaways now uses `prize` correctly.');
+        }
+      });
+    });
+  });
+}
 //================
 // 🎟️ Raffles
 //================
@@ -2156,6 +2518,18 @@ module.exports = {
   getGiveawayEntries,
   removeGiveawayEntry,
   clearGiveawayEntries,
+
+
+  // Title Giveaway
+saveTitleGiveaway,
+getActiveTitleGiveaways,
+deleteTitleGiveaway,
+getTitleGiveawayByMessageId,
+addTitleGiveawayEntry,
+getTitleGiveawayEntries,
+removeTitleGiveawayEntry,
+clearTitleGiveawayEntries,
+markTitleGiveawayCompleted,
 
   // User Accounts
   registerUser,

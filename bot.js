@@ -49,7 +49,24 @@ const {
   addGiveawayEntry,
   removeGiveawayEntry,
   clearGiveawayEntries,
+  getTitleGiveawayByMessageId,
+  addTitleGiveawayEntry,
+  removeTitleGiveawayEntry,
+  getActiveTitleGiveaways,
+  getTitleGiveawayEntries,
+  markTitleGiveawayCompleted,
 } = require('./db');
+
+// Safe chunked timer — handles giveaways longer than Node's 24.8 day setTimeout cap
+const LONG_TIMEOUT_MAX = 2_147_483_647;
+function scheduleAt(endTimeMs, fn) {
+  const tick = () => {
+    const remaining = endTimeMs - Date.now();
+    if (remaining <= 0) return fn();
+    setTimeout(tick, Math.min(remaining, LONG_TIMEOUT_MAX));
+  };
+  tick();
+}
 
 
 
@@ -200,6 +217,39 @@ async function syncGiveawayEntries(giveaway) {
     }
   } catch (error) {
     console.error('❌ Error syncing giveaway entries:', error);
+  }
+}
+
+/**
+ * Sync title giveaway entries from Discord reactions on restart.
+ * Catches any reactions that happened while the bot was offline.
+ */
+async function syncTitleGiveawayEntries(titleGiveaway) {
+  try {
+    const channel = await client.channels.fetch(titleGiveaway.channel_id);
+    if (!channel) return;
+    const message = await channel.messages.fetch(titleGiveaway.message_id);
+    if (!message) return;
+    const reaction = message.reactions.cache.get("🏷️");
+    if (!reaction) return;
+    const usersReacted = await reaction.users.fetch();
+    const participantIDs = usersReacted.filter(user => !user.bot).map(user => user.id);
+    const existingEntries = await getTitleGiveawayEntries(titleGiveaway.id);
+    const existingUserIds = new Set(existingEntries);
+    for (const userId of participantIDs) {
+      if (!existingUserIds.has(userId)) {
+        await addTitleGiveawayEntry(titleGiveaway.id, userId);
+        console.log(`✅ Synced title giveaway entry: user ${userId} in title giveaway ${titleGiveaway.id}`);
+      }
+    }
+    for (const userId of existingEntries) {
+      if (!participantIDs.includes(userId)) {
+        await removeTitleGiveawayEntry(titleGiveaway.id, userId);
+        console.log(`❌ Removed stale title giveaway entry: user ${userId} from title giveaway ${titleGiveaway.id}`);
+      }
+    }
+  } catch (error) {
+    console.error("❌ Error syncing title giveaway entries:", error);
   }
 }
 
@@ -379,6 +429,111 @@ client.once('ready', async () => {
     } else {
       await concludeRaffle(raffle.id);
       console.log(`⏰ Raffle "${raffle.name}" (ID: ${raffle.id}) was past end time and concluded immediately.`);
+    }
+  }
+});
+
+// =========================================
+// 🏷️ TITLE GIVEAWAY REACTION HANDLERS
+// =========================================
+
+client.on('messageReactionAdd', async (reaction, user) => {
+  if (user.bot || reaction.emoji.name !== '🏷️') return;
+  try {
+    if (reaction.partial) await reaction.fetch();
+    const titleGiveaway = await getTitleGiveawayByMessageId(reaction.message.id);
+    if (!titleGiveaway) return;
+    await addTitleGiveawayEntry(titleGiveaway.id, user.id);
+    console.log(`📌 User ${user.id} entered title giveaway ${titleGiveaway.id}`);
+  } catch (err) {
+    console.error('⚠️ Error recording title giveaway entry:', err);
+  }
+});
+
+client.on('messageReactionRemove', async (reaction, user) => {
+  if (user.bot || reaction.emoji.name !== '🏷️') return;
+  try {
+    if (reaction.partial) await reaction.fetch();
+    const titleGiveaway = await getTitleGiveawayByMessageId(reaction.message.id);
+    if (!titleGiveaway) return;
+    await removeTitleGiveawayEntry(titleGiveaway.id, user.id);
+    console.log(`❌ User ${user.id} removed from title giveaway ${titleGiveaway.id}`);
+  } catch (err) {
+    console.error('⚠️ Error removing title giveaway entry:', err);
+  }
+});
+
+// =========================================
+// 🏷️ TITLE GIVEAWAY CONCLUDE + RECOVERY
+// =========================================
+
+async function concludeTitleGiveaway(titleGiveaway) {
+  try {
+    const locked = await markTitleGiveawayCompleted(titleGiveaway.id);
+    if (!locked) {
+      console.warn(`[WARN] Title giveaway ${titleGiveaway.id} already completed. Skipping.`);
+      return;
+    }
+
+    const channel = await client.channels.fetch(titleGiveaway.channel_id).catch(() => null);
+    const participantIDs = await getTitleGiveawayEntries(titleGiveaway.id);
+    console.log(`[INFO] Concluding title giveaway ID=${titleGiveaway.id} | entries=${participantIDs.length}`);
+
+    if (!participantIDs.length) {
+      if (channel) await channel.send(`🏷️ Title giveaway "**${titleGiveaway.giveaway_name}**" ended, but no one entered.`);
+      return;
+    }
+
+    const pool = [...participantIDs];
+    const winners = [];
+    while (winners.length < Math.min(titleGiveaway.winners, pool.length)) {
+      winners.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    }
+
+    const winnerMentions = winners.map(id => `<@${id}>`).join(', ');
+
+    if (!isNaN(titleGiveaway.prize)) {
+      const prizeAmount = parseInt(titleGiveaway.prize, 10);
+      for (const winnerId of winners) await updateWallet(winnerId, prizeAmount);
+      if (channel) await channel.send(
+        `🏷️ **${titleGiveaway.giveaway_name}** ended!\n` +
+        `Winners: ${winnerMentions}\n` +
+        `Prize: **${prizeAmount}**`
+      );
+    } else {
+      const shopItem = await getShopItemByName(titleGiveaway.prize);
+      if (!shopItem) {
+        if (channel) await channel.send(`⚠️ **${titleGiveaway.giveaway_name}** ended, but prize item "**${titleGiveaway.prize}**" no longer exists in the shop.`);
+        return;
+      }
+      for (const winnerId of winners) await addItemToInventory(winnerId, shopItem.itemID);
+      if (channel) await channel.send(
+        `🏷️ **${titleGiveaway.giveaway_name}** ended!\n` +
+        `Winners: ${winnerMentions}\n` +
+        `Prize: **${shopItem.name}**`
+      );
+    }
+  } catch (err) {
+    console.error(`❌ Error concluding title giveaway "${titleGiveaway.giveaway_name}":`, err);
+  }
+}
+
+client.once('ready', async () => {
+  console.log('🔄 Checking active title giveaways on startup...');
+  const activeTitleGiveaways = await getActiveTitleGiveaways();
+  console.log(`🔄 Restoring ${activeTitleGiveaways.length} active title giveaway(s)...`);
+
+  for (const tg of activeTitleGiveaways) {
+    // Sync any reactions that came in while bot was offline
+    await syncTitleGiveawayEntries(tg);
+
+    const timeLeft = tg.end_time - Date.now();
+    if (timeLeft > 0) {
+      scheduleAt(tg.end_time, () => concludeTitleGiveaway(tg));
+      console.log(`⏳ Rescheduled title giveaway "${tg.giveaway_name}" (ID: ${tg.id}) — ${timeLeft}ms remaining.`);
+    } else {
+      await concludeTitleGiveaway(tg);
+      console.log(`⏰ Title giveaway "${tg.giveaway_name}" (ID: ${tg.id}) expired while offline — concluded immediately.`);
     }
   }
 });
