@@ -1129,45 +1129,96 @@ async function loadAdminPage() {
     if (!Array.isArray(submissions) || submissions.length === 0) {
       if (emptyState) emptyState.style.display = 'block';
     } else {
-      submissions.forEach((submission) => {
-        const item = document.createElement('div');
-        item.className = 'admin-item';
-
-        const title = document.createElement('p');
-        title.textContent = `Title: ${submission.title}`;
-        const user = document.createElement('p');
-        const userLabel = submission.username ? submission.username : submission.userID;
-        user.textContent = `User: ${userLabel}`;
-
-        const desc = document.createElement('p');
-        desc.textContent = `Desc: ${submission.description}`;
-
-        const when = document.createElement('p');
-        const time = submission.created_at
-          ? new Date(submission.created_at * 1000).toLocaleString()
-          : 'Unknown time';
-        when.textContent = `Submitted: ${time}`;
-
-        item.appendChild(title);
-        item.appendChild(user);
-        item.appendChild(desc);
-        item.appendChild(when);
-
-        if (submission.image_url) {
-          const link = document.createElement('a');
-          link.href = submission.image_url;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          link.textContent = 'View Image';
-          item.appendChild(link);
+      const grouped = submissions.reduce((acc, submission) => {
+        const key = submission.userID;
+        if (!acc[key]) {
+          acc[key] = {
+            userID: submission.userID,
+            username: submission.username,
+            items: [],
+          };
         }
+        acc[key].items.push(submission);
+        return acc;
+      }, {});
 
-        item.addEventListener('click', (event) => {
-          if (event.target && event.target.tagName === 'A') return;
-          showSubmissionRewardModal(submission);
+      Object.values(grouped).forEach((group) => {
+        const groupContainer = document.createElement('div');
+        groupContainer.className = 'admin-item';
+
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.alignItems = 'center';
+        header.style.justifyContent = 'space-between';
+        header.style.width = '100%';
+
+        const userLabel = group.username ? group.username : group.userID;
+        const title = document.createElement('p');
+        title.textContent = `${userLabel} (${group.items.length})`;
+        title.style.margin = '0';
+
+        const toggle = document.createElement('button');
+        toggle.className = 'btn text-sm font-bold';
+        toggle.textContent = 'VIEW QUESTS';
+        toggle.style.height = '20px';
+        toggle.style.width = '120px';
+        toggle.style.lineHeight = '20px';
+        toggle.style.padding = '0 6px';
+
+        header.appendChild(title);
+        header.appendChild(toggle);
+
+        const list = document.createElement('div');
+        list.style.display = 'none';
+        list.style.marginTop = '6px';
+
+        group.items.forEach((submission) => {
+          const item = document.createElement('div');
+          item.className = 'admin-item';
+
+          const questTitle = document.createElement('p');
+          questTitle.textContent = `Quest: ${submission.title}`;
+
+          const desc = document.createElement('p');
+          desc.textContent = `Desc: ${submission.description}`;
+
+          const when = document.createElement('p');
+          const time = submission.created_at
+            ? new Date(submission.created_at * 1000).toLocaleString()
+            : 'Unknown time';
+          when.textContent = `Submitted: ${time}`;
+
+          item.appendChild(questTitle);
+          item.appendChild(desc);
+          item.appendChild(when);
+
+          if (submission.image_url) {
+            const link = document.createElement('a');
+            link.href = submission.image_url;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.textContent = 'View Image';
+            item.appendChild(link);
+          }
+
+          item.addEventListener('click', (event) => {
+            if (event.target && event.target.tagName === 'A') return;
+            showSubmissionRewardModal(submission);
+          });
+
+          list.appendChild(item);
         });
 
-        submissionsList.appendChild(item);
+        toggle.addEventListener('click', (event) => {
+          event.stopPropagation();
+          const isOpen = list.style.display === 'block';
+          list.style.display = isOpen ? 'none' : 'block';
+          toggle.textContent = isOpen ? 'VIEW QUESTS' : 'HIDE QUESTS';
+        });
+
+        groupContainer.appendChild(header);
+        groupContainer.appendChild(list);
+        submissionsList.appendChild(groupContainer);
       });
     }
 

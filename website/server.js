@@ -1174,10 +1174,6 @@ app.post('/api/assign-job', authenticateToken, async (req, res) => {
 
     const job = await assignJobById(userID, jobID);
     console.log(`[SUCCESS] Job assigned to user ${userID}:`, job);
-    await dbRun(
-      `DELETE FROM job_submissions WHERE userID = ? AND status = 'pending'`,
-      [userID]
-    );
     return res.json({ success: true, job });
 
   } catch (error) {
@@ -1208,11 +1204,6 @@ app.post('/api/quit-job', authenticateToken, async (req, res) => {
     console.log(`[INFO] Removing job ${activeJob.jobID} for user ${userID}`);
     
     await dbRun(`DELETE FROM job_assignees WHERE userID = ?`, [userID]);
-    await dbRun(
-      `DELETE FROM job_submissions WHERE userID = ? AND status = 'pending'`,
-      [userID]
-    );
-
     console.log(`[SUCCESS] User ${userID} quit their job.`);
     return res.json({ success: true, message: 'You have quit your quest.' });
 
@@ -1293,6 +1284,7 @@ app.post("/api/submit-job", upload.single("image"), async (req, res) => {
       `INSERT INTO job_submissions (userID, title, description, image_url) VALUES (?, ?, ?, ?)`,
       [userID, title, description, imageUrl]
     );
+    await dbRun(`DELETE FROM job_assignees WHERE userID = ?`, [userID]);
 
     console.log("✅ Job submitted successfully!");
     res.json({ message: "Job submitted successfully!" });
