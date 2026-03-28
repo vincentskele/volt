@@ -35,6 +35,23 @@ const db = new sqlite3.Database(dbPath, (err) => {
   }
 });
 
+const ROBO_CHECK_HOLDERS_PATH =
+  process.env.ROBO_CHECK_HOLDERS_PATH ||
+  path.resolve(__dirname, '..', '..', 'robo-check', 'src', 'data', 'holders.json');
+
+function readRoboCheckHolders() {
+  try {
+    if (!fs.existsSync(ROBO_CHECK_HOLDERS_PATH)) {
+      return [];
+    }
+    const raw = fs.readFileSync(ROBO_CHECK_HOLDERS_PATH, 'utf8');
+    return raw ? JSON.parse(raw) : [];
+  } catch (error) {
+    console.error('❌ Error reading Robo-Check holders file:', error);
+    return [];
+  }
+}
+
 
 
 /**
@@ -235,6 +252,17 @@ app.get('/api/resolveChannel/:channelId', async (req, res) => {
     console.error(`Error resolving channel ID ${channelId}:`, error);
     res.json({ channelName: `UnknownChannel (${channelId})` });
   }
+});
+
+/**
+ * GET /api/holder/:discordId
+ * Return a single holder profile from Robo-Check holders.json.
+ */
+app.get('/api/holder/:discordId', (req, res) => {
+  const { discordId } = req.params;
+  const holders = readRoboCheckHolders();
+  const holder = holders.find((entry) => String(entry.discordId) === String(discordId));
+  res.json(holder || null);
 });
 
 /**

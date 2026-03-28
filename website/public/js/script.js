@@ -1139,6 +1139,24 @@ function showPostLoginButtons() {
     }
   });
 
+  // ========== USER PROFILE BUTTON ==========
+  const userProfileButton = document.createElement('button');
+  userProfileButton.textContent = 'PROFILE';
+  userProfileButton.className = 'btn text-sm font-bold';
+  userProfileButton.style.height = '24px';
+  userProfileButton.style.width = '110px';
+  userProfileButton.style.lineHeight = '24px';
+  userProfileButton.style.padding = '0 12px';
+  userProfileButton.style.textAlign = 'center';
+
+  userProfileButton.addEventListener('click', () => {
+    if (typeof showSection === 'function') {
+      showSection('userProfileSection');
+    }
+    fetchUserHoldings();
+    fetchVoltBalance();
+  });
+
   // ========== LOGOUT BUTTON ==========
   const logoutButton = document.createElement('button');
   logoutButton.textContent = 'LOGOUT';
@@ -1152,11 +1170,13 @@ function showPostLoginButtons() {
   logoutButton.addEventListener('click', () => {
     console.log('🚪 Logging out...');
     localStorage.removeItem('token'); // Remove token
+    localStorage.removeItem('discordUserID');
     location.reload(); // Reload page to reset UI
   });
 
   // Add both buttons to the container
   userActionContainer.appendChild(inventoryButton);
+  userActionContainer.appendChild(userProfileButton);
   userActionContainer.appendChild(logoutButton);
 
   // Attach to the DOM
@@ -1223,6 +1243,11 @@ async function fetchVoltBalance() {
     document.getElementById("batteryBankBalance").textContent = `Battery Bank: ${bank}`;
     document.getElementById("totalBalance").textContent = `Total: ${totalBalance}`;
 
+    const userProfileSolarian = document.getElementById('userProfileSolarianValue');
+    if (userProfileSolarian) {
+      userProfileSolarian.textContent = `Solarian: ${wallet}`;
+    }
+
     console.log("✅ Volt Balance Updated:", { wallet, bank, totalBalance });
 
   } catch (error) {
@@ -1230,6 +1255,214 @@ async function fetchVoltBalance() {
     document.getElementById("solarianBalance").textContent = "Error";
     document.getElementById("batteryBankBalance").textContent = "Error";
     document.getElementById("totalBalance").textContent = "Error";
+
+    const userProfileSolarian = document.getElementById('userProfileSolarianValue');
+    if (userProfileSolarian) {
+      userProfileSolarian.textContent = 'Solarian: Error';
+    }
+  }
+}
+
+function safeText(value, fallback = 'Unknown') {
+  if (value === null || value === undefined || value === '') {
+    return fallback;
+  }
+  return String(value);
+}
+
+let currentUserTokens = [];
+
+const titleOrder = [
+  'commander',
+  'spy',
+  'pilot',
+  'monitor',
+  'prospector',
+  'guard',
+  'squad leader',
+  'administrator',
+  'drone',
+];
+
+function renderUserHoldings(holder) {
+  const grid = document.getElementById('userHoldingsGrid');
+  const viewButton = document.getElementById('viewSolariansButton');
+
+  if (!grid) return;
+
+  const tokens = Array.isArray(holder?.tokens) ? holder.tokens : [];
+  currentUserTokens = tokens;
+  if (viewButton) {
+    viewButton.textContent = `VIEW ALL ${tokens.length} SOLARIAN${tokens.length === 1 ? '' : 'S'}`;
+    viewButton.disabled = tokens.length === 0;
+  }
+
+  grid.innerHTML = '';
+
+  if (!tokens.length) {
+    grid.innerHTML = '<div class="empty-state">No Solarians found for this profile.</div>';
+    return;
+  }
+
+  const columns = [];
+  let columnCount = 1;
+  if (window.matchMedia('(min-width: 1200px)').matches) {
+    columnCount = 3;
+  } else if (window.matchMedia('(min-width: 900px)').matches) {
+    columnCount = 2;
+  }
+  for (let i = 0; i < columnCount; i += 1) {
+    const col = document.createElement('div');
+    col.className = 'holdings-column';
+    columns.push(col);
+    grid.appendChild(col);
+  }
+
+  const normalizeTitle = (value) => safeText(value, '').toLowerCase().trim();
+  const grouped = {};
+  tokens.forEach((token) => {
+    const attrs = Array.isArray(token?.metadata?.attributes) ? token.metadata.attributes : [];
+    const titleAttr = attrs.find((attr) => normalizeTitle(attr.trait_type) === 'title');
+    const titleValue = normalizeTitle(titleAttr?.value) || 'unknown';
+    if (!grouped[titleValue]) grouped[titleValue] = [];
+    grouped[titleValue].push(token);
+  });
+
+  const orderedTitles = [
+    ...titleOrder.filter((title) => grouped[title]?.length),
+    ...Object.keys(grouped).filter((title) => !titleOrder.includes(title)),
+  ];
+
+  orderedTitles.forEach((titleKey, index) => {
+    const section = document.createElement('details');
+    section.className = 'title-section';
+    section.open = false;
+
+    const summary = document.createElement('summary');
+    summary.className = 'title-summary';
+    summary.textContent = `${titleKey} (${grouped[titleKey].length})`;
+    section.appendChild(summary);
+
+    const sectionGrid = document.createElement('div');
+    sectionGrid.className = 'holdings-grid';
+
+    grouped[titleKey].forEach((token) => {
+      const card = document.createElement('div');
+      card.className = 'holding-card';
+
+      const attrs = Array.isArray(token?.metadata?.attributes) ? token.metadata.attributes : [];
+
+      const image = document.createElement('img');
+      image.className = 'holding-image';
+      image.alt = 'Solarian';
+      if (token?.metadata?.image) {
+        image.src = token.metadata.image;
+      }
+      if (token?.mint) {
+        image.style.cursor = 'pointer';
+        image.addEventListener('click', () => {
+          window.open(`https://solscan.io/token/${token.mint}`, '_blank');
+        });
+      }
+
+      const details = document.createElement('details');
+      details.className = 'holding-details';
+
+      const summary = document.createElement('summary');
+      summary.className = 'holding-summary';
+      summary.textContent = 'Details';
+      details.appendChild(summary);
+
+      const metaWrap = document.createElement('div');
+      metaWrap.className = 'holding-meta';
+
+      const subtitle = document.createElement('div');
+      subtitle.className = 'holding-subtitle';
+      const mintNumber = attrs.find(
+        (attr) => safeText(attr.trait_type, '').toLowerCase() === 'mint #'
+      );
+      subtitle.textContent = mintNumber
+        ? `Mint #${safeText(mintNumber.value, 'N/A')}`
+        : 'Mint #N/A';
+
+      metaWrap.appendChild(subtitle);
+      // Mint hash is accessible via the image link to Solscan.
+
+      const attrsWrap = document.createElement('div');
+      attrsWrap.className = 'holding-attrs';
+      attrs
+        .filter((attr) => {
+          const trait = safeText(attr.trait_type, '').toLowerCase();
+          return trait !== 'title' && trait !== 'mint #';
+        })
+        .forEach((attr) => {
+      const pill = document.createElement('div');
+      pill.className = 'holding-attr';
+      const label = attr.trait_type ? `${attr.trait_type}: ` : '';
+      pill.textContent = `${label}${safeText(attr.value, 'N/A')}`;
+      attrsWrap.appendChild(pill);
+    });
+
+      details.appendChild(metaWrap);
+      if (attrsWrap.childElementCount) {
+        details.appendChild(attrsWrap);
+      }
+
+      card.appendChild(image);
+      card.appendChild(details);
+
+      sectionGrid.appendChild(card);
+    });
+
+    section.appendChild(sectionGrid);
+    const targetColumn = columns[index % columns.length];
+    targetColumn.appendChild(section);
+  });
+}
+
+function renderSolarianMosaic(tokens) {
+  const mosaicGrid = document.getElementById('solarianMosaicGrid');
+  if (!mosaicGrid) return;
+
+  mosaicGrid.innerHTML = '';
+  tokens.forEach((token) => {
+    if (!token?.metadata?.image) return;
+    const img = document.createElement('img');
+    img.src = token.metadata.image;
+    img.alt = 'Solarian';
+    mosaicGrid.appendChild(img);
+  });
+}
+
+async function fetchUserHoldings() {
+  const grid = document.getElementById('userHoldingsGrid');
+  const discordUserId = localStorage.getItem('discordUserID');
+
+  if (!grid) return;
+
+  grid.innerHTML = '<div class="empty-state">Loading holdings...</div>';
+
+  if (!discordUserId) {
+    grid.innerHTML = '<div class="empty-state">No Discord ID found for this session.</div>';
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/holder/${discordUserId}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch holder data: ${response.statusText}`);
+    }
+
+    const holder = await response.json();
+    if (!holder) {
+      grid.innerHTML = '<div class="empty-state">No verified holder profile found.</div>';
+      return;
+    }
+
+    renderUserHoldings(holder);
+  } catch (error) {
+    console.error('Error loading holdings:', error);
+    grid.innerHTML = '<div class="empty-state">Could not load holdings data.</div>';
   }
 }
 
@@ -2070,4 +2303,28 @@ async function fetchInventory() {
       showSection('landingPage');
     });
   });
+
+  const viewSolariansButton = document.getElementById('viewSolariansButton');
+  const closeSolariansButton = document.getElementById('closeSolariansButton');
+  const solarianMosaic = document.getElementById('solarianMosaic');
+  if (viewSolariansButton && solarianMosaic) {
+    viewSolariansButton.addEventListener('click', () => {
+      renderSolarianMosaic(currentUserTokens);
+      solarianMosaic.classList.remove('hidden');
+    });
+  }
+
+  if (closeSolariansButton && solarianMosaic) {
+    closeSolariansButton.addEventListener('click', () => {
+      solarianMosaic.classList.add('hidden');
+    });
+  }
+
+  if (solarianMosaic) {
+    solarianMosaic.addEventListener('click', (event) => {
+      if (event.target === solarianMosaic) {
+        solarianMosaic.classList.add('hidden');
+      }
+    });
+  }
 });

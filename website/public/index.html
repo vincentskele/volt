@@ -237,19 +237,6 @@
   <ul id="adminListContent" class="admin-list">
     <!-- Dynamically generated admin items will be appended here -->
   </ul>
-  <p>
-    Typically, an admin is available, so you can share your work in the 
-    <a href="https://discord.com/channels/1014872741846974514/1336779333641179146" target="_blank" rel="noopener noreferrer" class="link">
-      playground
-    </a> 
-    and receive Vol<span style="margin-left: -3px;"></span>ts shortly after.
-  </p>
-  <p>If no admin is present, please open a 
-    <a href="https://discord.com/channels/1014872741846974514/1220357242663075890" target="_blank" rel="noopener noreferrer" class="link">
-      ticket
-    </a> 
-    and share your quest progress there.
-  </p>
   
   <button class="back-button">Home</button>
 </div>
@@ -384,6 +371,24 @@
   <ul id="inventoryItems" class="inventory-list">
     <!-- Dynamically populated by script.js -->
   </ul>
+
+  <button class="back-button">Home</button>
+</div>
+
+<!-- User Profile Section -->
+<div id="userProfileSection" class="content" style="display: none;">
+  <h2>👤 User Profile</h2>
+  <div class="profile-actions">
+    <button id="viewSolariansButton" class="btn text-sm font-bold">VIEW ALL 0 SOLARIANS</button>
+  </div>
+  <div id="userHoldingsGrid" class="holdings-section-list"></div>
+
+  <div id="solarianMosaic" class="solarian-mosaic hidden">
+    <div class="solarian-mosaic-inner">
+      <button id="closeSolariansButton" class="btn text-sm font-bold">Close</button>
+      <div id="solarianMosaicGrid" class="solarian-mosaic-grid"></div>
+    </div>
+  </div>
 
   <button class="back-button">Home</button>
 </div>
