@@ -1289,8 +1289,23 @@ async function loadChatMessages() {
     messages.forEach((msg) => {
       const row = document.createElement('div');
       row.className = `chat-message ${msg.is_admin ? 'admin' : 'user'}`;
-      const label = msg.username || msg.userID;
-      row.textContent = `${label}: ${msg.message}`;
+
+      const name = document.createElement('span');
+      name.textContent = msg.username || msg.userID;
+      name.style.cursor = 'pointer';
+      name.style.textDecoration = 'underline';
+      name.addEventListener('click', () => {
+        fetchUserHoldingsFor(msg.userID);
+        if (typeof showSection === 'function') {
+          showSection('userProfileSection');
+        }
+      });
+
+      const text = document.createElement('span');
+      text.textContent = `: ${msg.message}`;
+
+      row.appendChild(name);
+      row.appendChild(text);
       chatMessages.appendChild(row);
     });
 
@@ -1841,21 +1856,28 @@ function renderSolarianMosaic(tokens) {
   });
 }
 
-async function fetchUserHoldings() {
+async function fetchUserHoldingsFor(userId) {
   const grid = document.getElementById('userHoldingsGrid');
-  const discordUserId = localStorage.getItem('discordUserID');
-
+  const profileTitle = document.getElementById('userProfileTitle');
   if (!grid) return;
 
   grid.innerHTML = '<div class="empty-state">Loading holdings...</div>';
 
-  if (!discordUserId) {
-    grid.innerHTML = '<div class="empty-state">No Discord ID found for this session.</div>';
+  if (!userId) {
+    grid.innerHTML = '<div class="empty-state">No Discord ID found for this profile.</div>';
+    if (profileTitle) profileTitle.textContent = '👤 User Profile';
     return;
   }
 
   try {
-    const response = await fetch(`/api/holder/${discordUserId}`);
+    const username = userId === localStorage.getItem('discordUserID')
+      ? localStorage.getItem('username')
+      : null;
+    if (profileTitle) {
+      profileTitle.textContent = `👤 ${username || userId}`;
+    }
+
+    const response = await fetch(`/api/holder/${userId}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch holder data: ${response.statusText}`);
     }
@@ -1870,7 +1892,13 @@ async function fetchUserHoldings() {
   } catch (error) {
     console.error('Error loading holdings:', error);
     grid.innerHTML = '<div class="empty-state">Could not load holdings data.</div>';
+    if (profileTitle) profileTitle.textContent = '👤 User Profile';
   }
+}
+
+async function fetchUserHoldings() {
+  const discordUserId = localStorage.getItem('discordUserID');
+  return fetchUserHoldingsFor(discordUserId);
 }
 
 
