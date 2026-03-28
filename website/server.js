@@ -390,6 +390,56 @@ const DISCORD_CLIENT_SECRET =
   process.env.DISCORD_CLIENT_SECRET || process.env.CLIENT_SECRET;
 const DISCORD_OAUTH_AUTHORIZE_URL = "https://discord.com/api/oauth2/authorize";
 const DISCORD_OAUTH_TOKEN_URL = "https://discord.com/api/oauth2/token";
+const GUILD_ID = process.env.GUILD_ID;
+
+// 🚦 Allowed roles filter for Discord web login
+// ALLOWED_ROLES should be a comma-separated list of role IDs.
+const ALLOWED_ROLES = process.env.ALLOWED_ROLES
+  ? process.env.ALLOWED_ROLES.split(',').map(role => role.trim()).filter(Boolean)
+  : [];
+
+async function waitForClientReady() {
+  if (client?.isReady && client.isReady()) return;
+  await new Promise(resolve => client.once('ready', resolve));
+}
+
+async function fetchGuild() {
+  if (!GUILD_ID) return null;
+  await waitForClientReady();
+  let guild = client.guilds.cache.get(GUILD_ID);
+  if (!guild) {
+    try {
+      guild = await client.guilds.fetch(GUILD_ID);
+    } catch (err) {
+      console.error(`❌ Failed to fetch guild ${GUILD_ID}:`, err);
+      return null;
+    }
+  }
+  return guild;
+}
+
+async function userHasAllowedRoleById(userId) {
+  if (ALLOWED_ROLES.length === 0) return true;
+  if (!GUILD_ID) {
+    console.error("❌ ALLOWED_ROLES is set but GUILD_ID is missing.");
+    return false;
+  }
+
+  const guild = await fetchGuild();
+  if (!guild) return false;
+
+  let member = guild.members.cache.get(userId);
+  if (!member) {
+    try {
+      member = await guild.members.fetch(userId);
+    } catch (err) {
+      console.error(`❌ Failed to fetch member ${userId}:`, err);
+      return false;
+    }
+  }
+
+  return member.roles.cache.some(role => ALLOWED_ROLES.includes(role.id));
+}
 
 function getServerOrigin() {
   const raw = process.env.BASE_URL || `http://localhost:${PORT}`;
@@ -573,6 +623,12 @@ app.get("/auth/discord/callback", async (req, res) => {
 
     const discordUser = await userResponse.json();
     const userId = discordUser.id;
+
+    const hasAllowedRole = await userHasAllowedRoleById(userId);
+    if (!hasAllowedRole) {
+      console.warn(`🚫 Discord login blocked for ${userId}: missing allowed role.`);
+      return res.status(403).send("NO SOLARIAN FOUND IN WALLET");
+    }
 
     const user = await dbGet(
       `SELECT userID, username FROM economy WHERE userID = ?`,
