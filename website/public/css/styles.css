@@ -866,6 +866,10 @@ code {
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8); /* Subtle Glow */
 }
 
+#userButtons {
+  z-index: 30;
+}
+
 #voltBalance {
   display: block; /* Ensures it's on a new line */
   margin-top: 5px;
@@ -948,6 +952,7 @@ code {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  align-items: stretch;
 }
 
 .holdings-grid {
@@ -1016,6 +1021,7 @@ code {
   box-shadow: 1px 1px 0 var(--black);
   max-height: 520px;
   overflow: hidden;
+  width: 100%;
 }
 
 .title-summary {
@@ -1030,7 +1036,10 @@ code {
   top: 0;
   z-index: 3;
   width: 100%;
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
   box-shadow: none;
   isolation: isolate;
 }
@@ -1054,7 +1063,7 @@ code {
 
 .title-summary::after {
   content: "▼";
-  float: right;
+  margin-left: auto;
 }
 
 .title-section[open] > .title-summary::after {
@@ -1107,14 +1116,52 @@ code {
 
   .holdings-section-list {
     flex-direction: column;
+    align-items: center;
   }
 
   .holdings-grid {
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    justify-items: center;
   }
 
   .holding-image {
     min-height: 160px;
+  }
+
+  .holding-card {
+    width: 100%;
+    max-width: 220px;
+  }
+
+  #userButtons {
+    position: static !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100%;
+    max-width: 420px;
+    margin: 8px auto 0;
+  }
+
+  #userButtons button {
+    width: auto !important;
+    min-width: 90px;
+  }
+
+  #voltMenuContainer {
+    position: static;
+    width: 100%;
+    margin: 8px auto 0;
+    justify-content: center;
+  }
+
+  #voltMenu {
+    width: min(90vw, 320px);
+  }
+
+  #closeSolariansButton {
+    align-self: center;
+    width: min(260px, 90%);
   }
 }
 
@@ -1147,6 +1194,7 @@ code {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  align-items: stretch;
 }
 
 .solarian-mosaic-grid {

@@ -1189,7 +1189,11 @@ function showPostLoginButtons() {
   userActionContainer.appendChild(logoutButton);
 
   // Attach to the DOM
-  document.body.appendChild(userActionContainer);
+  if (voltMenuContainer && voltMenuContainer.parentNode) {
+    voltMenuContainer.parentNode.insertBefore(userActionContainer, voltMenuContainer);
+  } else {
+    document.body.appendChild(userActionContainer);
+  }
 
   // ✅ Show the Volt menu only after login
   if (voltMenuContainer) voltMenuContainer.style.display = 'block';
