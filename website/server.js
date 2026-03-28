@@ -309,9 +309,11 @@ app.post('/api/admin/submissions/:submissionId/complete', authenticateToken, req
         const channel = await client.channels.fetch(channelId);
         if (channel) {
           const userTag = await resolveUsername(submission.userID);
+          const adminTag = await resolveUsername(req.user.userId);
           const messageLines = [
             '✅ Quest marked complete!',
             `User: ${userTag}`,
+            `Marked by: ${adminTag}`,
             `Volts awarded: ${rewardAmount}`,
             `Title: ${submission.title}`,
             `Description: ${submission.description}`,
