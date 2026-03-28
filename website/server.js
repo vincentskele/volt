@@ -52,6 +52,28 @@ db.run(
   }
 );
 
+function ensureJobSubmissionColumn(columnName, ddl) {
+  db.all(`PRAGMA table_info(job_submissions)`, (err, columns) => {
+    if (err) {
+      console.error('❌ Error checking job_submissions schema:', err);
+      return;
+    }
+    const exists = columns.some((col) => col.name === columnName);
+    if (!exists) {
+      db.run(`ALTER TABLE job_submissions ADD COLUMN ${ddl}`, (alterErr) => {
+        if (alterErr) {
+          console.error(`❌ Failed adding ${columnName} to job_submissions:`, alterErr);
+        } else {
+          console.log(`✅ Added ${columnName} to job_submissions.`);
+        }
+      });
+    }
+  });
+}
+
+ensureJobSubmissionColumn('reward_amount', 'reward_amount INTEGER DEFAULT 0');
+ensureJobSubmissionColumn('completed_at', 'completed_at INTEGER');
+
 const ROBO_CHECK_HOLDERS_PATH =
   process.env.ROBO_CHECK_HOLDERS_PATH ||
   path.resolve(__dirname, '..', '..', 'robo-check', 'src', 'data', 'holders.json');
@@ -233,6 +255,81 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
   } catch (err) {
     console.error('Error in /api/admin/users:', err);
     return res.status(500).json({ message: 'Failed to load users.' });
+  }
+});
+
+/**
+ * POST /api/admin/submissions/:submissionId/complete
+ * Marks a submission complete and rewards volts (admin only).
+ */
+app.post('/api/admin/submissions/:submissionId/complete', authenticateToken, requireAdmin, async (req, res) => {
+  const { submissionId } = req.params;
+  const rewardAmount = Number(req.body?.rewardAmount);
+
+  if (!Number.isFinite(rewardAmount) || rewardAmount < 0) {
+    return res.status(400).json({ message: 'Invalid reward amount.' });
+  }
+
+  try {
+    const submission = await dbGet(
+      `SELECT submission_id, userID, title, description, image_url, status
+       FROM job_submissions
+       WHERE submission_id = ?`,
+      [submissionId]
+    );
+
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found.' });
+    }
+
+    if (submission.status !== 'pending') {
+      return res.status(400).json({ message: 'Submission already processed.' });
+    }
+
+    await dbRun(
+      `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
+      [rewardAmount, submission.userID]
+    );
+
+    await dbRun(
+      `UPDATE job_submissions
+       SET status = 'completed', reward_amount = ?, completed_at = strftime('%s', 'now')
+       WHERE submission_id = ?`,
+      [rewardAmount, submissionId]
+    );
+
+    await dbRun(
+      `DELETE FROM job_assignees WHERE userID = ?`,
+      [submission.userID]
+    );
+
+    try {
+      const channelId = process.env.SUBMISSION_CHANNEL_ID;
+      if (channelId) {
+        const channel = await client.channels.fetch(channelId);
+        if (channel) {
+          const userTag = await resolveUsername(submission.userID);
+          const messageLines = [
+            '✅ Quest marked complete!',
+            `User: ${userTag}`,
+            `Volts awarded: ${rewardAmount}`,
+            `Title: ${submission.title}`,
+            `Description: ${submission.description}`,
+          ];
+          if (submission.image_url) {
+            messageLines.push(`Image: ${submission.image_url}`);
+          }
+          await channel.send(messageLines.join('\n'));
+        }
+      }
+    } catch (notifyErr) {
+      console.error('❌ Failed to send completion message:', notifyErr);
+    }
+
+    return res.json({ message: 'Submission completed.', rewardAmount });
+  } catch (err) {
+    console.error('Error completing submission:', err);
+    return res.status(500).json({ message: 'Failed to complete submission.' });
   }
 });
 

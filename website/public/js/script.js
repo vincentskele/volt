@@ -1159,6 +1159,11 @@ async function loadAdminPage() {
           item.appendChild(link);
         }
 
+        item.addEventListener('click', (event) => {
+          if (event.target && event.target.tagName === 'A') return;
+          showSubmissionRewardModal(submission);
+        });
+
         submissionsList.appendChild(item);
       });
     }
@@ -1185,6 +1190,66 @@ async function loadAdminPage() {
     submissionsList.innerHTML = '<div class="admin-item">Failed to load submissions.</div>';
     usersList.innerHTML = '<div class="admin-item">Failed to load users.</div>';
   }
+}
+
+function showSubmissionRewardModal(submission) {
+  const existingModal = document.getElementById('submissionRewardModal');
+  if (existingModal) existingModal.remove();
+
+  const modalOverlay = document.createElement('div');
+  modalOverlay.className = 'modal-overlay';
+  modalOverlay.id = 'submissionRewardModal';
+
+  const modalBox = document.createElement('div');
+  modalBox.className = 'modal-box';
+  modalBox.innerHTML = `
+    <h2>Mark Quest Complete</h2>
+    <p style="margin-bottom: 8px;">${submission.title}</p>
+    <input type="number" id="rewardVoltsInput" placeholder="Volts to award" min="0" style="margin:6px 0; width: 100%; padding: 6px;">
+    <div class="modal-buttons">
+      <button class="confirm-button" id="confirmReward">Confirm</button>
+      <button class="cancel-button" id="cancelReward">Cancel</button>
+    </div>
+  `;
+
+  modalOverlay.appendChild(modalBox);
+  document.body.appendChild(modalOverlay);
+
+  const close = () => modalOverlay.remove();
+
+  document.getElementById('cancelReward').addEventListener('click', close);
+  document.getElementById('confirmReward').addEventListener('click', async () => {
+    const rewardAmount = Number(document.getElementById('rewardVoltsInput').value);
+    if (!Number.isFinite(rewardAmount) || rewardAmount < 0) {
+      showConfirmationPopup('❌ Please enter a valid volts amount.');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/admin/submissions/${submission.submission_id}/complete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ rewardAmount }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        showConfirmationPopup(`❌ ${result.message || 'Failed to complete submission.'}`);
+        return;
+      }
+
+      close();
+      showConfirmationPopup('✅ Submission marked complete.');
+      loadAdminPage();
+    } catch (error) {
+      console.error('❌ Failed to complete submission:', error);
+      showConfirmationPopup('❌ Failed to complete submission.');
+    }
+  });
 }
 
 async function addAdminButton(userActionContainer, logoutButton) {
