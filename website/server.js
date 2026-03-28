@@ -395,7 +395,7 @@ function getServerOrigin() {
   const raw = process.env.BASE_URL || `http://localhost:${PORT}`;
   try {
     const url = new URL(raw.includes("://") ? raw : `http://${raw}`);
-    if (!url.port) {
+    if (!url.port && (url.hostname === "localhost" || url.hostname === "127.0.0.1")) {
       url.port = String(PORT);
     }
     return url.origin;
@@ -513,6 +513,7 @@ app.get("/auth/discord", (req, res) => {
   }
 
   const redirectUri = getDiscordRedirectUri();
+  console.log("🔁 Discord OAuth redirect URI:", redirectUri);
   const params = new URLSearchParams({
     client_id: DISCORD_CLIENT_ID,
     redirect_uri: redirectUri,
