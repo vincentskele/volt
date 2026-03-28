@@ -457,12 +457,12 @@ async function resolveChannelName(channelId) {
 
 async function fetchJobs() {
   try {
-    jobListContent.innerHTML = '<p>Loading jobs...</p>';
+    jobListContent.innerHTML = '<p>Loading Quests...</p>';
     const res = await fetch('/api/jobs');
     const jobs = await res.json();
 
     if (!jobs.length) {
-      jobListContent.innerHTML = '<p class="no-jobs-message">No jobs available at the moment. Please check back later.</p>';
+      jobListContent.innerHTML = '<p class="no-jobs-message">No quests available at the moment. Please check back later.</p>';
       return;
     }
 
@@ -556,17 +556,18 @@ async function assignUserToJob(jobID) {
     });
 
     const result = await response.json();
-    console.log(`[DEBUG] Job assignment response:`, result);
+    console.log(`[DEBUG] Quest assignment response:`, result);
 
     if (response.ok) {
-      showConfirmationPopup(`✅ Successfully assigned to job: "${result.job.description}"`);
+      showConfirmationPopup(`✅ Successfully assigned to quest: "${result.job.description}"`);
       fetchJobs(); // Refresh the job list
+      fetchQuestStatus();
     } else {
-      showConfirmationPopup(`❌ Job assignment failed: ${result.error}`);
+      showConfirmationPopup(`❌ Quest assignment failed: ${result.error}`);
     }
   } catch (error) {
-    console.error(`[ERROR] Error assigning job:`, error);
-    showConfirmationPopup('❌ Error assigning job.');
+    console.error(`[ERROR] Error assigning quest:`, error);
+    showConfirmationPopup('❌ Error assigning quest.');
   }
 }
 
@@ -592,7 +593,7 @@ async function quitJob() {
 
   const token = localStorage.getItem('token');
   if (!token) {
-    showConfirmationPopup('❌ You must be logged in to quit your job.');
+    showConfirmationPopup('❌ You must be logged in to quit your quest.');
     return;
   }
 
@@ -613,12 +614,13 @@ async function quitJob() {
     if (response.ok) {
       showConfirmationPopup(`✅ ${result.message}`);
       fetchJobs(); // Refresh job list after quitting
+      fetchQuestStatus();
     } else {
       showConfirmationPopup(`❌ ${result.error}`);
     }
   } catch (error) {
     console.error('❌ Error quitting job:', error);
-    showConfirmationPopup('❌ Failed to quit job. Please try again later.');
+    showConfirmationPopup('❌ Failed to quit quest. Please try again later.');
   }
 }
 
@@ -627,7 +629,7 @@ document.addEventListener("click", (event) => {
   const modal = document.getElementById("jobSubmissionModal");
 
   if (event.target && event.target.id === "submitJobButton") {
-    console.log("✅ Submit Job button clicked!");
+    console.log("✅ Submit Quest button clicked!");
     
     if (modal) {
       modal.style.display = "flex"; // Show the modal
@@ -662,7 +664,7 @@ document.addEventListener("click", async (event) => {
 
   // ✅ Open modal when clicking "Submit Task" button
   if (event.target.id === "submitJobButton") {
-    console.log("✅ Submit Job button clicked!");
+    console.log("✅ Submit Quest button clicked!");
     if (modal) {
       modal.style.display = "flex";
       console.log("📌 Submission modal is now visible.");
@@ -689,13 +691,13 @@ document.addEventListener("click", async (event) => {
 
     const selectedJobID = localStorage.getItem("selectedJobID");
     if (!selectedJobID) {
-      showStyledAlert("⚠️ Please select a job first.", 3000);
+      showStyledAlert("⚠️ Please select a quest first.", 3000);
       return;
     }
 
     const job = await getJobById(selectedJobID);
     if (!job) {
-      showStyledAlert("❌ Job not found! Please select a valid job.", 3000);
+      showStyledAlert("❌ Quest not found! Please select a valid quest.", 3000);
       return;
     }
 
@@ -753,14 +755,15 @@ document.addEventListener("click", async (event) => {
       console.log("📥 Server response:", result);
 
       if (response.ok) {
-        showStyledAlert("✅ Job submitted successfully!", 3000);
+        showStyledAlert("✅ Quest submitted successfully!", 3000);
         modal.style.display = "none";
+        fetchQuestStatus();
       } else {
         showStyledAlert(`❌ Submission failed: ${result.error}`, 3000);
       }
     } catch (error) {
       console.error("❌ Error submitting job:", error);
-      showStyledAlert("❌ Failed to submit job.", 3000);
+      showStyledAlert("❌ Failed to submit quest.", 3000);
     }
   }
 });
@@ -1192,6 +1195,17 @@ async function loadAdminPage() {
   }
 }
 
+let adminPollingIntervalId = null;
+function startAdminPolling() {
+  if (adminPollingIntervalId) return;
+  adminPollingIntervalId = setInterval(() => {
+    const adminPage = document.getElementById('adminPage');
+    if (adminPage && adminPage.style.display === 'block') {
+      loadAdminPage();
+    }
+  }, 15000);
+}
+
 function showSubmissionRewardModal(submission) {
   const existingModal = document.getElementById('submissionRewardModal');
   if (existingModal) existingModal.remove();
@@ -1252,6 +1266,30 @@ function showSubmissionRewardModal(submission) {
   });
 }
 
+async function fetchQuestStatus() {
+  const token = localStorage.getItem('token');
+  const questStatusValue = document.getElementById('questStatusValue');
+  if (!token || !questStatusValue) return;
+
+  try {
+    const response = await fetch('/api/quest-status', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error('Failed to fetch quest status.');
+
+    const data = await response.json();
+    const statusMap = {
+      no_quest: 'No Quest',
+      active_quest: 'Active Quest',
+      awaiting_submission: 'Waiting on admin to mark complete',
+    };
+    questStatusValue.textContent = `Quest Status: ${statusMap[data.status] || 'Unknown'}`;
+  } catch (error) {
+    console.error('❌ Failed to fetch quest status:', error);
+    questStatusValue.textContent = 'Quest Status: Error';
+  }
+}
+
 async function addAdminButton(userActionContainer, logoutButton) {
   const token = localStorage.getItem('token');
   if (!token) return;
@@ -1276,6 +1314,7 @@ async function addAdminButton(userActionContainer, logoutButton) {
 
     adminButton.addEventListener('click', () => {
       loadAdminPage();
+      startAdminPolling();
       if (typeof showSection === 'function') {
         showSection('adminPage');
       }
@@ -1361,6 +1400,7 @@ function showPostLoginButtons() {
     }
     fetchUserHoldings();
     fetchVoltBalance();
+    fetchQuestStatus();
   });
 
   // ========== LOGOUT BUTTON ==========
@@ -1398,6 +1438,7 @@ function showPostLoginButtons() {
 
   // Fetch the user's Volt balance
   fetchVoltBalance();
+  fetchQuestStatus();
 }
 
 document.addEventListener('DOMContentLoaded', () => {

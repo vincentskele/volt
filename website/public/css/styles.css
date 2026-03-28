@@ -939,6 +939,13 @@ code {
   color: var(--text-secondary);
 }
 
+.profile-status {
+  margin: 8px 0 12px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+
 .profile-input {
   width: 100%;
   padding: 8px;

@@ -195,6 +195,25 @@ db.run(`
       else console.log('✅ Job assignees table is ready.');
     });
 
+    // Job Submissions (Admin Queue)
+    db.run(
+      `CREATE TABLE IF NOT EXISTS job_submissions (
+        submission_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userID TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        image_url TEXT,
+        status TEXT DEFAULT 'pending',
+        reward_amount INTEGER DEFAULT 0,
+        created_at INTEGER DEFAULT (strftime('%s', 'now')),
+        completed_at INTEGER
+      )`,
+      (err) => {
+        if (err) console.error('❌ Error creating job_submissions table:', err);
+        else console.log('✅ Job submissions table is ready.');
+      }
+    );
+
     // Job Cycle (Round-Robin Assignments)
     db.run(`
       CREATE TABLE IF NOT EXISTS job_cycle (
@@ -697,6 +716,32 @@ function completeJob(userID, reward) {
         }
       );
     });
+  });
+}
+
+/**
+ * Marks the latest pending job submission as completed for a user.
+ */
+function markLatestSubmissionCompleted(userID, reward) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `UPDATE job_submissions
+       SET status = 'completed',
+           reward_amount = ?,
+           completed_at = strftime('%s', 'now')
+       WHERE submission_id = (
+         SELECT submission_id
+         FROM job_submissions
+         WHERE userID = ? AND status = 'pending'
+         ORDER BY created_at DESC
+         LIMIT 1
+       )`,
+      [reward, userID],
+      function (err) {
+        if (err) return reject('Failed to update job submission status.');
+        resolve({ updated: this.changes || 0 });
+      }
+    );
   });
 }
 
@@ -2501,6 +2546,7 @@ module.exports = {
   addJob,
   getJobList,
   completeJob,
+  markLatestSubmissionCompleted,
   renumberJobs,
   getCurrentJobIndex,
   setCurrentJobIndex,

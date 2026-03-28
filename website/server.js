@@ -259,6 +259,45 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
 });
 
 /**
+ * GET /api/quest-status
+ * Returns quest status for current user.
+ */
+app.get('/api/quest-status', authenticateToken, async (req, res) => {
+  const userId = req.user?.userId;
+  if (!userId) {
+    return res.status(401).json({ message: 'User not authenticated.' });
+  }
+
+  try {
+    const pending = await dbGet(
+      `SELECT submission_id FROM job_submissions
+       WHERE userID = ? AND status = 'pending'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [userId]
+    );
+
+    if (pending) {
+      return res.json({ status: 'awaiting_submission' });
+    }
+
+    const activeJob = await dbGet(
+      `SELECT jobID FROM job_assignees WHERE userID = ?`,
+      [userId]
+    );
+
+    if (activeJob) {
+      return res.json({ status: 'active_quest' });
+    }
+
+    return res.json({ status: 'no_quest' });
+  } catch (err) {
+    console.error('Error in /api/quest-status:', err);
+    return res.status(500).json({ message: 'Failed to fetch quest status.' });
+  }
+});
+
+/**
  * POST /api/admin/submissions/:submissionId/complete
  * Marks a submission complete and rewards volts (admin only).
  */
@@ -1123,23 +1162,27 @@ app.post('/api/assign-job', authenticateToken, async (req, res) => {
 
   if (!jobID) {
     console.error(`[ERROR] Job ID missing in request`);
-    return res.status(400).json({ error: 'Invalid job ID' });
+    return res.status(400).json({ error: 'Invalid quest selection' });
   }
 
   try {
     const activeJob = await getActiveJob(userID);
     if (activeJob) {
       console.warn(`[WARN] User ${userID} already has job ${activeJob.jobID}`);
-      return res.status(400).json({ error: 'You already have an assigned job.' });
+      return res.status(400).json({ error: 'You already have an assigned quest.' });
     }
 
     const job = await assignJobById(userID, jobID);
     console.log(`[SUCCESS] Job assigned to user ${userID}:`, job);
+    await dbRun(
+      `DELETE FROM job_submissions WHERE userID = ? AND status = 'pending'`,
+      [userID]
+    );
     return res.json({ success: true, job });
 
   } catch (error) {
     console.error(`[ERROR] Job assignment failed:`, error);
-    return res.status(500).json({ error: 'Failed to assign job' });
+    return res.status(500).json({ error: 'Failed to assign quest' });
   }
 });
 
@@ -1159,15 +1202,19 @@ app.post('/api/quit-job', authenticateToken, async (req, res) => {
 
     if (!activeJob) {
       console.warn(`[WARN] User ${userID} has no active job.`);
-      return res.status(400).json({ error: 'You have no active job to quit.' });
+      return res.status(400).json({ error: 'You have no active quest to quit.' });
     }
 
     console.log(`[INFO] Removing job ${activeJob.jobID} for user ${userID}`);
     
     await dbRun(`DELETE FROM job_assignees WHERE userID = ?`, [userID]);
+    await dbRun(
+      `DELETE FROM job_submissions WHERE userID = ? AND status = 'pending'`,
+      [userID]
+    );
 
     console.log(`[SUCCESS] User ${userID} quit their job.`);
-    return res.json({ success: true, message: 'You have quit your job.' });
+    return res.json({ success: true, message: 'You have quit your quest.' });
 
   } catch (error) {
     console.error(`[ERROR] Job quitting failed:`, error);

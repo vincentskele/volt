@@ -53,6 +53,13 @@ module.exports = {
         return interaction.reply({ content: `🚫 Failed to complete the quest for <@${targetUser.id}>.`, ephemeral: true });
       }
 
+      // Clean up admin queue submission if it exists
+      try {
+        await db.markLatestSubmissionCompleted(targetUser.id, reward);
+      } catch (cleanupErr) {
+        console.warn('⚠️ Failed to clean up job submission queue:', cleanupErr);
+      }
+
       // Special message if reward is 0
       if (reward === 0) {
         return interaction.reply(
