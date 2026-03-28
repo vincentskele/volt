@@ -575,6 +575,34 @@ code {
   margin: 2px 0;
 }
 
+/* --------------------------------------------------
+   ADMIN DASHBOARD
+-------------------------------------------------- */
+.admin-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto 10px;
+}
+
+.admin-panel {
+  background: var(--bg-content);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 12px;
+  width: min(460px, 100%);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+}
+
+.admin-panel h3 {
+  margin: 0 0 8px;
+  text-align: center;
+}
+
 .shop-instructions li {
   margin-left: 20px; /* Indents the list items */
   padding: 10px 0 !important; /* Adds spacing between items */

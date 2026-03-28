@@ -1094,6 +1094,138 @@ if (discordLoginButton) {
   });
 }
 
+async function loadAdminPage() {
+  const token = localStorage.getItem('token');
+  const submissionsList = document.getElementById('adminSubmissionsList');
+  const usersList = document.getElementById('adminUserList');
+  const emptyState = document.getElementById('adminSubmissionsEmpty');
+
+  if (!token || !submissionsList || !usersList) return;
+
+  submissionsList.innerHTML = '';
+  usersList.innerHTML = '';
+  if (emptyState) emptyState.style.display = 'none';
+
+  try {
+    const [subRes, userRes] = await Promise.all([
+      fetch('/api/admin/submissions', {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      fetch('/api/admin/users', {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+    ]);
+
+    if (!subRes.ok || !userRes.ok) {
+      throw new Error('Failed to load admin data.');
+    }
+
+    const submissions = await subRes.json();
+    const users = await userRes.json();
+
+    if (!Array.isArray(submissions) || submissions.length === 0) {
+      if (emptyState) emptyState.style.display = 'block';
+    } else {
+      submissions.forEach((submission) => {
+        const item = document.createElement('div');
+        item.className = 'admin-item';
+
+        const title = document.createElement('p');
+        title.textContent = `Title: ${submission.title}`;
+        const user = document.createElement('p');
+        const userLabel = submission.username ? submission.username : submission.userID;
+        user.textContent = `User: ${userLabel}`;
+
+        const desc = document.createElement('p');
+        desc.textContent = `Desc: ${submission.description}`;
+
+        const when = document.createElement('p');
+        const time = submission.created_at
+          ? new Date(submission.created_at * 1000).toLocaleString()
+          : 'Unknown time';
+        when.textContent = `Submitted: ${time}`;
+
+        item.appendChild(title);
+        item.appendChild(user);
+        item.appendChild(desc);
+        item.appendChild(when);
+
+        if (submission.image_url) {
+          const link = document.createElement('a');
+          link.href = submission.image_url;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = 'View Image';
+          item.appendChild(link);
+        }
+
+        submissionsList.appendChild(item);
+      });
+    }
+
+    if (!Array.isArray(users) || users.length === 0) {
+      const emptyUsers = document.createElement('div');
+      emptyUsers.className = 'admin-item';
+      emptyUsers.textContent = 'No users found.';
+      usersList.appendChild(emptyUsers);
+    } else {
+      users.forEach((user) => {
+        const item = document.createElement('div');
+        item.className = 'admin-item';
+        item.style.cursor = 'pointer';
+        item.textContent = user.username || user.userID;
+        item.addEventListener('click', () => {
+          fetchUserInventory(user.userID);
+        });
+        usersList.appendChild(item);
+      });
+    }
+  } catch (error) {
+    console.error('❌ Failed to load admin dashboard:', error);
+    submissionsList.innerHTML = '<div class="admin-item">Failed to load submissions.</div>';
+    usersList.innerHTML = '<div class="admin-item">Failed to load users.</div>';
+  }
+}
+
+async function addAdminButton(userActionContainer, logoutButton) {
+  const token = localStorage.getItem('token');
+  if (!token) return;
+
+  try {
+    const response = await fetch('/api/admin/check', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) return;
+
+    const data = await response.json();
+    if (!data?.isAdmin) return;
+
+    const adminButton = document.createElement('button');
+    adminButton.textContent = 'ADMIN';
+    adminButton.className = 'btn text-sm font-bold';
+    adminButton.style.height = '24px';
+    adminButton.style.width = '110px';
+    adminButton.style.lineHeight = '24px';
+    adminButton.style.padding = '0 12px';
+    adminButton.style.textAlign = 'center';
+
+    adminButton.addEventListener('click', () => {
+      loadAdminPage();
+      if (typeof showSection === 'function') {
+        showSection('adminPage');
+      }
+    });
+
+    if (logoutButton && userActionContainer.contains(logoutButton)) {
+      userActionContainer.insertBefore(adminButton, logoutButton);
+    } else {
+      userActionContainer.appendChild(adminButton);
+    }
+  } catch (error) {
+    console.error('❌ Failed to check admin status:', error);
+  }
+}
+
 
 /**
  * Replace the login form with 2 stacked buttons (INVENTORY + LOGOUT).
@@ -1187,6 +1319,7 @@ function showPostLoginButtons() {
   userActionContainer.appendChild(inventoryButton);
   userActionContainer.appendChild(userProfileButton);
   userActionContainer.appendChild(logoutButton);
+  addAdminButton(userActionContainer, logoutButton);
 
   // Attach to the DOM
   if (voltMenuContainer && voltMenuContainer.parentNode) {

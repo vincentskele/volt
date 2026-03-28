@@ -35,6 +35,23 @@ const db = new sqlite3.Database(dbPath, (err) => {
   }
 });
 
+// ✅ Admin/Quest submissions table (for pending review)
+db.run(
+  `CREATE TABLE IF NOT EXISTS job_submissions (
+    submission_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    userID TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    image_url TEXT,
+    status TEXT DEFAULT 'pending',
+    created_at INTEGER DEFAULT (strftime('%s', 'now'))
+  )`,
+  (err) => {
+    if (err) console.error('❌ Error creating job_submissions table:', err);
+    else console.log('✅ Job submissions table is ready.');
+  }
+);
+
 const ROBO_CHECK_HOLDERS_PATH =
   process.env.ROBO_CHECK_HOLDERS_PATH ||
   path.resolve(__dirname, '..', '..', 'robo-check', 'src', 'data', 'holders.json');
@@ -163,6 +180,59 @@ app.get('/api/admins', async (req, res) => {
   } catch (err) {
     console.error('Error in /api/admins route:', err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/admin/check
+ * Returns whether the current user is an admin.
+ */
+app.get('/api/admin/check', authenticateToken, async (req, res) => {
+  try {
+    const admin = await isAdmin(req.user?.userId);
+    return res.json({ isAdmin: admin });
+  } catch (err) {
+    console.error('Error in /api/admin/check:', err);
+    return res.status(500).json({ message: 'Failed to check admin.' });
+  }
+});
+
+/**
+ * GET /api/admin/submissions
+ * Returns pending job submissions (admin only).
+ */
+app.get('/api/admin/submissions', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT s.submission_id, s.userID, e.username, s.title, s.description, s.image_url, s.status, s.created_at
+       FROM job_submissions s
+       LEFT JOIN economy e ON e.userID = s.userID
+       WHERE s.status = 'pending'
+       ORDER BY s.created_at DESC`
+    );
+    return res.json(rows || []);
+  } catch (err) {
+    console.error('Error in /api/admin/submissions:', err);
+    return res.status(500).json({ message: 'Failed to load submissions.' });
+  }
+});
+
+/**
+ * GET /api/admin/users
+ * Returns all users (admin only).
+ */
+app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT userID, username
+       FROM economy
+       WHERE username IS NOT NULL AND username != ''
+       ORDER BY LOWER(username) ASC`
+    );
+    return res.json(rows || []);
+  } catch (err) {
+    console.error('Error in /api/admin/users:', err);
+    return res.status(500).json({ message: 'Failed to load users.' });
   }
 });
 
@@ -503,6 +573,26 @@ const util = require('util');
 const dbRun = util.promisify(db.run).bind(db);
 // Promisify the db.get method for easier async/await usage
 const dbGet = util.promisify(db.get).bind(db);
+const dbAll = util.promisify(db.all).bind(db);
+
+async function isAdmin(userId) {
+  if (!userId) return false;
+  const row = await dbGet(`SELECT 1 FROM admins WHERE userID = ?`, [userId]);
+  return !!row;
+}
+
+async function requireAdmin(req, res, next) {
+  try {
+    const admin = await isAdmin(req.user?.userId);
+    if (!admin) {
+      return res.status(403).json({ message: "Admin access required." });
+    }
+    return next();
+  } catch (err) {
+    console.error("❌ Admin check failed:", err);
+    return res.status(500).json({ message: "Failed to verify admin." });
+  }
+}
 
 /**
  * POST /api/login
@@ -1043,14 +1133,20 @@ app.post("/api/submit-job", upload.single("image"), async (req, res) => {
       .setTimestamp();
 
     // ✅ Attach image URL in embed as a field
-    if (req.file) {
-      const imageUrl = `https://volt.solarians.world/uploads/${encodeURIComponent(req.file.filename)}`;
+    const imageUrl = req.file
+      ? `https://volt.solarians.world/uploads/${encodeURIComponent(req.file.filename)}`
+      : null;
+    if (imageUrl) {
       console.log("🖼️ Image URL for embed:", imageUrl);
-
       embed.addFields({ name: "📷 Image URL", value: `[Click to View](${imageUrl})` });
     }
 
     await channel.send({ embeds: [embed] });
+
+    await dbRun(
+      `INSERT INTO job_submissions (userID, title, description, image_url) VALUES (?, ?, ?, ?)`,
+      [userID, title, description, imageUrl]
+    );
 
     console.log("✅ Job submitted successfully!");
     res.json({ message: "Job submitted successfully!" });
