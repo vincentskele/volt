@@ -1031,6 +1031,8 @@ const discordLoginButton = document.getElementById('discordLoginButton');
 const voltMenuContainer = document.getElementById('voltMenuContainer');
 const sendChatButton = document.getElementById('sendChatButton');
 const chatInput = document.getElementById('chatInput');
+const adminAddJobButton = document.getElementById('adminAddJob');
+const adminJobInput = document.getElementById('adminJobInput');
 
 // Ensure Volt elements are hidden initially
 if (voltMenuContainer) voltMenuContainer.style.display = 'none';
@@ -1108,6 +1110,26 @@ if (chatInput) {
       event.preventDefault();
       sendChatMessage();
     }
+  });
+}
+
+if (adminAddJobButton) {
+  adminAddJobButton.addEventListener('click', async () => {
+    const token = localStorage.getItem('token');
+    if (!token || !adminJobInput) return;
+    const description = adminJobInput.value.trim();
+    if (!description) return;
+    confirmTwice('Add this quest?', async () => {
+      const result = await adminActionRequest('/api/admin/joblist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ description }),
+      });
+      if (result.ok) {
+        adminJobInput.value = '';
+        loadAdminJoblist();
+      }
+    });
   });
 }
 
@@ -1260,14 +1282,540 @@ async function loadAdminPage() {
   }
 }
 
+function confirmTwice(message, onConfirm) {
+  customConfirm(message, () => {
+    customConfirm('Are you REALLY sure?', onConfirm);
+  });
+}
+
+async function adminActionRequest(url, options) {
+  try {
+    const response = await fetch(url, options);
+    let payload = {};
+    try { payload = await response.json(); } catch (e) {}
+    if (!response.ok) {
+      showConfirmationPopup(`❌ ${payload.message || 'Request failed.'}`);
+      return { ok: false, payload };
+    }
+    showConfirmationPopup(`✅ ${payload.message || 'Updated.'}`);
+    return { ok: true, payload };
+  } catch (error) {
+    console.error('❌ Admin action failed:', error);
+    showConfirmationPopup('❌ Request failed.');
+    return { ok: false, payload: {} };
+  }
+}
+
+function initAdminToggles() {
+  document.querySelectorAll('.admin-toggle').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const targetId = btn.getAttribute('data-target');
+      const panel = document.getElementById(targetId);
+      if (!panel) return;
+      const isOpen = panel.style.display === 'block';
+
+      // Hide all panels and show all buttons first
+      document.querySelectorAll('.admin-panel').forEach((p) => {
+        p.style.display = 'none';
+      });
+      document.querySelectorAll('.admin-toggle').forEach((b) => {
+        b.style.display = 'inline-block';
+      });
+
+      if (!isOpen) {
+        panel.style.display = 'block';
+        btn.style.display = 'none';
+        if (targetId === 'adminSubmissionsPanel') loadAdminPage();
+        if (targetId === 'adminUserPanel') loadAdminUsers();
+        if (targetId === 'adminTitleGiveawaysPanel') loadAdminTitleGiveaways();
+        if (targetId === 'adminGiveawaysPanel') loadAdminGiveaways();
+        if (targetId === 'adminRafflesPanel') loadAdminRaffles();
+        if (targetId === 'adminJoblistPanel') loadAdminJoblist();
+      }
+    });
+  });
+}
+
+async function loadAdminUsers() {
+  const token = localStorage.getItem('token');
+  const usersList = document.getElementById('adminUserList');
+  if (!token || !usersList) return;
+  usersList.innerHTML = '';
+  try {
+    const res = await fetch('/api/admin/users', { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error('Failed to load users.');
+    const users = await res.json();
+    if (!users.length) {
+      usersList.innerHTML = '<div class="admin-item">No users found.</div>';
+      return;
+    }
+    users.forEach((user) => {
+      const item = document.createElement('div');
+      item.className = 'admin-item';
+      item.style.cursor = 'pointer';
+      item.textContent = user.username || user.userID;
+      item.addEventListener('click', () => {
+        fetchUserInventory(user.userID);
+        showSection('inventorySection');
+      });
+      usersList.appendChild(item);
+    });
+  } catch (error) {
+    console.error('❌ Failed to load users:', error);
+    usersList.innerHTML = '<div class="admin-item">Failed to load users.</div>';
+  }
+}
+
+function buildEditModal(title, fields, onSubmit) {
+  const existing = document.getElementById('adminEditModal');
+  if (existing) existing.remove();
+
+  const modalOverlay = document.createElement('div');
+  modalOverlay.className = 'modal-overlay';
+  modalOverlay.id = 'adminEditModal';
+
+  const modalBox = document.createElement('div');
+  modalBox.className = 'modal-box';
+  modalBox.innerHTML = `<h2>${title}</h2>`;
+
+  fields.forEach((field) => {
+    const label = document.createElement('label');
+    label.textContent = field.label;
+    label.style.display = 'block';
+    label.style.marginTop = '8px';
+    modalBox.appendChild(label);
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = field.value ?? '';
+    input.placeholder = field.label;
+    input.dataset.key = field.key;
+    input.style.margin = '6px 0';
+    input.style.width = '100%';
+    input.style.padding = '6px';
+    modalBox.appendChild(input);
+  });
+
+  const buttons = document.createElement('div');
+  buttons.className = 'modal-buttons';
+  buttons.innerHTML = `
+    <button class="confirm-button" id="adminEditConfirm">Confirm</button>
+    <button class="cancel-button" id="adminEditCancel">Cancel</button>
+  `;
+  modalBox.appendChild(buttons);
+  modalOverlay.appendChild(modalBox);
+  document.body.appendChild(modalOverlay);
+
+  document.getElementById('adminEditCancel').addEventListener('click', () => modalOverlay.remove());
+  document.getElementById('adminEditConfirm').addEventListener('click', () => {
+    const data = {};
+    modalBox.querySelectorAll('input').forEach((input) => {
+      data[input.dataset.key] = input.value;
+    });
+    confirmTwice('Are you sure you want to edit this?', async () => {
+      await onSubmit(data);
+      modalOverlay.remove();
+    });
+  });
+}
+
+function msToDays(ms) {
+  return Math.max(0, Math.round((ms || 0) / (24 * 60 * 60 * 1000)));
+}
+
+function daysFromNow(days) {
+  const value = Number(days);
+  if (!Number.isFinite(value) || value <= 0) return Date.now() + 24 * 60 * 60 * 1000;
+  return Date.now() + value * 24 * 60 * 60 * 1000;
+}
+
+async function loadAdminGiveaways() {
+  const token = localStorage.getItem('token');
+  const list = document.getElementById('adminGiveawaysList');
+  if (!token || !list) return;
+  list.innerHTML = '';
+
+  const createRow = document.createElement('div');
+  createRow.className = 'admin-actions';
+  const createBtn = document.createElement('button');
+  createBtn.className = 'btn';
+  createBtn.textContent = 'Create Giveaway';
+  createRow.appendChild(createBtn);
+  list.appendChild(createRow);
+  createBtn.addEventListener('click', () => {
+    buildEditModal('Create Giveaway', [
+      { key: 'giveaway_name', label: 'Name', value: '' },
+      { key: 'prize', label: 'Prize', value: '' },
+      { key: 'winners', label: 'Winners', value: 1 },
+      { key: 'end_time', label: 'End Time (days)', value: 1 },
+      { key: 'repeat', label: 'Repeat (0/1)', value: 0 },
+    ], async (data) => {
+      const payload = {
+        ...data,
+        end_time: daysFromNow(data.end_time),
+      };
+      const result = await adminActionRequest('/api/admin/giveaways/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
+      });
+      if (result.ok) loadAdminGiveaways();
+    });
+  });
+
+  try {
+    const res = await fetch('/api/admin/giveaways', { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error('Failed to load giveaways.');
+    const items = (await res.json()).filter((g) => !g.end_time || g.end_time > Date.now());
+    if (!items.length) {
+      const empty = document.createElement('div');
+      empty.className = 'admin-item';
+      empty.textContent = 'No giveaways found.';
+      list.appendChild(empty);
+      return;
+    }
+    items.forEach((g) => {
+      const item = document.createElement('div');
+      item.className = 'admin-item';
+      const end = g.end_time ? new Date(g.end_time).toLocaleString() : 'N/A';
+      item.innerHTML = `<p><strong>${g.giveaway_name}</strong></p><p>Prize: ${g.prize} | Winners: ${g.winners}</p><p>Ends: ${end}</p>`;
+      const actions = document.createElement('div');
+      actions.className = 'modal-buttons';
+      const editBtn = document.createElement('button');
+      editBtn.className = 'confirm-button';
+      editBtn.textContent = 'Edit';
+      const startBox = document.createElement('div');
+      startBox.className = 'admin-placeholder';
+      startBox.textContent = 'Started';
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'cancel-button';
+      cancelBtn.textContent = 'Cancel';
+      actions.appendChild(editBtn);
+      actions.appendChild(startBox);
+      actions.appendChild(cancelBtn);
+      item.appendChild(actions);
+
+      editBtn.addEventListener('click', () => {
+        buildEditModal('Edit Giveaway', [
+          { key: 'giveaway_name', label: 'Name', value: g.giveaway_name },
+          { key: 'prize', label: 'Prize', value: g.prize },
+          { key: 'winners', label: 'Winners', value: g.winners },
+          { key: 'end_time', label: 'End Time (days)', value: msToDays(g.end_time - Date.now()) },
+          { key: 'repeat', label: 'Repeat (0/1)', value: g.repeat },
+        ], async (data) => {
+          const payload = {
+            ...data,
+            end_time: daysFromNow(data.end_time),
+          };
+          const result = await adminActionRequest(`/api/admin/giveaways/${g.id}/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify(payload),
+          });
+          if (result.ok) loadAdminGiveaways();
+        });
+      });
+      cancelBtn.addEventListener('click', () => {
+        confirmTwice('Cancel this giveaway?', async () => {
+          const result = await adminActionRequest(`/api/admin/giveaways/${g.id}/stop`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (result.ok) loadAdminGiveaways();
+        });
+      });
+
+      list.appendChild(item);
+    });
+  } catch (error) {
+    console.error('❌ Failed to load giveaways:', error);
+    list.innerHTML = '<div class="admin-item">Failed to load giveaways.</div>';
+  }
+}
+
+async function loadAdminTitleGiveaways() {
+  const token = localStorage.getItem('token');
+  const list = document.getElementById('adminTitleGiveawaysList');
+  if (!token || !list) return;
+  list.innerHTML = '';
+
+  const createRow = document.createElement('div');
+  createRow.className = 'admin-actions';
+  const createBtn = document.createElement('button');
+  createBtn.className = 'btn';
+  createBtn.textContent = 'Create Title Giveaway';
+  createRow.appendChild(createBtn);
+  list.appendChild(createRow);
+  createBtn.addEventListener('click', () => {
+    buildEditModal('Create Title Giveaway', [
+      { key: 'giveaway_name', label: 'Name', value: '' },
+      { key: 'prize', label: 'Prize', value: '' },
+      { key: 'winners', label: 'Winners', value: 1 },
+      { key: 'end_time', label: 'End Time (days)', value: 1 },
+      { key: 'repeat', label: 'Repeat (0/1)', value: 0 },
+    ], async (data) => {
+      const payload = {
+        ...data,
+        end_time: daysFromNow(data.end_time),
+      };
+      const result = await adminActionRequest('/api/admin/title-giveaways/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
+      });
+      if (result.ok) loadAdminTitleGiveaways();
+    });
+  });
+
+  try {
+    const res = await fetch('/api/admin/title-giveaways', { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error('Failed to load title giveaways.');
+    const items = (await res.json()).filter((g) => g.is_completed !== 1 && (!g.end_time || g.end_time > Date.now()));
+    if (!items.length) {
+      const empty = document.createElement('div');
+      empty.className = 'admin-item';
+      empty.textContent = 'No title giveaways found.';
+      list.appendChild(empty);
+      return;
+    }
+    items.forEach((g) => {
+      const item = document.createElement('div');
+      item.className = 'admin-item';
+      const end = g.end_time ? new Date(g.end_time).toLocaleString() : 'N/A';
+      item.innerHTML = `<p><strong>${g.giveaway_name}</strong></p><p>Prize: ${g.prize} | Winners: ${g.winners}</p><p>Ends: ${end}</p>`;
+      const actions = document.createElement('div');
+      actions.className = 'modal-buttons';
+      const editBtn = document.createElement('button');
+      editBtn.className = 'confirm-button';
+      editBtn.textContent = 'Edit';
+      const startBox = document.createElement('div');
+      startBox.className = 'admin-placeholder';
+      startBox.textContent = 'Started';
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'cancel-button';
+      cancelBtn.textContent = 'Cancel';
+      actions.appendChild(editBtn);
+      actions.appendChild(startBox);
+      actions.appendChild(cancelBtn);
+      item.appendChild(actions);
+
+      editBtn.addEventListener('click', () => {
+        buildEditModal('Edit Title Giveaway', [
+          { key: 'giveaway_name', label: 'Name', value: g.giveaway_name },
+          { key: 'prize', label: 'Prize', value: g.prize },
+          { key: 'winners', label: 'Winners', value: g.winners },
+          { key: 'end_time', label: 'End Time (days)', value: msToDays(g.end_time - Date.now()) },
+          { key: 'repeat', label: 'Repeat (0/1)', value: g.repeat },
+          { key: 'is_completed', label: 'Completed (0/1)', value: g.is_completed },
+        ], async (data) => {
+          const payload = {
+            ...data,
+            end_time: daysFromNow(data.end_time),
+          };
+          const result = await adminActionRequest(`/api/admin/title-giveaways/${g.id}/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify(payload),
+          });
+          if (result.ok) loadAdminTitleGiveaways();
+        });
+      });
+      cancelBtn.addEventListener('click', () => {
+        confirmTwice('Cancel this title giveaway?', async () => {
+          const result = await adminActionRequest(`/api/admin/title-giveaways/${g.id}/stop`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (result.ok) loadAdminTitleGiveaways();
+        });
+      });
+
+      list.appendChild(item);
+    });
+
+  } catch (error) {
+    console.error('❌ Failed to load title giveaways:', error);
+    list.innerHTML = '<div class="admin-item">Failed to load title giveaways.</div>';
+  }
+}
+
+async function loadAdminRaffles() {
+  const token = localStorage.getItem('token');
+  const list = document.getElementById('adminRafflesList');
+  if (!token || !list) return;
+  list.innerHTML = '';
+
+  const createRow = document.createElement('div');
+  createRow.className = 'admin-actions';
+  const createBtn = document.createElement('button');
+  createBtn.className = 'btn';
+  createBtn.textContent = 'Create Raffle';
+  createRow.appendChild(createBtn);
+  list.appendChild(createRow);
+  createBtn.addEventListener('click', () => {
+    buildEditModal('Create Raffle', [
+      { key: 'name', label: 'Name', value: '' },
+      { key: 'prize', label: 'Prize', value: '' },
+      { key: 'cost', label: 'Cost', value: 1 },
+      { key: 'quantity', label: 'Quantity', value: 1 },
+      { key: 'winners', label: 'Winners', value: 1 },
+      { key: 'end_time', label: 'End Time (days)', value: 1 },
+    ], async (data) => {
+      const payload = {
+        ...data,
+        end_time: daysFromNow(data.end_time),
+      };
+      const result = await adminActionRequest('/api/admin/raffles/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
+      });
+      if (result.ok) loadAdminRaffles();
+    });
+  });
+
+  try {
+    const res = await fetch('/api/admin/raffles', { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error('Failed to load raffles.');
+    const items = (await res.json()).filter((r) => !r.end_time || r.end_time > Date.now());
+    if (!items.length) {
+      const empty = document.createElement('div');
+      empty.className = 'admin-item';
+      empty.textContent = 'No raffles found.';
+      list.appendChild(empty);
+      return;
+    }
+    items.forEach((r) => {
+      const item = document.createElement('div');
+      item.className = 'admin-item';
+      const end = r.end_time ? new Date(r.end_time).toLocaleString() : 'N/A';
+      item.innerHTML = `<p><strong>${r.name}</strong></p><p>Prize: ${r.prize} | Winners: ${r.winners}</p><p>Ends: ${end}</p>`;
+      const actions = document.createElement('div');
+      actions.className = 'modal-buttons';
+      const editBtn = document.createElement('button');
+      editBtn.className = 'confirm-button';
+      editBtn.textContent = 'Edit';
+      const startBox = document.createElement('div');
+      startBox.className = 'admin-placeholder';
+      startBox.textContent = 'Started';
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'cancel-button';
+      cancelBtn.textContent = 'Cancel';
+      actions.appendChild(editBtn);
+      actions.appendChild(startBox);
+      actions.appendChild(cancelBtn);
+      item.appendChild(actions);
+
+      editBtn.addEventListener('click', () => {
+        buildEditModal('Edit Raffle', [
+          { key: 'name', label: 'Name', value: r.name },
+          { key: 'prize', label: 'Prize', value: r.prize },
+          { key: 'cost', label: 'Cost', value: r.cost },
+          { key: 'quantity', label: 'Quantity', value: r.quantity },
+          { key: 'winners', label: 'Winners', value: r.winners },
+          { key: 'end_time', label: 'End Time (days)', value: msToDays(r.end_time - Date.now()) },
+        ], async (data) => {
+          const payload = {
+            ...data,
+            end_time: daysFromNow(data.end_time),
+          };
+          const result = await adminActionRequest(`/api/admin/raffles/${r.id}/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify(payload),
+          });
+          if (result.ok) loadAdminRaffles();
+        });
+      });
+      cancelBtn.addEventListener('click', () => {
+        confirmTwice('Cancel this raffle?', async () => {
+          const result = await adminActionRequest(`/api/admin/raffles/${r.id}/stop`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (result.ok) loadAdminRaffles();
+        });
+      });
+
+      list.appendChild(item);
+    });
+  } catch (error) {
+    console.error('❌ Failed to load raffles:', error);
+    list.innerHTML = '<div class="admin-item">Failed to load raffles.</div>';
+  }
+}
+
+async function loadAdminJoblist() {
+  const token = localStorage.getItem('token');
+  const list = document.getElementById('adminJobList');
+  if (!token || !list) return;
+  list.innerHTML = '';
+  try {
+    const res = await fetch('/api/admin/joblist', { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error('Failed to load job list.');
+    const items = await res.json();
+    if (!items.length) {
+      list.innerHTML = '<div class="admin-item">No quests found.</div>';
+      return;
+    }
+    items.forEach((job) => {
+      const item = document.createElement('div');
+      item.className = 'admin-item';
+      item.innerHTML = `<p><strong>#${job.jobID}</strong> ${job.description}</p>`;
+      const actions = document.createElement('div');
+      actions.className = 'modal-buttons';
+      const editBtn = document.createElement('button');
+      editBtn.className = 'confirm-button';
+      editBtn.textContent = 'Edit';
+      const delBtn = document.createElement('button');
+      delBtn.className = 'cancel-button';
+      delBtn.textContent = 'Delete';
+      actions.appendChild(editBtn);
+      actions.appendChild(delBtn);
+      item.appendChild(actions);
+
+      editBtn.addEventListener('click', () => {
+        buildEditModal('Edit Quest', [
+          { key: 'description', label: 'Description', value: job.description },
+        ], async (data) => {
+          const result = await adminActionRequest(`/api/admin/joblist/${job.jobID}/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ description: data.description }),
+          });
+          if (result.ok) loadAdminJoblist();
+        });
+      });
+      delBtn.addEventListener('click', () => {
+        confirmTwice('Delete this quest?', async () => {
+          const result = await adminActionRequest(`/api/admin/joblist/${job.jobID}/delete`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (result.ok) loadAdminJoblist();
+        });
+      });
+
+      list.appendChild(item);
+    });
+  } catch (error) {
+    console.error('❌ Failed to load job list:', error);
+    list.innerHTML = '<div class="admin-item">Failed to load job list.</div>';
+  }
+}
+
 let adminPollingIntervalId = null;
 function startAdminPolling() {
   if (adminPollingIntervalId) return;
   adminPollingIntervalId = setInterval(() => {
     const adminPage = document.getElementById('adminPage');
-    if (adminPage && adminPage.style.display === 'block') {
-      loadAdminPage();
-    }
+    if (!adminPage || adminPage.style.display !== 'block') return;
+    if (document.getElementById('adminSubmissionsPanel')?.style.display === 'block') loadAdminPage();
+    if (document.getElementById('adminUserPanel')?.style.display === 'block') loadAdminUsers();
+    if (document.getElementById('adminTitleGiveawaysPanel')?.style.display === 'block') loadAdminTitleGiveaways();
+    if (document.getElementById('adminGiveawaysPanel')?.style.display === 'block') loadAdminGiveaways();
+    if (document.getElementById('adminRafflesPanel')?.style.display === 'block') loadAdminRaffles();
+    if (document.getElementById('adminJoblistPanel')?.style.display === 'block') loadAdminJoblist();
   }, 15000);
 }
 
@@ -1643,6 +2191,8 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('🔒 User is not logged in, hiding Volt menu.');
   }
 });
+
+initAdminToggles();
 
 async function fetchVoltBalance() {
   try {
@@ -2357,20 +2907,23 @@ function customConfirm(message, onConfirm) {
     <h2>Confirm</h2>
     <p>${message}</p>
     <div style="margin-top: 10px;">
-      <button id="confirmYes" class="confirm-button">Yes</button>
-      <button id="confirmNo" class="cancel-button">No</button>
+      <button class="confirm-button">Yes</button>
+      <button class="cancel-button">No</button>
     </div>
   `;
 
   modalOverlay.appendChild(modalBox);
   document.body.appendChild(modalOverlay);
 
-  document.getElementById("confirmYes").addEventListener("click", () => {
+  const yesButton = modalBox.querySelector(".confirm-button");
+  const noButton = modalBox.querySelector(".cancel-button");
+
+  yesButton.addEventListener("click", () => {
     onConfirm();
     modalOverlay.remove();
   });
 
-  document.getElementById("confirmNo").addEventListener("click", () => {
+  noButton.addEventListener("click", () => {
     modalOverlay.remove();
   });
 }

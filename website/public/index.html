@@ -253,18 +253,50 @@
 <!-- Admin Dashboard Section (Admins Only) -->
 <div id="adminPage" class="content" style="display: none;">
   <h2>🛠️ Admin Dashboard</h2>
-  <div class="admin-grid">
-    <div class="admin-panel">
-      <h3>⏳ Pending Quest Submissions</h3>
-      <div id="adminSubmissionsList" class="admin-list"></div>
-      <div id="adminSubmissionsEmpty" class="empty-state" style="display: none;">
-        No pending submissions.
-      </div>
+  <div class="admin-sections">
+    <button class="btn admin-toggle" data-target="adminSubmissionsPanel">Job Submissions</button>
+    <button class="btn admin-toggle" data-target="adminUserPanel">User List</button>
+    <button class="btn admin-toggle" data-target="adminTitleGiveawaysPanel">Title Giveaways</button>
+    <button class="btn admin-toggle" data-target="adminGiveawaysPanel">Giveaways</button>
+    <button class="btn admin-toggle" data-target="adminRafflesPanel">Raffles</button>
+    <button class="btn admin-toggle" data-target="adminJoblistPanel">Job List</button>
+  </div>
+
+  <div id="adminSubmissionsPanel" class="admin-panel" style="display: none;">
+    <h3>⏳ Pending Quest Submissions</h3>
+    <div id="adminSubmissionsList" class="admin-list"></div>
+    <div id="adminSubmissionsEmpty" class="empty-state" style="display: none;">
+      No pending submissions.
     </div>
-    <div class="admin-panel">
-      <h3>👥 Users</h3>
-      <div id="adminUserList" class="admin-list"></div>
+  </div>
+
+  <div id="adminUserPanel" class="admin-panel" style="display: none;">
+    <h3>👥 Users</h3>
+    <div id="adminUserList" class="admin-list"></div>
+  </div>
+
+  <div id="adminTitleGiveawaysPanel" class="admin-panel" style="display: none;">
+    <h3>🏆 Title Giveaways</h3>
+    <div id="adminTitleGiveawaysList" class="admin-list"></div>
+  </div>
+
+  <div id="adminGiveawaysPanel" class="admin-panel" style="display: none;">
+    <h3>🎁 Giveaways</h3>
+    <div id="adminGiveawaysList" class="admin-list"></div>
+  </div>
+
+  <div id="adminRafflesPanel" class="admin-panel" style="display: none;">
+    <h3>🎟️ Raffles</h3>
+    <div id="adminRafflesList" class="admin-list"></div>
+  </div>
+
+  <div id="adminJoblistPanel" class="admin-panel" style="display: none;">
+    <h3>🧩 Job List</h3>
+    <div class="admin-actions">
+      <input id="adminJobInput" type="text" placeholder="New quest description" />
+      <button id="adminAddJob" class="btn">Add</button>
     </div>
+    <div id="adminJobList" class="admin-list"></div>
   </div>
   <button class="back-button">Home</button>
 </div>

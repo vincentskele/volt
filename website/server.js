@@ -275,6 +275,144 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
 });
 
 /**
+ * GET /api/admin/giveaways
+ */
+app.get('/api/admin/giveaways', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT id, giveaway_name, prize, winners, end_time, repeat
+       FROM giveaways
+       ORDER BY id DESC`
+    );
+    return res.json(rows || []);
+  } catch (err) {
+    console.error('Error in /api/admin/giveaways:', err);
+    return res.status(500).json({ message: 'Failed to load giveaways.' });
+  }
+});
+
+app.post('/api/admin/giveaways/create', authenticateToken, requireAdmin, async (req, res) => {
+  const {
+    giveaway_name,
+    prize,
+    winners,
+    end_time,
+    repeat,
+    channel_id,
+  } = req.body || {};
+
+  const name = String(giveaway_name || '').trim();
+  const finalPrize = String(prize || '').trim();
+  const finalWinners = Number(winners) || 1;
+  const finalEnd = Number(end_time) || (Date.now() + 24 * 60 * 60 * 1000);
+  const finalRepeat = Number(repeat) || 0;
+  const finalChannel = String(channel_id || process.env.SUBMISSION_CHANNEL_ID || 'admin');
+
+  if (!name || !finalPrize) {
+    return res.status(400).json({ message: 'Name and prize are required.' });
+  }
+
+  try {
+    const messageId = `admin-${Date.now()}`;
+    await saveGiveaway(messageId, finalChannel, finalEnd, finalPrize, finalWinners, name, finalRepeat);
+    await logAdminChange(req.user.userId, 'Giveaway created', [
+      `Name: "${name}"`,
+      `Prize: "${finalPrize}"`,
+      `Winners: ${finalWinners}`,
+      `End: ${finalEnd}`,
+      `Repeat: ${finalRepeat}`,
+    ]);
+    return res.json({ message: 'Giveaway created.' });
+  } catch (err) {
+    console.error('Error creating giveaway:', err);
+    return res.status(500).json({ message: 'Failed to create giveaway.' });
+  }
+});
+
+/**
+ * GET /api/admin/title-giveaways
+ */
+app.get('/api/admin/title-giveaways', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT id, giveaway_name, prize, winners, end_time, repeat, is_completed
+       FROM title_giveaways
+       ORDER BY id DESC`
+    );
+    return res.json(rows || []);
+  } catch (err) {
+    console.error('Error in /api/admin/title-giveaways:', err);
+    return res.status(500).json({ message: 'Failed to load title giveaways.' });
+  }
+});
+
+/**
+ * GET /api/admin/raffles
+ */
+app.get('/api/admin/raffles', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT id, name, prize, cost, quantity, winners, end_time
+       FROM raffles
+       ORDER BY id DESC`
+    );
+    return res.json(rows || []);
+  } catch (err) {
+    console.error('Error in /api/admin/raffles:', err);
+    return res.status(500).json({ message: 'Failed to load raffles.' });
+  }
+});
+
+app.post('/api/admin/raffles/create', authenticateToken, requireAdmin, async (req, res) => {
+  const { name, prize, cost, quantity, winners, end_time, channel_id } = req.body || {};
+
+  const finalName = String(name || '').trim();
+  const finalPrize = String(prize || '').trim();
+  const finalCost = Number(cost) || 1;
+  const finalQty = Number(quantity) || 1;
+  const finalWinners = Number(winners) || 1;
+  const finalEnd = Number(end_time) || (Date.now() + 24 * 60 * 60 * 1000);
+  const finalChannel = String(channel_id || process.env.SUBMISSION_CHANNEL_ID || 'admin');
+
+  if (!finalName || !finalPrize) {
+    return res.status(400).json({ message: 'Name and prize are required.' });
+  }
+
+  try {
+    await createRaffle(finalChannel, finalName, finalPrize, finalCost, finalQty, finalWinners, finalEnd);
+    await logAdminChange(req.user.userId, 'Raffle created', [
+      `Name: "${finalName}"`,
+      `Prize: "${finalPrize}"`,
+      `Cost: ${finalCost}`,
+      `Quantity: ${finalQty}`,
+      `Winners: ${finalWinners}`,
+      `End: ${finalEnd}`,
+    ]);
+    return res.json({ message: 'Raffle created.' });
+  } catch (err) {
+    console.error('Error creating raffle:', err);
+    return res.status(500).json({ message: 'Failed to create raffle.' });
+  }
+});
+
+/**
+ * GET /api/admin/joblist
+ */
+app.get('/api/admin/joblist', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT jobID, description
+       FROM joblist
+       ORDER BY jobID ASC`
+    );
+    return res.json(rows || []);
+  } catch (err) {
+    console.error('Error in /api/admin/joblist:', err);
+    return res.status(500).json({ message: 'Failed to load job list.' });
+  }
+});
+
+/**
  * GET /api/quest-status
  * Returns quest status for current user.
  */
@@ -435,6 +573,345 @@ app.post('/api/admin/submissions/:submissionId/complete', authenticateToken, req
   } catch (err) {
     console.error('Error completing submission:', err);
     return res.status(500).json({ message: 'Failed to complete submission.' });
+  }
+});
+
+/**
+ * POST /api/admin/giveaways/:id/update
+ */
+app.post('/api/admin/giveaways/:id/update', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { giveaway_name, prize, winners, end_time, repeat } = req.body || {};
+
+  try {
+    const existing = await dbGet(`SELECT * FROM giveaways WHERE id = ?`, [id]);
+    if (!existing) return res.status(404).json({ message: 'Giveaway not found.' });
+
+    const updates = [];
+    const params = [];
+    const changes = [];
+
+    if (giveaway_name !== undefined && giveaway_name !== existing.giveaway_name) {
+      updates.push('giveaway_name = ?'); params.push(giveaway_name);
+      changes.push(`Name: "${existing.giveaway_name}" -> "${giveaway_name}"`);
+    }
+    if (prize !== undefined && prize !== existing.prize) {
+      updates.push('prize = ?'); params.push(prize);
+      changes.push(`Prize: "${existing.prize}" -> "${prize}"`);
+    }
+    if (winners !== undefined && Number(winners) !== existing.winners) {
+      updates.push('winners = ?'); params.push(Number(winners));
+      changes.push(`Winners: ${existing.winners} -> ${Number(winners)}`);
+    }
+    if (end_time !== undefined && Number(end_time) !== existing.end_time) {
+      updates.push('end_time = ?'); params.push(Number(end_time));
+      changes.push(`End: ${existing.end_time} -> ${Number(end_time)}`);
+    }
+    if (repeat !== undefined && Number(repeat) !== existing.repeat) {
+      updates.push('repeat = ?'); params.push(Number(repeat));
+      changes.push(`Repeat: ${existing.repeat} -> ${Number(repeat)}`);
+    }
+
+    if (!updates.length) return res.json({ message: 'No changes.' });
+    params.push(id);
+    await dbRun(`UPDATE giveaways SET ${updates.join(', ')} WHERE id = ?`, params);
+
+    await logAdminChange(req.user.userId, `Giveaway #${id} updated`, changes);
+    return res.json({ message: 'Giveaway updated.' });
+  } catch (err) {
+    console.error('Error updating giveaway:', err);
+    return res.status(500).json({ message: 'Failed to update giveaway.' });
+  }
+});
+
+app.post('/api/admin/giveaways/:id/stop', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const existing = await dbGet(`SELECT * FROM giveaways WHERE id = ?`, [id]);
+    if (!existing) return res.status(404).json({ message: 'Giveaway not found.' });
+    const now = Date.now();
+    await dbRun(`UPDATE giveaways SET end_time = ? WHERE id = ?`, [now, id]);
+    await logAdminChange(req.user.userId, `Giveaway #${id} stopped`, [`End set to ${now}`]);
+    return res.json({ message: 'Giveaway stopped.' });
+  } catch (err) {
+    console.error('Error stopping giveaway:', err);
+    return res.status(500).json({ message: 'Failed to stop giveaway.' });
+  }
+});
+
+app.post('/api/admin/giveaways/:id/start', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const durationHours = Number(req.body?.durationHours) || 24;
+  try {
+    const existing = await dbGet(`SELECT * FROM giveaways WHERE id = ?`, [id]);
+    if (!existing) return res.status(404).json({ message: 'Giveaway not found.' });
+    const end = Date.now() + durationHours * 60 * 60 * 1000;
+    await dbRun(`UPDATE giveaways SET end_time = ? WHERE id = ?`, [end, id]);
+    await logAdminChange(req.user.userId, `Giveaway #${id} started`, [`End set to ${end}`]);
+    return res.json({ message: 'Giveaway started.' });
+  } catch (err) {
+    console.error('Error starting giveaway:', err);
+    return res.status(500).json({ message: 'Failed to start giveaway.' });
+  }
+});
+
+/**
+ * Title Giveaways admin
+ */
+app.post('/api/admin/title-giveaways/:id/update', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { giveaway_name, prize, winners, end_time, repeat, is_completed } = req.body || {};
+  try {
+    const existing = await dbGet(`SELECT * FROM title_giveaways WHERE id = ?`, [id]);
+    if (!existing) return res.status(404).json({ message: 'Title giveaway not found.' });
+
+    const updates = [];
+    const params = [];
+    const changes = [];
+
+    if (giveaway_name !== undefined && giveaway_name !== existing.giveaway_name) {
+      updates.push('giveaway_name = ?'); params.push(giveaway_name);
+      changes.push(`Name: "${existing.giveaway_name}" -> "${giveaway_name}"`);
+    }
+    if (prize !== undefined && prize !== existing.prize) {
+      updates.push('prize = ?'); params.push(prize);
+      changes.push(`Prize: "${existing.prize}" -> "${prize}"`);
+    }
+    if (winners !== undefined && Number(winners) !== existing.winners) {
+      updates.push('winners = ?'); params.push(Number(winners));
+      changes.push(`Winners: ${existing.winners} -> ${Number(winners)}`);
+    }
+    if (end_time !== undefined && Number(end_time) !== existing.end_time) {
+      updates.push('end_time = ?'); params.push(Number(end_time));
+      changes.push(`End: ${existing.end_time} -> ${Number(end_time)}`);
+    }
+    if (repeat !== undefined && Number(repeat) !== existing.repeat) {
+      updates.push('repeat = ?'); params.push(Number(repeat));
+      changes.push(`Repeat: ${existing.repeat} -> ${Number(repeat)}`);
+    }
+    if (is_completed !== undefined && Number(is_completed) !== existing.is_completed) {
+      updates.push('is_completed = ?'); params.push(Number(is_completed));
+      changes.push(`Completed: ${existing.is_completed} -> ${Number(is_completed)}`);
+    }
+
+    if (!updates.length) return res.json({ message: 'No changes.' });
+    params.push(id);
+    await dbRun(`UPDATE title_giveaways SET ${updates.join(', ')} WHERE id = ?`, params);
+
+    await logAdminChange(req.user.userId, `Title Giveaway #${id} updated`, changes);
+    return res.json({ message: 'Title giveaway updated.' });
+  } catch (err) {
+    console.error('Error updating title giveaway:', err);
+    return res.status(500).json({ message: 'Failed to update title giveaway.' });
+  }
+});
+
+app.post('/api/admin/title-giveaways/:id/stop', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const existing = await dbGet(`SELECT * FROM title_giveaways WHERE id = ?`, [id]);
+    if (!existing) return res.status(404).json({ message: 'Title giveaway not found.' });
+    await dbRun(`UPDATE title_giveaways SET is_completed = 1 WHERE id = ?`, [id]);
+    await logAdminChange(req.user.userId, `Title Giveaway #${id} stopped`, ['Completed set to 1']);
+    return res.json({ message: 'Title giveaway stopped.' });
+  } catch (err) {
+    console.error('Error stopping title giveaway:', err);
+    return res.status(500).json({ message: 'Failed to stop title giveaway.' });
+  }
+});
+
+app.post('/api/admin/title-giveaways/:id/start', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const durationHours = Number(req.body?.durationHours) || 24;
+  try {
+    const existing = await dbGet(`SELECT * FROM title_giveaways WHERE id = ?`, [id]);
+    if (!existing) return res.status(404).json({ message: 'Title giveaway not found.' });
+    const end = Date.now() + durationHours * 60 * 60 * 1000;
+    await dbRun(`UPDATE title_giveaways SET is_completed = 0, end_time = ? WHERE id = ?`, [end, id]);
+    await logAdminChange(req.user.userId, `Title Giveaway #${id} started`, [`End set to ${end}`]);
+    return res.json({ message: 'Title giveaway started.' });
+  } catch (err) {
+    console.error('Error starting title giveaway:', err);
+    return res.status(500).json({ message: 'Failed to start title giveaway.' });
+  }
+});
+
+/**
+ * POST /api/admin/title-giveaways/create
+ */
+app.post('/api/admin/title-giveaways/create', authenticateToken, requireAdmin, async (req, res) => {
+  const {
+    giveaway_name,
+    prize,
+    winners,
+    end_time,
+    repeat,
+  } = req.body || {};
+
+  const name = String(giveaway_name || '').trim();
+  const finalPrize = String(prize || '').trim();
+  const finalWinners = Number(winners) || 1;
+  const finalEnd = Number(end_time) || (Date.now() + 24 * 60 * 60 * 1000);
+  const finalRepeat = Number(repeat) || 0;
+
+  if (!name || !finalPrize) {
+    return res.status(400).json({ message: 'Name and prize are required.' });
+  }
+
+  try {
+    const messageId = `admin-${Date.now()}`;
+    const channelId = process.env.SUBMISSION_CHANNEL_ID || 'admin';
+    await dbRun(
+      `INSERT INTO title_giveaways (message_id, channel_id, end_time, prize, winners, giveaway_name, repeat, is_completed)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+      [messageId, channelId, finalEnd, finalPrize, finalWinners, name, finalRepeat]
+    );
+    await logAdminChange(req.user.userId, 'Title Giveaway created', [
+      `Name: "${name}"`,
+      `Prize: "${finalPrize}"`,
+      `Winners: ${finalWinners}`,
+      `End: ${finalEnd}`,
+      `Repeat: ${finalRepeat}`,
+    ]);
+    return res.json({ message: 'Title giveaway created.' });
+  } catch (err) {
+    console.error('Error creating title giveaway:', err);
+    return res.status(500).json({ message: 'Failed to create title giveaway.' });
+  }
+});
+
+/**
+ * Raffles admin
+ */
+app.post('/api/admin/raffles/:id/update', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { name, prize, cost, quantity, winners, end_time } = req.body || {};
+  try {
+    const existing = await dbGet(`SELECT * FROM raffles WHERE id = ?`, [id]);
+    if (!existing) return res.status(404).json({ message: 'Raffle not found.' });
+
+    const updates = [];
+    const params = [];
+    const changes = [];
+
+    if (name !== undefined && name !== existing.name) {
+      updates.push('name = ?'); params.push(name);
+      changes.push(`Name: "${existing.name}" -> "${name}"`);
+    }
+    if (prize !== undefined && prize !== existing.prize) {
+      updates.push('prize = ?'); params.push(prize);
+      changes.push(`Prize: "${existing.prize}" -> "${prize}"`);
+    }
+    if (cost !== undefined && Number(cost) !== existing.cost) {
+      updates.push('cost = ?'); params.push(Number(cost));
+      changes.push(`Cost: ${existing.cost} -> ${Number(cost)}`);
+    }
+    if (quantity !== undefined && Number(quantity) !== existing.quantity) {
+      updates.push('quantity = ?'); params.push(Number(quantity));
+      changes.push(`Quantity: ${existing.quantity} -> ${Number(quantity)}`);
+    }
+    if (winners !== undefined && Number(winners) !== existing.winners) {
+      updates.push('winners = ?'); params.push(Number(winners));
+      changes.push(`Winners: ${existing.winners} -> ${Number(winners)}`);
+    }
+    if (end_time !== undefined && Number(end_time) !== existing.end_time) {
+      updates.push('end_time = ?'); params.push(Number(end_time));
+      changes.push(`End: ${existing.end_time} -> ${Number(end_time)}`);
+    }
+
+    if (!updates.length) return res.json({ message: 'No changes.' });
+    params.push(id);
+    await dbRun(`UPDATE raffles SET ${updates.join(', ')} WHERE id = ?`, params);
+
+    await logAdminChange(req.user.userId, `Raffle #${id} updated`, changes);
+    return res.json({ message: 'Raffle updated.' });
+  } catch (err) {
+    console.error('Error updating raffle:', err);
+    return res.status(500).json({ message: 'Failed to update raffle.' });
+  }
+});
+
+app.post('/api/admin/raffles/:id/stop', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const existing = await dbGet(`SELECT * FROM raffles WHERE id = ?`, [id]);
+    if (!existing) return res.status(404).json({ message: 'Raffle not found.' });
+    const now = Date.now();
+    await dbRun(`UPDATE raffles SET end_time = ? WHERE id = ?`, [now, id]);
+    await logAdminChange(req.user.userId, `Raffle #${id} stopped`, [`End set to ${now}`]);
+    return res.json({ message: 'Raffle stopped.' });
+  } catch (err) {
+    console.error('Error stopping raffle:', err);
+    return res.status(500).json({ message: 'Failed to stop raffle.' });
+  }
+});
+
+app.post('/api/admin/raffles/:id/start', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const durationHours = Number(req.body?.durationHours) || 24;
+  try {
+    const existing = await dbGet(`SELECT * FROM raffles WHERE id = ?`, [id]);
+    if (!existing) return res.status(404).json({ message: 'Raffle not found.' });
+    const end = Date.now() + durationHours * 60 * 60 * 1000;
+    await dbRun(`UPDATE raffles SET end_time = ? WHERE id = ?`, [end, id]);
+    await logAdminChange(req.user.userId, `Raffle #${id} started`, [`End set to ${end}`]);
+    return res.json({ message: 'Raffle started.' });
+  } catch (err) {
+    console.error('Error starting raffle:', err);
+    return res.status(500).json({ message: 'Failed to start raffle.' });
+  }
+});
+
+/**
+ * Job list admin
+ */
+app.post('/api/admin/joblist', authenticateToken, requireAdmin, async (req, res) => {
+  const description = String(req.body?.description || '').trim();
+  if (!description) return res.status(400).json({ message: 'Description required.' });
+  try {
+    await dbRun(`INSERT INTO joblist (description) VALUES (?)`, [description]);
+    await renumberJobs();
+    await logAdminChange(req.user.userId, 'Job list updated', [`Added quest: "${description}"`]);
+    return res.json({ message: 'Job added.' });
+  } catch (err) {
+    console.error('Error adding job:', err);
+    return res.status(500).json({ message: 'Failed to add job.' });
+  }
+});
+
+app.post('/api/admin/joblist/:id/update', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const description = String(req.body?.description || '').trim();
+  if (!description) return res.status(400).json({ message: 'Description required.' });
+  try {
+    const existing = await dbGet(`SELECT description FROM joblist WHERE jobID = ?`, [id]);
+    if (!existing) return res.status(404).json({ message: 'Job not found.' });
+    await dbRun(`UPDATE joblist SET description = ? WHERE jobID = ?`, [description, id]);
+    await logAdminChange(req.user.userId, 'Job list updated', [
+      `Updated quest #${id}: "${existing.description}" -> "${description}"`,
+    ]);
+    return res.json({ message: 'Job updated.' });
+  } catch (err) {
+    console.error('Error updating job:', err);
+    return res.status(500).json({ message: 'Failed to update job.' });
+  }
+});
+
+app.post('/api/admin/joblist/:id/delete', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const existing = await dbGet(`SELECT description FROM joblist WHERE jobID = ?`, [id]);
+    if (!existing) return res.status(404).json({ message: 'Job not found.' });
+    await dbRun(`DELETE FROM job_assignees WHERE jobID = ?`, [id]);
+    await dbRun(`DELETE FROM joblist WHERE jobID = ?`, [id]);
+    await renumberJobs();
+    await logAdminChange(req.user.userId, 'Job list updated', [
+      `Deleted quest #${id}: "${existing.description}"`,
+    ]);
+    return res.json({ message: 'Job deleted.' });
+  } catch (err) {
+    console.error('Error deleting job:', err);
+    return res.status(500).json({ message: 'Failed to delete job.' });
   }
 });
 
@@ -793,6 +1270,24 @@ async function requireAdmin(req, res, next) {
   } catch (err) {
     console.error("❌ Admin check failed:", err);
     return res.status(500).json({ message: "Failed to verify admin." });
+  }
+}
+
+async function logAdminChange(adminId, title, lines = []) {
+  try {
+    const channelId = process.env.SUBMISSION_CHANNEL_ID;
+    if (!channelId) return;
+    const channel = await client.channels.fetch(channelId);
+    if (!channel) return;
+    const adminTag = await resolveUsername(adminId);
+    const message = [
+      `🛠️ Admin Change: ${title}`,
+      `Admin: ${adminTag}`,
+      ...lines,
+    ].join('\n');
+    await channel.send(message);
+  } catch (err) {
+    console.error('❌ Failed to log admin change:', err);
   }
 }
 
@@ -1210,7 +1705,13 @@ app.post('/api/giveaways/enter', authenticateToken, async (req, res) => {
 });
 
 
-const { assignJobById, getActiveJob } = require('../db'); // Ensure correct path
+const {
+  assignJobById,
+  getActiveJob,
+  renumberJobs,
+  saveGiveaway,
+  createRaffle,
+} = require('../db'); // Ensure correct path
 
 
 app.post('/api/assign-job', authenticateToken, async (req, res) => {

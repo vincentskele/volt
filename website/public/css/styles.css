@@ -594,13 +594,54 @@ code {
   border: 1px solid var(--accent);
   border-radius: 8px;
   padding: 12px;
-  width: min(460px, 100%);
+  width: min(700px, 100%);
   box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+  margin: 0 auto 12px;
 }
 
 .admin-panel h3 {
   margin: 0 0 8px;
   text-align: center;
+}
+
+.admin-sections {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.admin-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.admin-actions input {
+  width: min(520px, 70vw);
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: var(--bg-content);
+  color: var(--text-primary);
+  font-family: 'Press Start 2P', sans-serif;
+  font-size: 0.65rem;
+}
+
+.admin-placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--accent);
+  color: var(--text-secondary);
+  height: 20px;
+  min-width: 80px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 0.6rem;
 }
 
 /* --------------------------------------------------
