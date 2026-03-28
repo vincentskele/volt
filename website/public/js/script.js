@@ -1820,6 +1820,7 @@ function startAdminPolling() {
 }
 
 let chatPollingIntervalId = null;
+let chatPresenceIntervalId = null;
 let chatLoading = false;
 async function loadChatMessages() {
   const token = localStorage.getItem('token');
@@ -1900,6 +1901,50 @@ async function sendChatMessage() {
   }
 }
 
+async function pingChatPresence() {
+  const token = localStorage.getItem('token');
+  if (!token) return;
+  try {
+    await fetch('/api/chat/ping', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch (error) {
+    console.error('❌ Failed to ping presence:', error);
+  }
+}
+
+async function loadChatPresence() {
+  const token = localStorage.getItem('token');
+  const onlineList = document.getElementById('chatOnlineList');
+  if (!token || !onlineList) return;
+
+  try {
+    const response = await fetch('/api/chat/presence', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error('Failed to load presence.');
+    const data = await response.json();
+
+    onlineList.innerHTML = '';
+
+    const online = data.online || [];
+    if (!online.length) {
+      const li = document.createElement('li');
+      li.textContent = 'No one online';
+      onlineList.appendChild(li);
+    } else {
+      online.forEach((u) => {
+        const li = document.createElement('li');
+        li.textContent = u.username || u.userID;
+        onlineList.appendChild(li);
+      });
+    }
+  } catch (error) {
+    console.error('❌ Failed to load presence:', error);
+  }
+}
+
 function startChatPolling() {
   if (chatPollingIntervalId) return;
   chatPollingIntervalId = setInterval(() => {
@@ -1908,6 +1953,17 @@ function startChatPolling() {
       loadChatMessages();
     }
   }, 500);
+}
+
+function startChatPresencePolling() {
+  if (chatPresenceIntervalId) return;
+  chatPresenceIntervalId = setInterval(() => {
+    const chatSection = document.getElementById('chatSection');
+    if (chatSection && chatSection.style.display === 'block') {
+      pingChatPresence();
+      loadChatPresence();
+    }
+  }, 10000);
 }
 
 function showSubmissionRewardModal(submission) {
@@ -2120,6 +2176,9 @@ function showPostLoginButtons() {
   chatButton.addEventListener('click', () => {
     loadChatMessages();
     startChatPolling();
+    pingChatPresence();
+    loadChatPresence();
+    startChatPresencePolling();
     if (typeof showSection === 'function') {
       showSection('chatSection');
     }

@@ -68,6 +68,19 @@ db.run(
   }
 );
 
+// ✅ Chat presence table
+db.run(
+  `CREATE TABLE IF NOT EXISTS chat_presence (
+    userID TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    last_seen INTEGER NOT NULL
+  )`,
+  (err) => {
+    if (err) console.error('❌ Error creating chat_presence table:', err);
+    else console.log('✅ Chat presence table is ready.');
+  }
+);
+
 function ensureJobSubmissionColumn(columnName, ddl) {
   db.all(`PRAGMA table_info(job_submissions)`, (err, columns) => {
     if (err) {
@@ -496,6 +509,59 @@ app.post('/api/chat/messages', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error in /api/chat/messages:', err);
     return res.status(500).json({ message: 'Failed to send message.' });
+  }
+});
+
+/**
+ * POST /api/chat/ping
+ * Updates chat presence (authenticated).
+ */
+app.post('/api/chat/ping', authenticateToken, async (req, res) => {
+  const userId = req.user?.userId;
+  const username = req.user?.username || 'Unknown';
+  if (!userId) return res.status(401).json({ message: 'User not authenticated.' });
+
+  try {
+    await dbRun(
+      `INSERT INTO chat_presence (userID, username, last_seen)
+       VALUES (?, ?, ?)
+       ON CONFLICT(userID) DO UPDATE SET
+         username = excluded.username,
+         last_seen = excluded.last_seen`,
+      [userId, username, Math.floor(Date.now() / 1000)]
+    );
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('Error in /api/chat/ping:', err);
+    return res.status(500).json({ message: 'Failed to update presence.' });
+  }
+});
+
+/**
+ * GET /api/chat/presence
+ * Returns who is online now and who was seen in last 9 minutes.
+ */
+app.get('/api/chat/presence', authenticateToken, async (req, res) => {
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const cutoff = now - 15;
+    const rows = await dbAll(
+      `SELECT userID, username, last_seen
+       FROM chat_presence
+       WHERE last_seen >= ?
+       ORDER BY last_seen DESC`,
+      [cutoff]
+    );
+
+    const online = (rows || []).map((row) => ({
+      userID: row.userID,
+      username: row.username,
+    }));
+
+    return res.json({ online });
+  } catch (err) {
+    console.error('Error in /api/chat/presence:', err);
+    return res.status(500).json({ message: 'Failed to load presence.' });
   }
 });
 

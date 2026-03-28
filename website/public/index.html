@@ -304,7 +304,15 @@
 <!-- Chat Section -->
 <div id="chatSection" class="content" style="display: none;">
   <h2>💬 Chat</h2>
-  <div id="chatMessages" class="chat-messages"></div>
+  <div class="chat-layout">
+    <div class="chat-main">
+      <div id="chatMessages" class="chat-messages"></div>
+    </div>
+    <aside class="chat-sidebar">
+      <h3>Online</h3>
+      <ul id="chatOnlineList" class="chat-list"></ul>
+    </aside>
+  </div>
   <div class="chat-input-row">
     <input id="chatInput" type="text" placeholder="Type a message..." maxlength="500" />
     <button id="sendChatButton" class="btn">Send</button>
