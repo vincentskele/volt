@@ -1272,12 +1272,15 @@ function startAdminPolling() {
 }
 
 let chatPollingIntervalId = null;
+let chatLoading = false;
 async function loadChatMessages() {
   const token = localStorage.getItem('token');
   const chatMessages = document.getElementById('chatMessages');
   if (!token || !chatMessages) return;
 
   try {
+    if (chatLoading) return;
+    chatLoading = true;
     const response = await fetch('/api/chat/messages', {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -1312,6 +1315,8 @@ async function loadChatMessages() {
     chatMessages.scrollTop = chatMessages.scrollHeight;
   } catch (error) {
     console.error('❌ Failed to load chat messages:', error);
+  } finally {
+    chatLoading = false;
   }
 }
 
@@ -1354,7 +1359,7 @@ function startChatPolling() {
     if (chatSection && chatSection.style.display === 'block') {
       loadChatMessages();
     }
-  }, 5000);
+  }, 500);
 }
 
 function showSubmissionRewardModal(submission) {
