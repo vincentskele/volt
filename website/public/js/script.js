@@ -1870,9 +1870,12 @@ async function fetchUserHoldingsFor(userId) {
   }
 
   try {
-    const username = userId === localStorage.getItem('discordUserID')
-      ? localStorage.getItem('username')
-      : null;
+    let username = null;
+    if (userId === localStorage.getItem('discordUserID')) {
+      username = localStorage.getItem('username');
+    } else {
+      username = await resolveUsername(userId);
+    }
     if (profileTitle) {
       profileTitle.textContent = `👤 ${username || userId}`;
     }
