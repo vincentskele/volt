@@ -2310,20 +2310,20 @@ async function fetchInventory() {
   if (viewSolariansButton && solarianMosaic) {
     viewSolariansButton.addEventListener('click', () => {
       renderSolarianMosaic(currentUserTokens);
-      solarianMosaic.classList.remove('hidden');
+      solarianMosaic.classList.remove('mosaic-hidden');
     });
   }
 
   if (closeSolariansButton && solarianMosaic) {
     closeSolariansButton.addEventListener('click', () => {
-      solarianMosaic.classList.add('hidden');
+      solarianMosaic.classList.add('mosaic-hidden');
     });
   }
 
   if (solarianMosaic) {
     solarianMosaic.addEventListener('click', (event) => {
       if (event.target === solarianMosaic) {
-        solarianMosaic.classList.add('hidden');
+        solarianMosaic.classList.add('mosaic-hidden');
       }
     });
   }

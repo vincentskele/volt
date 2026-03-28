@@ -895,6 +895,34 @@ code {
   margin-bottom: 8px;
 }
 
+.profile-fields {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 8px;
+  text-align: left;
+}
+
+.profile-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.profile-input {
+  width: 100%;
+  padding: 8px;
+  background: var(--bg-dark);
+  border: 2px solid var(--accent);
+  color: var(--text-primary);
+  font-family: 'Press Start 2P', sans-serif;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  box-shadow: 1px 1px 0 var(--black);
+}
+
+.profile-input:read-only {
+  opacity: 0.7;
+}
+
 
 #userProfileSection {
   text-align: center;
@@ -1103,7 +1131,8 @@ code {
 }
 
 .hidden,
-.solarian-mosaic.hidden {
+.mosaic-hidden,
+.solarian-mosaic.mosaic-hidden {
   display: none;
 }
 
