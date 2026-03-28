@@ -603,6 +603,59 @@ code {
   text-align: center;
 }
 
+/* --------------------------------------------------
+   CHAT
+-------------------------------------------------- */
+.chat-messages {
+  width: 100%;
+  max-width: 700px;
+  height: 280px;
+  margin: 0 auto 10px;
+  padding: 10px;
+  background: var(--bg-content);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  overflow-y: auto;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+}
+
+.chat-message {
+  padding: 4px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.7rem;
+}
+
+.chat-message:last-child {
+  border-bottom: none;
+}
+
+.chat-message.admin {
+  color: var(--accent);
+}
+
+.chat-message.user {
+  color: var(--text-primary);
+}
+
+.chat-input-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.chat-input-row input {
+  width: min(520px, 70vw);
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: var(--bg-content);
+  color: var(--text-primary);
+  font-family: 'Press Start 2P', sans-serif;
+  font-size: 0.65rem;
+}
+
 .shop-instructions li {
   margin-left: 20px; /* Indents the list items */
   padding: 10px 0 !important; /* Adds spacing between items */

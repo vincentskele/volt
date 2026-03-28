@@ -1029,6 +1029,8 @@ const usernameLabel = document.querySelector("label[for='loginUsername']");
 const passwordLabel = document.querySelector("label[for='loginPassword']");
 const discordLoginButton = document.getElementById('discordLoginButton');
 const voltMenuContainer = document.getElementById('voltMenuContainer');
+const sendChatButton = document.getElementById('sendChatButton');
+const chatInput = document.getElementById('chatInput');
 
 // Ensure Volt elements are hidden initially
 if (voltMenuContainer) voltMenuContainer.style.display = 'none';
@@ -1094,6 +1096,18 @@ if (loginButton) {
 if (discordLoginButton) {
   discordLoginButton.addEventListener('click', () => {
     window.location.href = '/auth/discord';
+  });
+}
+
+if (sendChatButton) {
+  sendChatButton.addEventListener('click', sendChatMessage);
+}
+if (chatInput) {
+  chatInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      sendChatMessage();
+    }
   });
 }
 
@@ -1255,6 +1269,77 @@ function startAdminPolling() {
       loadAdminPage();
     }
   }, 15000);
+}
+
+let chatPollingIntervalId = null;
+async function loadChatMessages() {
+  const token = localStorage.getItem('token');
+  const chatMessages = document.getElementById('chatMessages');
+  if (!token || !chatMessages) return;
+
+  try {
+    const response = await fetch('/api/chat/messages', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error('Failed to load chat.');
+
+    const messages = await response.json();
+    chatMessages.innerHTML = '';
+
+    messages.forEach((msg) => {
+      const row = document.createElement('div');
+      row.className = `chat-message ${msg.is_admin ? 'admin' : 'user'}`;
+      const label = msg.username || msg.userID;
+      row.textContent = `${label}: ${msg.message}`;
+      chatMessages.appendChild(row);
+    });
+
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  } catch (error) {
+    console.error('❌ Failed to load chat messages:', error);
+  }
+}
+
+async function sendChatMessage() {
+  const token = localStorage.getItem('token');
+  const chatInput = document.getElementById('chatInput');
+  if (!token || !chatInput) return;
+
+  const message = chatInput.value.trim();
+  if (!message) return;
+
+  try {
+    const response = await fetch('/api/chat/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ message }),
+    });
+
+    if (!response.ok) {
+      const result = await response.json();
+      showConfirmationPopup(`❌ ${result.message || 'Failed to send message.'}`);
+      return;
+    }
+
+    chatInput.value = '';
+    loadChatMessages();
+  } catch (error) {
+    console.error('❌ Failed to send chat message:', error);
+    showConfirmationPopup('❌ Failed to send message.');
+  }
+}
+
+function startChatPolling() {
+  if (chatPollingIntervalId) return;
+  chatPollingIntervalId = setInterval(() => {
+    const chatSection = document.getElementById('chatSection');
+    if (chatSection && chatSection.style.display === 'block') {
+      loadChatMessages();
+    }
+  }, 5000);
 }
 
 function showSubmissionRewardModal(submission) {
@@ -1454,6 +1539,24 @@ function showPostLoginButtons() {
     fetchQuestStatus();
   });
 
+  // ========== CHAT BUTTON ==========
+  const chatButton = document.createElement('button');
+  chatButton.textContent = 'CHAT';
+  chatButton.className = 'btn text-sm font-bold';
+  chatButton.style.height = '24px';
+  chatButton.style.width = '110px';
+  chatButton.style.lineHeight = '24px';
+  chatButton.style.padding = '0 12px';
+  chatButton.style.textAlign = 'center';
+
+  chatButton.addEventListener('click', () => {
+    loadChatMessages();
+    startChatPolling();
+    if (typeof showSection === 'function') {
+      showSection('chatSection');
+    }
+  });
+
   // ========== LOGOUT BUTTON ==========
   const logoutButton = document.createElement('button');
   logoutButton.textContent = 'LOGOUT';
@@ -1474,6 +1577,7 @@ function showPostLoginButtons() {
   // Add both buttons to the container
   userActionContainer.appendChild(inventoryButton);
   userActionContainer.appendChild(userProfileButton);
+  userActionContainer.appendChild(chatButton);
   userActionContainer.appendChild(logoutButton);
   addAdminButton(userActionContainer, logoutButton);
 

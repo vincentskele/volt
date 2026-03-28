@@ -52,6 +52,22 @@ db.run(
   }
 );
 
+// ✅ Simple Chat Messages table
+db.run(
+  `CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    userID TEXT NOT NULL,
+    username TEXT NOT NULL,
+    message TEXT NOT NULL,
+    is_admin INTEGER DEFAULT 0,
+    created_at INTEGER DEFAULT (strftime('%s', 'now'))
+  )`,
+  (err) => {
+    if (err) console.error('❌ Error creating chat_messages table:', err);
+    else console.log('✅ Chat messages table is ready.');
+  }
+);
+
 function ensureJobSubmissionColumn(columnName, ddl) {
   db.all(`PRAGMA table_info(job_submissions)`, (err, columns) => {
     if (err) {
@@ -294,6 +310,54 @@ app.get('/api/quest-status', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error in /api/quest-status:', err);
     return res.status(500).json({ message: 'Failed to fetch quest status.' });
+  }
+});
+
+/**
+ * GET /api/chat/messages
+ * Returns recent chat messages (authenticated).
+ */
+app.get('/api/chat/messages', authenticateToken, async (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  try {
+    const rows = await dbAll(
+      `SELECT id, userID, username, message, is_admin, created_at
+       FROM chat_messages
+       ORDER BY id DESC
+       LIMIT ?`,
+      [limit]
+    );
+    const ordered = (rows || []).reverse();
+    return res.json(ordered);
+  } catch (err) {
+    console.error('Error in /api/chat/messages:', err);
+    return res.status(500).json({ message: 'Failed to load chat.' });
+  }
+});
+
+/**
+ * POST /api/chat/messages
+ * Creates a chat message (authenticated).
+ */
+app.post('/api/chat/messages', authenticateToken, async (req, res) => {
+  const userId = req.user?.userId;
+  const username = req.user?.username || 'Unknown';
+  const message = String(req.body?.message || '').trim();
+
+  if (!userId) return res.status(401).json({ message: 'User not authenticated.' });
+  if (!message) return res.status(400).json({ message: 'Message is required.' });
+  if (message.length > 500) return res.status(400).json({ message: 'Message too long.' });
+
+  try {
+    const admin = await isAdmin(userId);
+    await dbRun(
+      `INSERT INTO chat_messages (userID, username, message, is_admin) VALUES (?, ?, ?, ?)`,
+      [userId, username, message, admin ? 1 : 0]
+    );
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('Error in /api/chat/messages:', err);
+    return res.status(500).json({ message: 'Failed to send message.' });
   }
 });
 
