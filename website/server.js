@@ -384,6 +384,30 @@ function authenticateToken(req, res, next) {
 // Secret key for JWT authentication (Use an environment variable in production)
 const SECRET_KEY = process.env.JWT_SECRET || "your-very-secure-secret";
 
+const DISCORD_CLIENT_ID =
+  process.env.DISCORD_CLIENT_ID || process.env.CLIENT_ID;
+const DISCORD_CLIENT_SECRET =
+  process.env.DISCORD_CLIENT_SECRET || process.env.CLIENT_SECRET;
+const DISCORD_OAUTH_AUTHORIZE_URL = "https://discord.com/api/oauth2/authorize";
+const DISCORD_OAUTH_TOKEN_URL = "https://discord.com/api/oauth2/token";
+
+function getServerOrigin() {
+  const raw = process.env.BASE_URL || `http://localhost:${PORT}`;
+  try {
+    const url = new URL(raw.includes("://") ? raw : `http://${raw}`);
+    if (!url.port) {
+      url.port = String(PORT);
+    }
+    return url.origin;
+  } catch (error) {
+    return `http://localhost:${PORT}`;
+  }
+}
+
+function getDiscordRedirectUri() {
+  return `${getServerOrigin()}/auth/discord/callback`;
+}
+
 // Ensure users table exists
 db.run(
   `CREATE TABLE IF NOT EXISTS users (
@@ -480,6 +504,119 @@ app.post("/api/login", async (req, res) => {
   } catch (error) {
     console.error("❌ Error during login:", error);
     return res.status(500).json({ message: "Internal server error." });
+  }
+});
+
+app.get("/auth/discord", (req, res) => {
+  if (!DISCORD_CLIENT_ID) {
+    return res.status(500).send("Discord client ID is not configured.");
+  }
+
+  const redirectUri = getDiscordRedirectUri();
+  const params = new URLSearchParams({
+    client_id: DISCORD_CLIENT_ID,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: "identify",
+    prompt: "consent",
+  });
+
+  return res.redirect(`${DISCORD_OAUTH_AUTHORIZE_URL}?${params.toString()}`);
+});
+
+app.get("/auth/discord/callback", async (req, res) => {
+  const { code } = req.query;
+
+  if (!code) {
+    return res.status(400).send("Missing Discord authorization code.");
+  }
+
+  if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
+    return res
+      .status(500)
+      .send("Discord OAuth credentials are not configured.");
+  }
+
+  try {
+    const redirectUri = getDiscordRedirectUri();
+
+    const tokenResponse = await fetch(DISCORD_OAUTH_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: DISCORD_CLIENT_ID,
+        client_secret: DISCORD_CLIENT_SECRET,
+        grant_type: "authorization_code",
+        code: String(code),
+        redirect_uri: redirectUri,
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      const errorBody = await tokenResponse.text();
+      console.error("❌ Discord token exchange failed:", errorBody);
+      return res.status(500).send("Discord token exchange failed.");
+    }
+
+    const tokenData = await tokenResponse.json();
+
+    const userResponse = await fetch("https://discord.com/api/users/@me", {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    });
+
+    if (!userResponse.ok) {
+      const errorBody = await userResponse.text();
+      console.error("❌ Failed to fetch Discord user:", errorBody);
+      return res.status(500).send("Failed to fetch Discord user.");
+    }
+
+    const discordUser = await userResponse.json();
+    const userId = discordUser.id;
+
+    const user = await dbGet(
+      `SELECT userID, username FROM economy WHERE userID = ?`,
+      [userId]
+    );
+
+    if (!user) {
+      return res
+        .status(401)
+        .send("Discord account is not linked to an economy profile.");
+    }
+
+    const token = jwt.sign(
+      { userId: user.userID, username: user.username || discordUser.username },
+      SECRET_KEY,
+      { expiresIn: "1y" }
+    );
+
+    const payload = {
+      token,
+      userId: user.userID,
+      username: user.username || discordUser.username,
+    };
+
+    return res.send(`<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Discord Login</title>
+  </head>
+  <body>
+    <p>Signing you in with Discord...</p>
+    <script>
+      const payload = ${JSON.stringify(payload)};
+      localStorage.setItem("token", payload.token);
+      localStorage.setItem("discordUserID", payload.userId);
+      localStorage.setItem("username", payload.username);
+      window.location.replace("/");
+    </script>
+  </body>
+</html>`);
+  } catch (error) {
+    console.error("❌ Discord OAuth error:", error);
+    return res.status(500).send("Discord login failed.");
   }
 });
 

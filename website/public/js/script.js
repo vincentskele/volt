@@ -1024,6 +1024,7 @@ const usernameInput = document.getElementById('loginUsername');
 const passwordInput = document.getElementById('loginPassword');
 const usernameLabel = document.querySelector("label[for='loginUsername']");
 const passwordLabel = document.querySelector("label[for='loginPassword']");
+const discordLoginButton = document.getElementById('discordLoginButton');
 const voltMenuContainer = document.getElementById('voltMenuContainer');
 
 // Ensure Volt elements are hidden initially
@@ -1087,6 +1088,12 @@ if (loginButton) {
   console.error("❌ Login button NOT found!");
 }
 
+if (discordLoginButton) {
+  discordLoginButton.addEventListener('click', () => {
+    window.location.href = '/auth/discord';
+  });
+}
+
 
 /**
  * Replace the login form with 2 stacked buttons (INVENTORY + LOGOUT).
@@ -1098,6 +1105,7 @@ function showPostLoginButtons() {
   const usernameInput = document.getElementById('loginUsername');
   const passwordInput = document.getElementById('loginPassword');
   const loginButton = document.getElementById('submitLogin');
+  const discordLoginButton = document.getElementById('discordLoginButton');
   const usernameLabel = document.querySelector('label[for="loginUsername"]');
   const passwordLabel = document.querySelector('label[for="loginPassword"]');
   const voltMenuContainer = document.getElementById('voltMenuContainer');
@@ -1107,6 +1115,7 @@ function showPostLoginButtons() {
   if (usernameLabel) usernameLabel.style.display = 'none';
   if (passwordLabel) passwordLabel.style.display = 'none';
   if (loginButton) loginButton.style.display = 'none';
+  if (discordLoginButton) discordLoginButton.style.display = 'none';
 
   // Create a container for the two buttons, top-right corner
   const userActionContainer = document.createElement('div');
