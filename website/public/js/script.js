@@ -1429,6 +1429,161 @@ function daysFromNow(days) {
   return Date.now() + value * 24 * 60 * 60 * 1000;
 }
 
+function normalizeEndTime(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return null;
+  // Treat small values as seconds-based timestamps.
+  return num < 1e12 ? num * 1000 : num;
+}
+
+function durationFromNow(value, unit) {
+  const amount = Number(value);
+  const multipliers = {
+    minutes: 60 * 1000,
+    hours: 60 * 60 * 1000,
+    days: 24 * 60 * 60 * 1000,
+  };
+  const multiplier = multipliers[unit] || multipliers.days;
+  if (!Number.isFinite(amount) || amount <= 0) return Date.now() + multipliers.days;
+  return Date.now() + amount * multiplier;
+}
+
+let adminShopItemsCache = null;
+async function getAdminShopItems(token) {
+  if (Array.isArray(adminShopItemsCache)) return adminShopItemsCache;
+  try {
+    const res = await fetch('/api/admin/shop-items', { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error('Failed to load shop items.');
+    const items = await res.json();
+    if (Array.isArray(items)) {
+      adminShopItemsCache = items
+        .map((item) => (typeof item === 'string' ? item : item?.name))
+        .filter((item) => typeof item === 'string' && item.length);
+    } else {
+      adminShopItemsCache = [];
+    }
+    return adminShopItemsCache;
+  } catch (error) {
+    console.error('❌ Failed to load shop items:', error);
+    adminShopItemsCache = [];
+    return adminShopItemsCache;
+  }
+}
+
+function buildPrizeDurationModal({ title, fields, durationValue, durationUnit, shopItems, onSubmit }) {
+  const existing = document.getElementById('adminEditModal');
+  if (existing) existing.remove();
+
+  const modalOverlay = document.createElement('div');
+  modalOverlay.className = 'modal-overlay';
+  modalOverlay.id = 'adminEditModal';
+
+  const modalBox = document.createElement('div');
+  modalBox.className = 'modal-box';
+  modalBox.innerHTML = `<h2>${title}</h2>`;
+
+  fields.forEach((field) => {
+    const label = document.createElement('label');
+    label.textContent = field.label;
+    label.style.display = 'block';
+    label.style.marginTop = '8px';
+    modalBox.appendChild(label);
+
+    if (field.type === 'prize') {
+      const listId = `adminShopItems-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = field.value ?? '';
+      input.placeholder = field.placeholder || field.label;
+      input.dataset.key = field.key;
+      input.style.margin = '6px 0';
+      input.style.width = '100%';
+      input.style.padding = '6px';
+      input.setAttribute('list', listId);
+      modalBox.appendChild(input);
+
+      const datalist = document.createElement('datalist');
+      datalist.id = listId;
+      (shopItems || []).forEach((item) => {
+        const option = document.createElement('option');
+        option.value = item;
+        datalist.appendChild(option);
+      });
+      modalBox.appendChild(datalist);
+      return;
+    }
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = field.value ?? '';
+    input.placeholder = field.label;
+    input.dataset.key = field.key;
+    input.style.margin = '6px 0';
+    input.style.width = '100%';
+    input.style.padding = '6px';
+    modalBox.appendChild(input);
+  });
+
+  const durationLabel = document.createElement('label');
+  durationLabel.textContent = 'End Time';
+  durationLabel.style.display = 'block';
+  durationLabel.style.marginTop = '8px';
+  modalBox.appendChild(durationLabel);
+
+  const durationRow = document.createElement('div');
+  durationRow.style.display = 'flex';
+  durationRow.style.gap = '8px';
+  durationRow.style.alignItems = 'center';
+
+  const durationInput = document.createElement('input');
+  durationInput.type = 'text';
+  durationInput.value = durationValue ?? '';
+  durationInput.placeholder = 'Duration';
+  durationInput.dataset.key = 'end_time';
+  durationInput.style.flex = '1';
+  durationInput.style.margin = '6px 0';
+  durationInput.style.padding = '6px';
+
+  const durationSelect = document.createElement('select');
+  durationSelect.dataset.key = 'end_time_unit';
+  durationSelect.style.margin = '6px 0';
+  durationSelect.style.padding = '6px';
+  ['minutes', 'hours', 'days'].forEach((unit) => {
+    const option = document.createElement('option');
+    option.value = unit;
+    option.textContent = unit;
+    if (unit === (durationUnit || 'days')) option.selected = true;
+    durationSelect.appendChild(option);
+  });
+
+  durationRow.appendChild(durationInput);
+  durationRow.appendChild(durationSelect);
+  modalBox.appendChild(durationRow);
+
+  const buttons = document.createElement('div');
+  buttons.className = 'modal-buttons';
+  buttons.innerHTML = `
+    <button class="confirm-button" id="adminEditConfirm">Confirm</button>
+    <button class="cancel-button" id="adminEditCancel">Cancel</button>
+  `;
+  modalBox.appendChild(buttons);
+  modalOverlay.appendChild(modalBox);
+  document.body.appendChild(modalOverlay);
+
+  document.getElementById('adminEditCancel').addEventListener('click', () => modalOverlay.remove());
+  document.getElementById('adminEditConfirm').addEventListener('click', () => {
+    const data = {};
+    modalBox.querySelectorAll('input').forEach((input) => {
+      data[input.dataset.key] = input.value;
+    });
+    const unit = modalBox.querySelector('select[data-key="end_time_unit"]')?.value || 'days';
+    confirmTwice('Are you sure you want to edit this?', async () => {
+      await onSubmit(data, unit);
+      modalOverlay.remove();
+    });
+  });
+}
+
 async function loadAdminGiveaways() {
   const token = localStorage.getItem('token');
   const list = document.getElementById('adminGiveawaysList');
@@ -1442,24 +1597,31 @@ async function loadAdminGiveaways() {
   createBtn.textContent = 'Create Giveaway';
   createRow.appendChild(createBtn);
   list.appendChild(createRow);
-  createBtn.addEventListener('click', () => {
-    buildEditModal('Create Giveaway', [
-      { key: 'giveaway_name', label: 'Name', value: '' },
-      { key: 'prize', label: 'Prize', value: '' },
-      { key: 'winners', label: 'Winners', value: 1 },
-      { key: 'end_time', label: 'End Time (days)', value: 1 },
-      { key: 'repeat', label: 'Repeat (0/1)', value: 0 },
-    ], async (data) => {
-      const payload = {
-        ...data,
-        end_time: daysFromNow(data.end_time),
-      };
-      const result = await adminActionRequest('/api/admin/giveaways/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload),
-      });
-      if (result.ok) loadAdminGiveaways();
+  createBtn.addEventListener('click', async () => {
+    const shopItems = await getAdminShopItems(token);
+    buildPrizeDurationModal({
+      title: 'Create Giveaway',
+      fields: [
+        { key: 'giveaway_name', label: 'Name', value: '' },
+        { key: 'prize', label: 'Prize (shop item or Volts)', value: '', type: 'prize', placeholder: 'Item name or Volt amount' },
+        { key: 'winners', label: 'Winners', value: 1 },
+        { key: 'repeat', label: 'Repeat (0/1)', value: 0 },
+      ],
+      durationValue: 1,
+      durationUnit: 'days',
+      shopItems,
+      onSubmit: async (data, unit) => {
+        const payload = {
+          ...data,
+          end_time: durationFromNow(data.end_time, unit),
+        };
+        const result = await adminActionRequest('/api/admin/giveaways/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        });
+        if (result.ok) loadAdminGiveaways();
+      },
     });
   });
 
@@ -1495,24 +1657,31 @@ async function loadAdminGiveaways() {
       actions.appendChild(cancelBtn);
       item.appendChild(actions);
 
-      editBtn.addEventListener('click', () => {
-        buildEditModal('Edit Giveaway', [
-          { key: 'giveaway_name', label: 'Name', value: g.giveaway_name },
-          { key: 'prize', label: 'Prize', value: g.prize },
-          { key: 'winners', label: 'Winners', value: g.winners },
-          { key: 'end_time', label: 'End Time (days)', value: msToDays(g.end_time - Date.now()) },
-          { key: 'repeat', label: 'Repeat (0/1)', value: g.repeat },
-        ], async (data) => {
-          const payload = {
-            ...data,
-            end_time: daysFromNow(data.end_time),
-          };
-          const result = await adminActionRequest(`/api/admin/giveaways/${g.id}/update`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify(payload),
-          });
-          if (result.ok) loadAdminGiveaways();
+      editBtn.addEventListener('click', async () => {
+        const shopItems = await getAdminShopItems(token);
+        buildPrizeDurationModal({
+          title: 'Edit Giveaway',
+          fields: [
+            { key: 'giveaway_name', label: 'Name', value: g.giveaway_name },
+            { key: 'prize', label: 'Prize (shop item or Volts)', value: g.prize, type: 'prize', placeholder: 'Item name or Volt amount' },
+            { key: 'winners', label: 'Winners', value: g.winners },
+            { key: 'repeat', label: 'Repeat (0/1)', value: g.repeat },
+          ],
+          durationValue: msToDays(g.end_time - Date.now()),
+          durationUnit: 'days',
+          shopItems,
+          onSubmit: async (data, unit) => {
+            const payload = {
+              ...data,
+              end_time: durationFromNow(data.end_time, unit),
+            };
+            const result = await adminActionRequest(`/api/admin/giveaways/${g.id}/update`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify(payload),
+            });
+            if (result.ok) loadAdminGiveaways();
+          },
         });
       });
       cancelBtn.addEventListener('click', () => {
@@ -1538,34 +1707,6 @@ async function loadAdminTitleGiveaways() {
   const list = document.getElementById('adminTitleGiveawaysList');
   if (!token || !list) return;
   list.innerHTML = '';
-
-  const createRow = document.createElement('div');
-  createRow.className = 'admin-actions';
-  const createBtn = document.createElement('button');
-  createBtn.className = 'btn';
-  createBtn.textContent = 'Create Title Giveaway';
-  createRow.appendChild(createBtn);
-  list.appendChild(createRow);
-  createBtn.addEventListener('click', () => {
-    buildEditModal('Create Title Giveaway', [
-      { key: 'giveaway_name', label: 'Name', value: '' },
-      { key: 'prize', label: 'Prize', value: '' },
-      { key: 'winners', label: 'Winners', value: 1 },
-      { key: 'end_time', label: 'End Time (days)', value: 1 },
-      { key: 'repeat', label: 'Repeat (0/1)', value: 0 },
-    ], async (data) => {
-      const payload = {
-        ...data,
-        end_time: daysFromNow(data.end_time),
-      };
-      const result = await adminActionRequest('/api/admin/title-giveaways/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload),
-      });
-      if (result.ok) loadAdminTitleGiveaways();
-    });
-  });
 
   try {
     const res = await fetch('/api/admin/title-giveaways', { headers: { Authorization: `Bearer ${token}` } });
@@ -1652,32 +1793,42 @@ async function loadAdminRaffles() {
   createBtn.textContent = 'Create Raffle';
   createRow.appendChild(createBtn);
   list.appendChild(createRow);
-  createBtn.addEventListener('click', () => {
-    buildEditModal('Create Raffle', [
-      { key: 'name', label: 'Name', value: '' },
-      { key: 'prize', label: 'Prize', value: '' },
-      { key: 'cost', label: 'Cost', value: 1 },
-      { key: 'quantity', label: 'Quantity', value: 1 },
-      { key: 'winners', label: 'Winners', value: 1 },
-      { key: 'end_time', label: 'End Time (days)', value: 1 },
-    ], async (data) => {
-      const payload = {
-        ...data,
-        end_time: daysFromNow(data.end_time),
-      };
-      const result = await adminActionRequest('/api/admin/raffles/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload),
-      });
-      if (result.ok) loadAdminRaffles();
+  createBtn.addEventListener('click', async () => {
+    const shopItems = await getAdminShopItems(token);
+    buildPrizeDurationModal({
+      title: 'Create Raffle',
+      fields: [
+        { key: 'name', label: 'Name', value: '' },
+        { key: 'prize', label: 'Prize (shop item or Volts)', value: '', type: 'prize', placeholder: 'Item name or Volt amount' },
+        { key: 'cost', label: 'Cost', value: 1 },
+        { key: 'quantity', label: 'Quantity', value: 1 },
+        { key: 'winners', label: 'Winners', value: 1 },
+      ],
+      durationValue: 1,
+      durationUnit: 'days',
+      shopItems,
+      onSubmit: async (data, unit) => {
+        const payload = {
+          ...data,
+          end_time: durationFromNow(data.end_time, unit),
+        };
+        const result = await adminActionRequest('/api/admin/raffles/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        });
+        if (result.ok) loadAdminRaffles();
+      },
     });
   });
 
   try {
     const res = await fetch('/api/admin/raffles', { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) throw new Error('Failed to load raffles.');
-    const items = (await res.json()).filter((r) => !r.end_time || r.end_time > Date.now());
+    const items = (await res.json()).filter((r) => {
+      const endTime = normalizeEndTime(r.end_time);
+      return !endTime || endTime > Date.now();
+    });
     if (!items.length) {
       const empty = document.createElement('div');
       empty.className = 'admin-item';
@@ -1688,7 +1839,8 @@ async function loadAdminRaffles() {
     items.forEach((r) => {
       const item = document.createElement('div');
       item.className = 'admin-item';
-      const end = r.end_time ? new Date(r.end_time).toLocaleString() : 'N/A';
+      const normalizedEnd = normalizeEndTime(r.end_time);
+      const end = normalizedEnd ? new Date(normalizedEnd).toLocaleString() : 'N/A';
       item.innerHTML = `<p><strong>${r.name}</strong></p><p>Prize: ${r.prize} | Winners: ${r.winners}</p><p>Ends: ${end}</p>`;
       const actions = document.createElement('div');
       actions.className = 'modal-buttons';
@@ -1706,25 +1858,32 @@ async function loadAdminRaffles() {
       actions.appendChild(cancelBtn);
       item.appendChild(actions);
 
-      editBtn.addEventListener('click', () => {
-        buildEditModal('Edit Raffle', [
-          { key: 'name', label: 'Name', value: r.name },
-          { key: 'prize', label: 'Prize', value: r.prize },
-          { key: 'cost', label: 'Cost', value: r.cost },
-          { key: 'quantity', label: 'Quantity', value: r.quantity },
-          { key: 'winners', label: 'Winners', value: r.winners },
-          { key: 'end_time', label: 'End Time (days)', value: msToDays(r.end_time - Date.now()) },
-        ], async (data) => {
-          const payload = {
-            ...data,
-            end_time: daysFromNow(data.end_time),
-          };
-          const result = await adminActionRequest(`/api/admin/raffles/${r.id}/update`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify(payload),
-          });
-          if (result.ok) loadAdminRaffles();
+      editBtn.addEventListener('click', async () => {
+        const shopItems = await getAdminShopItems(token);
+        buildPrizeDurationModal({
+          title: 'Edit Raffle',
+          fields: [
+            { key: 'name', label: 'Name', value: r.name },
+            { key: 'prize', label: 'Prize (shop item or Volts)', value: r.prize, type: 'prize', placeholder: 'Item name or Volt amount' },
+            { key: 'cost', label: 'Cost', value: r.cost },
+            { key: 'quantity', label: 'Quantity', value: r.quantity },
+            { key: 'winners', label: 'Winners', value: r.winners },
+          ],
+          durationValue: msToDays((normalizeEndTime(r.end_time) || Date.now()) - Date.now()),
+          durationUnit: 'days',
+          shopItems,
+          onSubmit: async (data, unit) => {
+            const payload = {
+              ...data,
+              end_time: durationFromNow(data.end_time, unit),
+            };
+            const result = await adminActionRequest(`/api/admin/raffles/${r.id}/update`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify(payload),
+            });
+            if (result.ok) loadAdminRaffles();
+          },
         });
       });
       cancelBtn.addEventListener('click', () => {
@@ -2572,14 +2731,27 @@ async function fetchUserHoldings() {
     rafflesList.innerHTML = ""; // Clears old items before rendering
 
     try {
-      const response = await fetch("/api/shop");
-      const data = await response.json();
+      const [shopResponse, activeResponse] = await Promise.all([
+        fetch("/api/shop"),
+        fetch("/api/raffles/active"),
+      ]);
+      const data = await shopResponse.json();
+      const activeRaffles = await activeResponse.json();
+      const activeNames = new Set(
+        (Array.isArray(activeRaffles) ? activeRaffles : [])
+          .map((raffle) => String(raffle?.name || "").trim().toLowerCase())
+          .filter(Boolean)
+      );
 
       // Group by name and sum quantities
       const raffleMap = new Map();
       data.forEach((item) => {
         if (item.name.toLowerCase().includes("raffle ticket")) {
           const normalizedName = item.name.trim().toLowerCase(); // Normalize names
+          const baseName = normalizedName.replace(/\s*raffle ticket\s*$/i, "").trim();
+          if (!activeNames.has(baseName)) {
+            return;
+          }
 
           if (raffleMap.has(normalizedName)) {
             raffleMap.get(normalizedName).quantity += item.quantity; // Merge quantities

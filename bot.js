@@ -3,6 +3,7 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, Partials, Collection } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const { points } = require('./points');
 
 /**
  * NEW: Log capturing functionality.
@@ -67,6 +68,9 @@ function scheduleAt(endTimeMs, fn) {
   };
   tick();
 }
+
+const scheduledGiveaways = new Set();
+const scheduledRaffles = new Set();
 
 
 
@@ -333,11 +337,18 @@ client.on('messageReactionRemove', async (reaction, user) => {
 async function concludeGiveaway(giveaway) {
   try {
     console.log(`⏳ DEBUG: Starting conclusion for giveaway ${giveaway.id}`);
-
-    const channel = await client.channels.fetch(giveaway.channel_id);
+    const giveawayName = giveaway.giveaway_name || giveaway.name || 'Giveaway';
+    const webUiChannelId = process.env.WEBUI_GIVEAWAY_CHANNELID;
+    const messageId = String(giveaway.message_id || '');
+    const resolvedChannelId =
+      (webUiChannelId && (!giveaway.channel_id || giveaway.channel_id === 'admin' || messageId.startsWith('admin-')))
+        ? webUiChannelId
+        : giveaway.channel_id;
+    const channel = resolvedChannelId
+      ? await client.channels.fetch(resolvedChannelId).catch(() => null)
+      : null;
     if (!channel) {
-      console.error(`❌ DEBUG: Channel ${giveaway.channel_id} not found.`);
-      return;
+      console.warn(`⚠️ Giveaway channel not found. Proceeding without announcement. Channel ID: ${resolvedChannelId}`);
     }
 
     // ✅ Fetch participants from the database and log what happens
@@ -347,38 +358,85 @@ async function concludeGiveaway(giveaway) {
 
     if (!participants.length) {
       console.log(`🚨 DEBUG: No valid participants found for giveaway ${giveaway.id}!`);
-      await channel.send(`🚫 No valid participants for giveaway **${giveaway.name}**.`);
-      await deleteGiveaway(giveaway.id);
+      if (channel) {
+        await channel.send(`Giveaway "${giveawayName}" ended with no valid participants.`);
+      }
+      await deleteGiveaway(giveaway.message_id);
       return;
     }
 
-    // ✅ Select winners randomly
-    const shuffled = participants.sort(() => 0.5 - Math.random());
-    const winners = shuffled.slice(0, giveaway.winners);
+    // ✅ Select winners randomly (unique winners)
+    const pool = [...participants];
+    const winners = [];
+    while (winners.length < Math.min(giveaway.winners, pool.length)) {
+      const randomIndex = Math.floor(Math.random() * pool.length);
+      const winnerId = pool.splice(randomIndex, 1)[0];
+      winners.push(winnerId);
+    }
 
     console.log(`🏆 DEBUG: Winners selected for giveaway ${giveaway.id}:`, winners);
-
-    // ✅ Announce winners
-    const winnersMention = winners.map(winnerId => `<@${winnerId}>`).join(', ');
-    await channel.send(`🎉 Congratulations ${winnersMention}! You won **${giveaway.prize}**!`);
 
     // ✅ Award prizes
     for (const winnerId of winners) {
       if (!isNaN(giveaway.prize)) {
-        await updateWallet(winnerId, parseInt(giveaway.prize, 10));
+        const prizeAmount = parseInt(giveaway.prize, 10);
+        if (channel) {
+          await channel.send(
+            `🎉 Congrats <@${winnerId}>! You won **${giveawayName}** and received **${prizeAmount}${points.symbol}**.`
+          );
+        }
+        await updateWallet(winnerId, prizeAmount);
       } else {
         const shopItem = await getShopItemByName(giveaway.prize);
-        if (shopItem) {
-          await addItemToInventory(winnerId, shopItem.itemID);
+        if (!shopItem || !shopItem.itemID) {
+          console.error(`❌ Shop item "${giveaway.prize}" not found or missing itemID.`);
+          if (channel) {
+            await channel.send(`Error: Shop item "**${giveaway.prize}**" not found. Prize distribution failed.`);
+          }
+          continue;
         }
+        if (channel) {
+          await channel.send(
+            `🎉 Congrats <@${winnerId}>! You won **${giveawayName}** and received **${shopItem.name}**.`
+          );
+        }
+        await addItemToInventory(winnerId, shopItem.itemID);
       }
     }
 
     // ✅ Cleanup
-    await deleteGiveaway(giveaway.id);
+    await deleteGiveaway(giveaway.message_id);
     console.log(`✅ DEBUG: Giveaway ${giveaway.id} resolved and deleted.`);
   } catch (err) {
     console.error('⚠️ ERROR in concludeGiveaway():', err);
+  }
+}
+
+function scheduleGiveawayConclusion(giveaway, reason) {
+  if (!giveaway || scheduledGiveaways.has(giveaway.id)) return;
+  scheduledGiveaways.add(giveaway.id);
+  const remainingTime = giveaway.end_time - Date.now();
+  if (remainingTime > 0) {
+    scheduleAt(giveaway.end_time, () => {
+      concludeGiveaway(giveaway).finally(() => scheduledGiveaways.delete(giveaway.id));
+    });
+    console.log(`⏳ Scheduled giveaway ${giveaway.message_id} (${reason}) to conclude in ${remainingTime}ms.`);
+  } else {
+    concludeGiveaway(giveaway).finally(() => scheduledGiveaways.delete(giveaway.id));
+  }
+}
+
+function scheduleRaffleConclusion(raffle, reason) {
+  if (!raffle || scheduledRaffles.has(raffle.id)) return;
+  scheduledRaffles.add(raffle.id);
+  const timeLeft = raffle.end_time - Date.now();
+  if (timeLeft > 0) {
+    scheduleAt(raffle.end_time, () => {
+      concludeRaffle(raffle.id).finally(() => scheduledRaffles.delete(raffle.id));
+    });
+    console.log(`📅 Scheduled raffle "${raffle.name}" (ID: ${raffle.id}) (${reason}) in ${timeLeft}ms.`);
+  } else {
+    concludeRaffle(raffle.id).finally(() => scheduledRaffles.delete(raffle.id));
   }
 }
 
@@ -399,16 +457,7 @@ client.once('ready', async () => {
 
   for (const giveaway of activeGiveaways) {
     await syncGiveawayEntries(giveaway);
-
-    const remainingTime = giveaway.end_time - Date.now();
-    if (remainingTime > 0) {
-      setTimeout(async () => {
-        await concludeGiveaway(giveaway);
-      }, remainingTime);
-      console.log(`⏳ Scheduled giveaway ${giveaway.message_id} to conclude in ${remainingTime}ms.`);
-    } else {
-      await concludeGiveaway(giveaway);
-    }
+    scheduleGiveawayConclusion(giveaway, 'startup');
   }
 });
 
@@ -419,17 +468,7 @@ client.once('ready', async () => {
   console.log(`🔄 Restoring ${activeRaffles.length} active raffles...`);
 
   for (const raffle of activeRaffles) {
-    const timeLeft = raffle.end_time - Date.now();
-
-    if (timeLeft > 0) {
-      setTimeout(() => {
-        concludeRaffle(raffle.id);
-      }, timeLeft);
-      console.log(`📅 Scheduled raffle "${raffle.name}" (ID: ${raffle.id}) to conclude in ${timeLeft}ms.`);
-    } else {
-      await concludeRaffle(raffle.id);
-      console.log(`⏰ Raffle "${raffle.name}" (ID: ${raffle.id}) was past end time and concluded immediately.`);
-    }
+    scheduleRaffleConclusion(raffle, 'startup');
   }
 });
 
@@ -538,18 +577,23 @@ client.once('ready', async () => {
   }
 });
 
-// Check every 60 seconds if any raffles have passed their end time.
+// Check every 60 seconds for newly-created web UI giveaways/raffles and schedule them.
 setInterval(async () => {
   try {
-    const activeRaffles = await getActiveRaffles();
+    const [activeGiveaways, activeRaffles] = await Promise.all([
+      getActiveGiveaways(),
+      getActiveRaffles(),
+    ]);
+
+    for (const giveaway of activeGiveaways) {
+      scheduleGiveawayConclusion(giveaway, 'poll');
+    }
+
     for (const raffle of activeRaffles) {
-      if (Date.now() >= raffle.end_time) {
-        console.log(`⏰ Raffle "${raffle.name}" is past its end time. Concluding now...`);
-        await concludeRaffle(raffle.id);
-      }
+      scheduleRaffleConclusion(raffle, 'poll');
     }
   } catch (error) {
-    console.error('⚠️ Error polling raffles:', error);
+    console.error('⚠️ Error polling giveaways/raffles:', error);
   }
 }, 60_000);
 

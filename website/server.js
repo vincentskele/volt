@@ -7,6 +7,8 @@ const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs'); // Needed to read the console.json file
 const multer = require("multer");
+const { EmbedBuilder, AttachmentBuilder } = require("discord.js");
+const { points, formatCurrency } = require("../points");
 
 
 
@@ -319,14 +321,77 @@ app.post('/api/admin/giveaways/create', authenticateToken, requireAdmin, async (
   const finalWinners = Number(winners) || 1;
   const finalEnd = Number(end_time) || (Date.now() + 24 * 60 * 60 * 1000);
   const finalRepeat = Number(repeat) || 0;
-  const finalChannel = String(channel_id || process.env.SUBMISSION_CHANNEL_ID || 'admin');
+  const finalChannel = String(
+    channel_id ||
+    process.env.WEBUI_GIVEAWAY_CHANNELID ||
+    process.env.SUBMISSION_CHANNEL_ID ||
+    'admin'
+  );
 
   if (!name || !finalPrize) {
     return res.status(400).json({ message: 'Name and prize are required.' });
   }
 
   try {
-    const messageId = `admin-${Date.now()}`;
+    // Match create-giveaway.js: if prize is not numeric, it must be a valid shop item.
+    if (Number.isNaN(Number(finalPrize))) {
+      const shopItem = await getShopItemByName(finalPrize);
+      if (!shopItem) {
+        return res.status(400).json({ message: `Invalid prize. "${finalPrize}" is not a valid shop item.` });
+      }
+    }
+
+    let messageId = `admin-${Date.now()}`;
+    try {
+      await waitForClientReady();
+      const channel = await client.channels.fetch(finalChannel).catch(() => null);
+      if (channel) {
+        const remainingMs = Math.max(0, finalEnd - Date.now());
+        const totalMinutes = Math.max(1, Math.round(remainingMs / 60000));
+        let durationValue = totalMinutes;
+        let timeUnit = 'minutes';
+        if (totalMinutes % (60 * 24) === 0) {
+          durationValue = totalMinutes / (60 * 24);
+          timeUnit = 'days';
+        } else if (totalMinutes % 60 === 0) {
+          durationValue = totalMinutes / 60;
+          timeUnit = 'hours';
+        }
+
+        const bannerPath = path.join(__dirname, '..', 'commands', 'banner.png');
+        const files = [];
+        const giveawayEmbed = new EmbedBuilder()
+          .setTitle(`🎉 GIVEAWAY: ${name} 🎉`)
+          .setDescription(
+            `**Duration:** ${durationValue} ${timeUnit}\n` +
+            `**Winners:** ${finalWinners}\n` +
+            `**Prize:** ${finalPrize}\n\n` +
+            `*React with 🎉 or use the online dashboard to enter!*`
+          )
+          .setColor(0xffa500);
+
+        if (fs.existsSync(bannerPath)) {
+          files.push(new AttachmentBuilder(bannerPath, { name: 'banner.png' }));
+          giveawayEmbed.setImage('attachment://banner.png');
+        } else {
+          console.warn(`[WARN] banner.png not found at: ${bannerPath} (sending without image)`);
+        }
+
+        const adminTag = await resolveUsername(req.user.userId);
+        const giveawayMessage = await channel.send({
+          content: `Started by ${adminTag} (<@${req.user.userId}>)`,
+          embeds: [giveawayEmbed],
+          files,
+        });
+        await giveawayMessage.react('🎉');
+        messageId = giveawayMessage.id;
+      } else {
+        console.warn(`[WARN] Giveaway channel ${finalChannel} not found. Proceeding without Discord announcement.`);
+      }
+    } catch (announceErr) {
+      console.error('❌ Failed to announce giveaway in Discord:', announceErr);
+    }
+
     await saveGiveaway(messageId, finalChannel, finalEnd, finalPrize, finalWinners, name, finalRepeat);
     await logAdminChange(req.user.userId, 'Giveaway created', [
       `Name: "${name}"`,
@@ -385,14 +450,76 @@ app.post('/api/admin/raffles/create', authenticateToken, requireAdmin, async (re
   const finalQty = Number(quantity) || 1;
   const finalWinners = Number(winners) || 1;
   const finalEnd = Number(end_time) || (Date.now() + 24 * 60 * 60 * 1000);
-  const finalChannel = String(channel_id || process.env.SUBMISSION_CHANNEL_ID || 'admin');
+  const finalChannel = String(
+    channel_id ||
+    process.env.WEBUI_RAFFLE_CHANNELID ||
+    process.env.SUBMISSION_CHANNEL_ID ||
+    'admin'
+  );
 
   if (!finalName || !finalPrize) {
     return res.status(400).json({ message: 'Name and prize are required.' });
   }
 
   try {
-    await createRaffle(finalChannel, finalName, finalPrize, finalCost, finalQty, finalWinners, finalEnd);
+    if (finalCost <= 0 || finalQty <= 0 || finalWinners <= 0 || finalEnd <= Date.now()) {
+      return res.status(400).json({ message: 'Invalid values. Ensure all inputs are positive.' });
+    }
+
+    const activeRaffles = await getActiveRaffles();
+    if (activeRaffles.some((raffle) => raffle.name === finalName)) {
+      return res.status(400).json({ message: `A raffle named "${finalName}" is already running.` });
+    }
+
+    // Match create-raffle.js: if prize is not numeric, it must be a valid shop item.
+    if (Number.isNaN(Number(finalPrize))) {
+      const shopItem = await getShopItemByName(finalPrize);
+      if (!shopItem) {
+        return res.status(400).json({ message: `Invalid prize. "${finalPrize}" is not a valid shop item.` });
+      }
+    }
+
+    const raffleId = await createRaffle(finalChannel, finalName, finalPrize, finalCost, finalQty, finalWinners, finalEnd);
+    try {
+      await waitForClientReady();
+      const channel = await client.channels.fetch(finalChannel).catch(() => null);
+      if (channel) {
+        const endDate = new Date(finalEnd);
+        const formattedEndDate = endDate.toUTCString().replace(' GMT', ' UTC');
+        const bannerPath = path.join(__dirname, '..', 'commands', 'banner_title.png');
+        const files = [];
+        const embed = new EmbedBuilder()
+          .setTitle(`🎟️ Raffle Started: ${finalName}`)
+          .setDescription(
+            `Prize: **${finalPrize}**\n` +
+            `Ticket Cost: **${formatCurrency(finalCost)}**\n` +
+            `Total Tickets: **${finalQty * 2}**\n` +
+            `🎉 Ends at **${formattedEndDate}**\n` +
+            `🏆 Winners: **${finalWinners}**`
+          )
+          .setColor(0xFFD700)
+          .setTimestamp(endDate);
+
+        if (fs.existsSync(bannerPath)) {
+          files.push(new AttachmentBuilder(bannerPath, { name: 'banner_title.png' }));
+          embed.setImage('attachment://banner_title.png');
+        } else {
+          console.warn(`[WARN] banner_title.png not found at: ${bannerPath} (sending without image)`);
+        }
+
+        const adminTag = await resolveUsername(req.user.userId);
+        await channel.send({
+          content: `Started by ${adminTag} (<@${req.user.userId}>)`,
+          embeds: [embed],
+          files,
+        });
+      } else {
+        console.warn(`[WARN] Raffle channel ${finalChannel} not found. Proceeding without Discord announcement.`);
+      }
+    } catch (announceErr) {
+      console.error('❌ Failed to announce raffle in Discord:', announceErr);
+    }
+
     await logAdminChange(req.user.userId, 'Raffle created', [
       `Name: "${finalName}"`,
       `Prize: "${finalPrize}"`,
@@ -422,6 +549,20 @@ app.get('/api/admin/joblist', authenticateToken, requireAdmin, async (req, res) 
   } catch (err) {
     console.error('Error in /api/admin/joblist:', err);
     return res.status(500).json({ message: 'Failed to load job list.' });
+  }
+});
+
+app.get('/api/admin/shop-items', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT name
+       FROM items
+       ORDER BY name ASC`
+    );
+    return res.json(rows || []);
+  } catch (err) {
+    console.error('Error in /api/admin/shop-items:', err);
+    return res.status(500).json({ message: 'Failed to load shop items.' });
   }
 });
 
@@ -1001,6 +1142,20 @@ app.get('/api/shop', (req, res) => {
       res.json(rows);
     }
   );
+});
+
+/**
+ * GET /api/raffles/active
+ * Returns active raffles (end_time > now) for client filtering.
+ */
+app.get('/api/raffles/active', async (req, res) => {
+  try {
+    const rows = await getActiveRaffles();
+    return res.json(rows || []);
+  } catch (err) {
+    console.error('Error fetching active raffles:', err);
+    return res.status(500).json({ message: 'Failed to fetch active raffles.' });
+  }
 });
 
 /**
@@ -1774,6 +1929,8 @@ app.post('/api/giveaways/enter', authenticateToken, async (req, res) => {
 const {
   assignJobById,
   getActiveJob,
+  getActiveRaffles,
+  getShopItemByName,
   renumberJobs,
   saveGiveaway,
   createRaffle,
@@ -1847,10 +2004,6 @@ app.post('/api/quit-job', authenticateToken, async (req, res) => {
 
 
 const SUBMISSION_CHANNEL_ID = process.env.SUBMISSION_CHANNEL_ID;
-
-const { EmbedBuilder } = require("discord.js");
-
-
 
 // ✅ Ensure uploads directory exists
 const uploadDir = path.join(__dirname, "../uploads");
