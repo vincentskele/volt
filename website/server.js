@@ -9,6 +9,7 @@ const fs = require('fs'); // Needed to read the console.json file
 const multer = require("multer");
 const { EmbedBuilder, AttachmentBuilder } = require("discord.js");
 const { points, formatCurrency } = require("../points");
+const dbHelpers = require("../db");
 
 const SUBMISSION_EMBED_COLORS = {
   jobSubmission: 0x3b82f6,
@@ -63,6 +64,7 @@ db.run(
   `CREATE TABLE IF NOT EXISTS job_submissions (
     submission_id INTEGER PRIMARY KEY AUTOINCREMENT,
     userID TEXT NOT NULL,
+    jobID INTEGER,
     title TEXT NOT NULL,
     description TEXT NOT NULL,
     image_url TEXT,
@@ -72,6 +74,32 @@ db.run(
   (err) => {
     if (err) console.error('❌ Error creating job_submissions table:', err);
     else console.log('✅ Job submissions table is ready.');
+  }
+);
+
+// ✅ Job system tables (used by admin + quest list)
+db.run(
+  `CREATE TABLE IF NOT EXISTS joblist (
+    jobID INTEGER PRIMARY KEY AUTOINCREMENT,
+    description TEXT NOT NULL,
+    cooldown_value INTEGER,
+    cooldown_unit TEXT
+  )`,
+  (err) => {
+    if (err) console.error('❌ Error creating joblist table:', err);
+    else console.log('✅ Joblist table is ready.');
+  }
+);
+
+db.run(
+  `CREATE TABLE IF NOT EXISTS job_assignees (
+    jobID INTEGER,
+    userID TEXT,
+    PRIMARY KEY(jobID, userID)
+  )`,
+  (err) => {
+    if (err) console.error('❌ Error creating job_assignees table:', err);
+    else console.log('✅ Job assignees table is ready.');
   }
 );
 
@@ -172,6 +200,54 @@ function ensureJobSubmissionColumn(columnName, ddl) {
 
 ensureJobSubmissionColumn('reward_amount', 'reward_amount INTEGER DEFAULT 0');
 ensureJobSubmissionColumn('completed_at', 'completed_at INTEGER');
+ensureJobSubmissionColumn('jobID', 'jobID INTEGER');
+
+function ensureJoblistColumn(columnName, ddl) {
+  db.all(`PRAGMA table_info(joblist)`, (err, columns) => {
+    if (err) {
+      console.error('❌ Error checking joblist schema:', err);
+      return;
+    }
+    const exists = columns.some((col) => col.name === columnName);
+    if (!exists) {
+      db.run(`ALTER TABLE joblist ADD COLUMN ${ddl}`, (alterErr) => {
+        if (alterErr) {
+          console.error(`❌ Failed adding ${columnName} to joblist:`, alterErr);
+        } else {
+          console.log(`✅ Added ${columnName} to joblist.`);
+        }
+      });
+    }
+  });
+}
+
+ensureJoblistColumn('cooldown_value', 'cooldown_value INTEGER');
+ensureJoblistColumn('cooldown_unit', 'cooldown_unit TEXT');
+
+function normalizeCooldownInput(valueRaw, unitRaw) {
+  const allowedUnits = new Set(['minute', 'hour', 'day', 'month']);
+  const hasValue = valueRaw !== null && valueRaw !== undefined && valueRaw !== '';
+  const hasUnit = unitRaw !== null && unitRaw !== undefined && String(unitRaw).trim() !== '';
+
+  if (!hasValue && !hasUnit) {
+    return { cooldownValue: null, cooldownUnit: null };
+  }
+  if (!hasValue) {
+    throw new Error('Cooldown value is required when cooldown unit is set.');
+  }
+  const parsedValue = Number(valueRaw);
+  if (!Number.isFinite(parsedValue) || parsedValue <= 0) {
+    throw new Error('Cooldown value must be a positive number.');
+  }
+  if (!hasUnit) {
+    throw new Error('Cooldown unit is required when cooldown value is set.');
+  }
+  const unit = String(unitRaw).trim().toLowerCase().replace(/s$/, '');
+  if (!allowedUnits.has(unit)) {
+    throw new Error('Cooldown unit must be minute, hour, day, or month.');
+  }
+  return { cooldownValue: Math.floor(parsedValue), cooldownUnit: unit };
+}
 
 const ROBO_CHECK_HOLDERS_PATH =
   process.env.ROBO_CHECK_HOLDERS_PATH ||
@@ -630,7 +706,7 @@ app.post('/api/admin/raffles/create', authenticateToken, requireAdmin, async (re
 app.get('/api/admin/joblist', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const rows = await dbAll(
-      `SELECT jobID, description
+      `SELECT jobID, description, cooldown_value, cooldown_unit
        FROM joblist
        ORDER BY jobID ASC`
     );
@@ -1295,13 +1371,22 @@ app.post('/api/admin/joblist', authenticateToken, requireAdmin, async (req, res)
   const description = String(req.body?.description || '').trim();
   if (!description) return res.status(400).json({ message: 'Description required.' });
   try {
-    await dbRun(`INSERT INTO joblist (description) VALUES (?)`, [description]);
+    const { cooldownValue, cooldownUnit } = normalizeCooldownInput(
+      req.body?.cooldown_value,
+      req.body?.cooldown_unit
+    );
+    await dbRun(
+      `INSERT INTO joblist (description, cooldown_value, cooldown_unit) VALUES (?, ?, ?)`,
+      [description, cooldownValue, cooldownUnit]
+    );
     await renumberJobs();
-    await logAdminChange(req.user.userId, 'Job list updated', [`Added quest: "${description}"`]);
+    const cooldownLabel = cooldownValue && cooldownUnit ? ` (Cooldown: ${cooldownValue} ${cooldownUnit}${cooldownValue === 1 ? '' : 's'})` : '';
+    await logAdminChange(req.user.userId, 'Job list updated', [`Added quest: "${description}"${cooldownLabel}`]);
     return res.json({ message: 'Job added.' });
   } catch (err) {
     console.error('Error adding job:', err);
-    return res.status(500).json({ message: 'Failed to add job.' });
+    const status = err?.message && err.message.toLowerCase().includes('cooldown') ? 400 : 500;
+    return res.status(status).json({ message: err?.message || 'Failed to add job.' });
   }
 });
 
@@ -1310,16 +1395,34 @@ app.post('/api/admin/joblist/:id/update', authenticateToken, requireAdmin, async
   const description = String(req.body?.description || '').trim();
   if (!description) return res.status(400).json({ message: 'Description required.' });
   try {
-    const existing = await dbGet(`SELECT description FROM joblist WHERE jobID = ?`, [id]);
+    const existing = await dbGet(
+      `SELECT description, cooldown_value, cooldown_unit FROM joblist WHERE jobID = ?`,
+      [id]
+    );
     if (!existing) return res.status(404).json({ message: 'Job not found.' });
-    await dbRun(`UPDATE joblist SET description = ? WHERE jobID = ?`, [description, id]);
+    const { cooldownValue, cooldownUnit } = normalizeCooldownInput(
+      req.body?.cooldown_value,
+      req.body?.cooldown_unit
+    );
+    await dbRun(
+      `UPDATE joblist SET description = ?, cooldown_value = ?, cooldown_unit = ? WHERE jobID = ?`,
+      [description, cooldownValue, cooldownUnit, id]
+    );
+    const beforeCooldown = existing.cooldown_value && existing.cooldown_unit
+      ? `${existing.cooldown_value} ${existing.cooldown_unit}${existing.cooldown_value === 1 ? '' : 's'}`
+      : 'None';
+    const afterCooldown = cooldownValue && cooldownUnit
+      ? `${cooldownValue} ${cooldownUnit}${cooldownValue === 1 ? '' : 's'}`
+      : 'None';
     await logAdminChange(req.user.userId, 'Job list updated', [
       `Updated quest #${id}: "${existing.description}" -> "${description}"`,
+      `Cooldown: ${beforeCooldown} -> ${afterCooldown}`,
     ]);
     return res.json({ message: 'Job updated.' });
   } catch (err) {
     console.error('Error updating job:', err);
-    return res.status(500).json({ message: 'Failed to update job.' });
+    const status = err?.message && err.message.toLowerCase().includes('cooldown') ? 400 : 500;
+    return res.status(status).json({ message: err?.message || 'Failed to update job.' });
   }
 });
 
@@ -1388,7 +1491,7 @@ app.get('/api/jobs', async (req, res) => {
   try {
     db.all(
       `
-      SELECT j.jobID, j.description, GROUP_CONCAT(ja.userID) as assignees
+      SELECT j.jobID, j.description, j.cooldown_value, j.cooldown_unit, GROUP_CONCAT(ja.userID) as assignees
       FROM joblist j
       LEFT JOIN job_assignees ja ON j.jobID = ja.jobID
       GROUP BY j.jobID
@@ -1403,6 +1506,8 @@ app.get('/api/jobs', async (req, res) => {
         const jobs = rows.map((job) => ({
           jobID: job.jobID,
           description: job.description,
+          cooldown_value: job.cooldown_value ?? null,
+          cooldown_unit: job.cooldown_unit ?? null,
           assignees: job.assignees ? job.assignees.split(',') : [],
         }));
 
@@ -2161,9 +2266,27 @@ app.post('/api/buy', authenticateToken, async (req, res) => {
                     return res.status(500).json({ error: 'Failed to add item to inventory.' });
                   }
 
-                  db.run('COMMIT');
-                  console.log(`✅ User ${userId} bought ${qty} x "${itemName}"`);
-                  return res.json({ message: `✅ You bought ${qty} "${itemName}" ticket(s) for ⚡${totalCost}.` });
+                  db.run('COMMIT', async (commitErr) => {
+                    if (commitErr) {
+                      console.error('Error committing purchase transaction:', commitErr);
+                      return res.status(500).json({ error: 'Failed to finalize purchase.' });
+                    }
+
+                    console.log(`✅ User ${userId} bought ${qty} x "${item.name}"`);
+
+                    let bonusInfo = null;
+                    try {
+                      bonusInfo = await dbHelpers.applyRafflePurchaseBonus(userId, item.name, qty);
+                    } catch (bonusErr) {
+                      console.error('❌ Failed to apply raffle purchase bonus:', bonusErr);
+                    }
+
+                    return res.json({
+                      message: `✅ You bought ${qty} "${item.name}" ticket(s) for ⚡${totalCost}.`,
+                      bonusTickets: bonusInfo?.bonusTickets || 0,
+                      bonusMilestones: bonusInfo?.milestones || [],
+                    });
+                  });
                 }
               );
             });
@@ -2312,7 +2435,10 @@ app.post('/api/assign-job', authenticateToken, async (req, res) => {
 
   } catch (error) {
     console.error(`[ERROR] Job assignment failed:`, error);
-    return res.status(500).json({ error: 'Failed to assign quest' });
+    const message = error?.message || String(error);
+    const lower = message.toLowerCase();
+    const isClientError = lower.includes('cooldown') || lower.includes('already has a job') || lower.includes('job not found');
+    return res.status(isClientError ? 400 : 500).json({ error: isClientError ? message : 'Failed to assign quest' });
   }
 });
 
@@ -2375,8 +2501,9 @@ app.post("/api/submit-job", upload.single("image"), async (req, res) => {
   const userID = req.headers["x-user-id"];
   if (!userID) return res.status(400).json({ error: "User ID is missing. Please log in again." });
 
-  const { title, description } = req.body;
+  const { title, description, jobID } = req.body;
   if (!title || !description) return res.status(400).json({ error: "Title and description are required." });
+  if (!jobID) return res.status(400).json({ error: "Job ID is required." });
 
   try {
 const channel = await client.channels.fetch(QUEST_SUBMISSION_CHANNEL_ID);
@@ -2411,8 +2538,8 @@ const channel = await client.channels.fetch(QUEST_SUBMISSION_CHANNEL_ID);
     await channel.send({ embeds: [embed] });
 
     await dbRun(
-      `INSERT INTO job_submissions (userID, title, description, image_url) VALUES (?, ?, ?, ?)`,
-      [userID, title, description, imageUrl]
+      `INSERT INTO job_submissions (userID, jobID, title, description, image_url) VALUES (?, ?, ?, ?, ?)`,
+      [userID, jobID, title, description, imageUrl]
     );
     await dbRun(`DELETE FROM job_assignees WHERE userID = ?`, [userID]);
 

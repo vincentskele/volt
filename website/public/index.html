@@ -140,7 +140,7 @@
     <button id="showGiveawayListButton" class="btn">Giveaway List</button>
     <button id="showRafflesButton" class="btn">Raffles</button>
     <button id="showShopButton" class="btn">Shop</button>
-    <button id="showDailyTasksButton" class="btn">Daily Quests</button>
+    <button id="showDailyTasksButton" class="btn">Auto Quests</button>
     <button id="showJobListButton" class="btn">Quests</button>
     <button id="showRobotOilButton" class="btn">Robot Oil</button>
     <button id="showLeaderboardButton" class="btn">Leaderboard</button>
@@ -295,8 +295,7 @@
   <div id="adminJoblistPanel" class="admin-panel" style="display: none;">
     <h3>🧩 Quest List</h3>
     <div class="admin-actions">
-      <input id="adminJobInput" type="text" placeholder="New quest description" />
-      <button id="adminAddJob" class="btn">Add</button>
+      <button id="adminAddJob" class="btn">Add Quest</button>
     </div>
     <div id="adminJobList" class="admin-list"></div>
   </div>
@@ -430,25 +429,42 @@
     <button class="back-button">Home</button>
   </div>
 
-<!-- Daily Tasks Section -->
+<!-- Auto Quests Section -->
 <div id="dailyTasksPage" class="content" style="display: none;">
-  <h2>📋 Daily Quests</h2>
-  <p>Complete your daily quests before the reset!</p>
-  
-  <!-- Countdown Timer -->
-  <div class="countdown-container">
-    <h3>⏳ Next Reset In:</h3>
-    <p id="countdownTimer" class="countdown-timer"></p>
-  </div>
+  <h2>🤖 Auto Quests</h2>
+  <p>Automated ways to earn Volts.</p>
 
-  <ul id="dailyTasksList">
-    <li>🎁 User's first message of the day receives a bonus of 8 Vol<span style="margin-left: -2px;"></span>ts.</li>
-    <li>💬 Send up to 16 messages in <a href="https://discord.com/channels/1014872741846974514/1015078531526574141">#robo-chat</a>
-      to get charged up 1 Vol<span style="margin-left: -2px;"></span>t per message.</li>
-    <li>🤖 React to a new message in <a href="https://discord.com/channels/1014872741846974514/1015076041934520330">#announcements</a> once per day to receive 8 Vol<span style="margin-left: -2px;"></span>ts.</li>
-    <li>🎙️ Join the weekly DAO call for at least 15 minutes to earn 40 Vol<span style="margin-left: -2px;"></span>ts.</li>
-    <li>🪨 Use <code>/rps</code> to play rock paper sissors. First 3 wins of the day get a bonus 8 Volts.</li>
-  </ul>
+  <div class="auto-quests-wrapper">
+    <div class="auto-quests-box">
+      <h3>📋 Daily Quests</h3>
+      <p>Complete your daily quests before the reset!</p>
+
+      <!-- Countdown Timer -->
+      <div class="countdown-container">
+        <h3>⏳ Next Reset In:</h3>
+        <p id="countdownTimer" class="countdown-timer"></p>
+      </div>
+
+      <ul id="dailyTasksList">
+        <li>🎁 User's first message of the day receives a bonus of 8 Vol<span style="margin-left: -2px;"></span>ts.</li>
+        <li>💬 Send up to 16 messages in <a href="https://discord.com/channels/1014872741846974514/1015078531526574141">#robo-chat</a>
+          to get charged up 1 Vol<span style="margin-left: -2px;"></span>t per message.</li>
+        <li>🤖 React to a new message in <a href="https://discord.com/channels/1014872741846974514/1015076041934520330">#announcements</a> once per day to receive 8 Vol<span style="margin-left: -2px;"></span>ts.</li>
+        <li>🪨 Use <code>/rps</code> to play rock paper sissors. First 3 wins of the day get a bonus 8 Volts.</li>
+      </ul>
+    </div>
+
+    <div class="auto-quests-box">
+      <h3>🗓️ Other Auto Quests</h3>
+      <p>These are not affected by the daily reset.</p>
+      <ul id="autoTasksList">
+        <li>🎙️ Join the weekly DAO call for at least 15 minutes to earn 40 Vol<span style="margin-left: -2px;"></span>ts.</li>
+        <li>🎟️ Buy 10 Raffle tickets get 1 free.</li>
+        <li>🎟️ Buy 25 Raffle tickets get 2 free.</li>
+        <li>🎟️ Buy 50 Raffle tickets get 3 free.</li>
+      </ul>
+    </div>
+  </div>
   
 
   <button class="back-button">Home</button>

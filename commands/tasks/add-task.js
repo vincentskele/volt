@@ -10,6 +10,22 @@ module.exports = {
       option.setName('description')
         .setDescription('The description of the job')
         .setRequired(true)
+    )
+    .addIntegerOption(option =>
+      option.setName('cooldown')
+        .setDescription('Optional cooldown amount for this quest')
+        .setRequired(false)
+    )
+    .addStringOption(option =>
+      option.setName('cooldown-unit')
+        .setDescription('Cooldown unit (required if cooldown amount is set)')
+        .addChoices(
+          { name: 'Minute', value: 'minute' },
+          { name: 'Hour', value: 'hour' },
+          { name: 'Day', value: 'day' },
+          { name: 'Month', value: 'month' },
+        )
+        .setRequired(false)
     ),
 
   async execute(interaction) {
@@ -21,13 +37,21 @@ module.exports = {
     }
 
     const description = options.getString('description');
+    const cooldownValue = options.getInteger('cooldown');
+    const cooldownUnit = options.getString('cooldown-unit');
     if (!description) {
       return interaction.reply({ content: '🚫 A job description is required.', ephemeral: true });
+    }
+    if (cooldownValue && !cooldownUnit) {
+      return interaction.reply({ content: '🚫 Please provide a cooldown unit when setting a cooldown.', ephemeral: true });
+    }
+    if (cooldownUnit && !cooldownValue) {
+      return interaction.reply({ content: '🚫 Please provide a cooldown amount when setting a cooldown.', ephemeral: true });
     }
 
     try {
       // Add the new job to the database
-      const result = await db.addJob(description);
+      const result = await db.addJob(description, cooldownValue, cooldownUnit);
       if (!result || !result.jobID) {
         throw new Error('Job could not be added to the database.');
       }
@@ -38,7 +62,7 @@ module.exports = {
       return interaction.reply({
         content: `✅ **Job Added Successfully!**
 **Job ID:** ${result.jobID}
-**Description:** ${description}`,
+**Description:** ${description}${result.cooldown_value && result.cooldown_unit ? `\n**Cooldown:** ${result.cooldown_value} ${result.cooldown_unit}${result.cooldown_value === 1 ? '' : 's'}` : ''}`,
         ephemeral: false,
       });
     } catch (error) {

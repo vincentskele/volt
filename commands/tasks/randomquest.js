@@ -45,7 +45,9 @@ module.exports = {
           .setTimestamp();
         return interaction.reply({ embeds: [embed], ephemeral: true });
       }
-      return interaction.reply({ content: `🚫 Work failed: ${err.message || err}`, ephemeral: true });
+      const message = err?.message || err;
+      const isCooldown = typeof message === 'string' && message.toLowerCase().includes('cooldown');
+      return interaction.reply({ content: `🚫 Work failed: ${message}`, ephemeral: !isCooldown });
     }
   }
 };

@@ -98,7 +98,13 @@ module.exports = {
 
     } catch (error) {
       console.error(`[ERROR] questlist-handler: ${error}`);
-      return interaction.reply({ content: `🚫 An error occurred: ${error.message || error}`, ephemeral: true });
+      const message = error?.message || error;
+      const isCooldown = typeof message === 'string' && message.toLowerCase().includes('cooldown');
+      const payload = { content: `🚫 An error occurred: ${message}`, ephemeral: !isCooldown };
+      if (interaction.replied || interaction.deferred) {
+        return interaction.followUp(payload);
+      }
+      return interaction.reply(payload);
     }
   },
 };

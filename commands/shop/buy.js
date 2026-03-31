@@ -125,6 +125,8 @@ module.exports = {
       await db.addItemToInventory(user.id, shopItem.itemID, quantity);
       await db.updateShopItemQuantity(shopItem.itemID, shopItem.quantity - quantity);
 
+      const bonusInfo = await db.applyRafflePurchaseBonus(user.id, shopItem.name, quantity);
+
       const embed = new EmbedBuilder()
         .setTitle(`✅ Purchased ${shopItem.name} x${quantity}`)
         .setDescription(`You have bought **${shopItem.name} x${quantity}** for ${formatCurrency(totalCost)}.`)
@@ -132,10 +134,31 @@ module.exports = {
         .setTimestamp();
 
       if (messageOrInteraction) {
-        return messageOrInteraction.reply({ embeds: [embed] });
+        await messageOrInteraction.reply({ embeds: [embed] });
       } else {
-        return context.reply({ embeds: [embed] });
+        await context.reply({ embeds: [embed] });
       }
+
+      if (bonusInfo && bonusInfo.bonusTickets > 0) {
+        const bonusDetails = bonusInfo.milestones
+          .map((m) => `${m.threshold}th (+${m.bonus})`)
+          .join(', ');
+        const bonusMessage =
+          `🎟️ Bonus tickets! You hit ${bonusDetails} for **${shopItem.name}** and received ` +
+          `**${bonusInfo.bonusTickets}** free ticket(s).`;
+
+        if (messageOrInteraction) {
+          if (messageOrInteraction.followUp) {
+            await messageOrInteraction.followUp({ content: bonusMessage });
+          } else if (messageOrInteraction.channel) {
+            await messageOrInteraction.channel.send(bonusMessage);
+          }
+        } else if (context.followUp) {
+          await context.followUp({ content: bonusMessage });
+        }
+      }
+
+      return;
     } catch (err) {
       console.error('Buy Item Error:', err);
       const errorPayload = {

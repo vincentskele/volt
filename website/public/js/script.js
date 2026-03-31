@@ -736,6 +736,7 @@ document.addEventListener("click", async (event) => {
     const formData = new FormData();
     formData.append("title", job.description);
     formData.append("description", jobDescription);
+    formData.append("jobID", selectedJobID);
     if (jobImage) {
       formData.append("image", jobImage);
     }
@@ -1035,7 +1036,6 @@ const voltMenuContainer = document.getElementById('voltMenuContainer');
 const sendChatButton = document.getElementById('sendChatButton');
 const chatInput = document.getElementById('chatInput');
 const adminAddJobButton = document.getElementById('adminAddJob');
-const adminJobInput = document.getElementById('adminJobInput');
 
 // Ensure Volt elements are hidden initially
 if (voltMenuContainer) voltMenuContainer.style.display = 'none';
@@ -1119,19 +1119,54 @@ if (chatInput) {
 if (adminAddJobButton) {
   adminAddJobButton.addEventListener('click', async () => {
     const token = localStorage.getItem('token');
-    if (!token || !adminJobInput) return;
-    const description = adminJobInput.value.trim();
-    if (!description) return;
-    confirmTwice('Add this quest?', async () => {
+    if (!token) return;
+    buildEditModal('Add Quest', [
+      { key: 'description', label: 'Description', value: '' },
+      { key: 'cooldown_value', label: 'Cooldown Amount', value: '', type: 'number' },
+      {
+        key: 'cooldown_unit',
+        label: 'Cooldown Unit',
+        value: '',
+        type: 'select',
+        options: [
+          { label: 'None', value: '' },
+          { label: 'Minute', value: 'minute' },
+          { label: 'Hour', value: 'hour' },
+          { label: 'Day', value: 'day' },
+          { label: 'Month', value: 'month' },
+        ],
+      },
+    ], async (data) => {
+      const description = String(data.description || '').trim();
+      if (!description) {
+        showStyledAlert('⚠️ Please enter a description.', 3000);
+        return;
+      }
+      if (data.cooldown_value && !data.cooldown_unit) {
+        showStyledAlert('⚠️ Please choose a cooldown unit.', 3000);
+        return;
+      }
+      if (data.cooldown_unit && !data.cooldown_value) {
+        showStyledAlert('⚠️ Please enter a cooldown amount.', 3000);
+        return;
+      }
+      if (data.cooldown_value) {
+        const parsed = Number(data.cooldown_value);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+          showStyledAlert('⚠️ Cooldown must be a positive number.', 3000);
+          return;
+        }
+      }
       const result = await adminActionRequest('/api/admin/joblist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ description }),
+        body: JSON.stringify({
+          description,
+          cooldown_value: data.cooldown_value ? Math.floor(Number(data.cooldown_value)) : null,
+          cooldown_unit: data.cooldown_unit || null,
+        }),
       });
-      if (result.ok) {
-        adminJobInput.value = '';
-        loadAdminJoblist();
-      }
+      if (result.ok) loadAdminJoblist();
     });
   });
 }
@@ -1390,10 +1425,22 @@ function buildEditModal(title, fields, onSubmit) {
     label.style.marginTop = '8px';
     modalBox.appendChild(label);
 
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = field.value ?? '';
-    input.placeholder = field.label;
+    let input;
+    if (field.type === 'select') {
+      input = document.createElement('select');
+      (field.options || []).forEach((option) => {
+        const opt = document.createElement('option');
+        opt.value = option.value;
+        opt.textContent = option.label;
+        input.appendChild(opt);
+      });
+      input.value = field.value ?? '';
+    } else {
+      input = document.createElement('input');
+      input.type = field.type || 'text';
+      input.value = field.value ?? '';
+      input.placeholder = field.label;
+    }
     input.dataset.key = field.key;
     input.style.margin = '6px 0';
     input.style.width = '100%';
@@ -1414,7 +1461,7 @@ function buildEditModal(title, fields, onSubmit) {
   document.getElementById('adminEditCancel').addEventListener('click', () => modalOverlay.remove());
   document.getElementById('adminEditConfirm').addEventListener('click', () => {
     const data = {};
-    modalBox.querySelectorAll('input').forEach((input) => {
+    modalBox.querySelectorAll('input, select').forEach((input) => {
       data[input.dataset.key] = input.value;
     });
     confirmTwice('Are you sure you want to edit this?', async () => {
@@ -1909,6 +1956,13 @@ async function loadAdminRaffles() {
   }
 }
 
+function formatCooldownLabel(value, unit) {
+  if (!value || !unit) return 'None';
+  const normalizedUnit = String(unit).replace(/s$/, '');
+  const plural = Number(value) === 1 ? normalizedUnit : `${normalizedUnit}s`;
+  return `${value} ${plural}`;
+}
+
 async function loadAdminJoblist() {
   const token = localStorage.getItem('token');
   const list = document.getElementById('adminJobList');
@@ -1925,7 +1979,8 @@ async function loadAdminJoblist() {
     items.forEach((job) => {
       const item = document.createElement('div');
       item.className = 'admin-item';
-      item.innerHTML = `<p><strong>#${job.jobID}</strong> ${job.description}</p>`;
+      const cooldownLabel = formatCooldownLabel(job.cooldown_value, job.cooldown_unit);
+      item.innerHTML = `<p><strong>#${job.jobID}</strong> ${job.description}</p><p>Cooldown: ${cooldownLabel}</p>`;
       const actions = document.createElement('div');
       actions.className = 'modal-buttons';
       const editBtn = document.createElement('button');
@@ -1941,11 +1996,44 @@ async function loadAdminJoblist() {
       editBtn.addEventListener('click', () => {
         buildEditModal('Edit Quest', [
           { key: 'description', label: 'Description', value: job.description },
+          { key: 'cooldown_value', label: 'Cooldown Amount', value: job.cooldown_value ?? '', type: 'number' },
+          {
+            key: 'cooldown_unit',
+            label: 'Cooldown Unit',
+            value: job.cooldown_unit ?? '',
+            type: 'select',
+            options: [
+              { label: 'None', value: '' },
+              { label: 'Minute', value: 'minute' },
+              { label: 'Hour', value: 'hour' },
+              { label: 'Day', value: 'day' },
+              { label: 'Month', value: 'month' },
+            ],
+          },
         ], async (data) => {
+          if (data.cooldown_value && !data.cooldown_unit) {
+            showStyledAlert('⚠️ Please choose a cooldown unit.', 3000);
+            return;
+          }
+          if (data.cooldown_unit && !data.cooldown_value) {
+            showStyledAlert('⚠️ Please enter a cooldown amount.', 3000);
+            return;
+          }
+          if (data.cooldown_value) {
+            const parsed = Number(data.cooldown_value);
+            if (!Number.isFinite(parsed) || parsed <= 0) {
+              showStyledAlert('⚠️ Cooldown must be a positive number.', 3000);
+              return;
+            }
+          }
           const result = await adminActionRequest(`/api/admin/joblist/${job.jobID}/update`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ description: data.description }),
+            body: JSON.stringify({
+              description: data.description,
+              cooldown_value: data.cooldown_value ? Math.floor(Number(data.cooldown_value)) : null,
+              cooldown_unit: data.cooldown_unit || null,
+            }),
           });
           if (result.ok) loadAdminJoblist();
         });
@@ -3289,7 +3377,26 @@ if (viewProfileInventoryButton) {
   
       const result = await response.json();
       if (response.ok) {
-        showConfirmationPopup(`✅ You bought ${quantity} "${itemName}" ticket(s) for ⚡${price * quantity}.`);
+        const bonusTickets = Number(result?.bonusTickets || 0);
+        const bonusMilestones = Array.isArray(result?.bonusMilestones) ? result.bonusMilestones : [];
+
+        const purchaseMessage = `✅ You bought ${quantity} "${itemName}" ticket(s) for ⚡${price * quantity}.`;
+
+        if (bonusTickets > 0 && bonusMilestones.length) {
+          const milestoneText = bonusMilestones
+            .map((m) => `${m.threshold}th (+${m.bonus})`)
+            .join(", ");
+          const bonusMessage =
+            `🎟️ You hit ${milestoneText} for "${itemName}" and received ` +
+            `${bonusTickets} free ticket(s).`;
+
+          showConfirmationPopup(purchaseMessage, () => {
+            showConfirmationPopup(bonusMessage);
+          });
+        } else {
+          showConfirmationPopup(purchaseMessage);
+        }
+
         fetchVoltBalance();
       } else {
         showConfirmationPopup(`❌ Purchase failed: ${result.error}`);
@@ -3305,7 +3412,7 @@ if (viewProfileInventoryButton) {
  * Show a confirmation message popup after purchase.
  * @param {string} message - The message to display.
  */
-function showConfirmationPopup(message) {
+function showConfirmationPopup(message, onClose) {
   const modalOverlay = document.createElement("div");
   modalOverlay.className = "modal-overlay";
 
@@ -3321,6 +3428,7 @@ function showConfirmationPopup(message) {
 
   document.getElementById("closeModal").addEventListener("click", () => {
     modalOverlay.remove();
+    if (typeof onClose === "function") onClose();
   });
 }
 

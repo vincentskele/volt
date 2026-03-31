@@ -202,11 +202,36 @@ db.run(`
     db.run(`
       CREATE TABLE IF NOT EXISTS joblist (
         jobID INTEGER PRIMARY KEY AUTOINCREMENT,
-        description TEXT NOT NULL
+        description TEXT NOT NULL,
+        cooldown_value INTEGER,
+        cooldown_unit TEXT
       )
     `, (err) => {
       if (err) console.error('❌ Error creating joblist table:', err);
       else console.log('✅ Joblist table is ready.');
+    });
+
+    db.all(`PRAGMA table_info(joblist)`, (err, columns) => {
+      if (err) {
+        console.error('❌ Error checking joblist schema:', err);
+        return;
+      }
+      const hasCooldownValue = columns.some((col) => col.name === 'cooldown_value');
+      if (!hasCooldownValue) {
+        console.log("➕ Adding missing 'cooldown_value' column to joblist table...");
+        db.run("ALTER TABLE joblist ADD COLUMN cooldown_value INTEGER", (alterErr) => {
+          if (alterErr) console.error("❌ Error adding 'cooldown_value' column:", alterErr);
+          else console.log("✅ 'cooldown_value' column added successfully.");
+        });
+      }
+      const hasCooldownUnit = columns.some((col) => col.name === 'cooldown_unit');
+      if (!hasCooldownUnit) {
+        console.log("➕ Adding missing 'cooldown_unit' column to joblist table...");
+        db.run("ALTER TABLE joblist ADD COLUMN cooldown_unit TEXT", (alterErr) => {
+          if (alterErr) console.error("❌ Error adding 'cooldown_unit' column:", alterErr);
+          else console.log("✅ 'cooldown_unit' column added successfully.");
+        });
+      }
     });
 
     db.run(`
@@ -225,6 +250,7 @@ db.run(`
       `CREATE TABLE IF NOT EXISTS job_submissions (
         submission_id INTEGER PRIMARY KEY AUTOINCREMENT,
         userID TEXT NOT NULL,
+        jobID INTEGER,
         title TEXT NOT NULL,
         description TEXT NOT NULL,
         image_url TEXT,
@@ -238,6 +264,21 @@ db.run(`
         else console.log('✅ Job submissions table is ready.');
       }
     );
+
+    db.all(`PRAGMA table_info(job_submissions)`, (err, columns) => {
+      if (err) {
+        console.error('❌ Error checking job_submissions schema:', err);
+        return;
+      }
+      const hasJobId = columns.some((col) => col.name === 'jobID');
+      if (!hasJobId) {
+        console.log("➕ Adding missing 'jobID' column to job_submissions table...");
+        db.run("ALTER TABLE job_submissions ADD COLUMN jobID INTEGER", (alterErr) => {
+          if (alterErr) console.error("❌ Error adding 'jobID' column:", alterErr);
+          else console.log("✅ 'jobID' column added successfully.");
+        });
+      }
+    });
 
     // Item Redemptions (Audit Log)
     db.run(
@@ -340,6 +381,23 @@ db.run(`
     `, (err) => {
       if (err) console.error('❌ Error creating raffle_entries table:', err);
       else console.log('✅ Raffle entries table is ready.');
+    });
+
+    // Raffle Ticket Purchase Tracking (for bonus tickets)
+    db.run(`
+      CREATE TABLE IF NOT EXISTS raffle_ticket_purchases (
+        raffle_id INTEGER NOT NULL,
+        user_id TEXT NOT NULL,
+        purchased_count INTEGER NOT NULL DEFAULT 0,
+        bonus_10_given INTEGER NOT NULL DEFAULT 0,
+        bonus_25_given INTEGER NOT NULL DEFAULT 0,
+        bonus_50_given INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (raffle_id, user_id),
+        FOREIGN KEY (raffle_id) REFERENCES raffles(id) ON DELETE CASCADE
+      )
+    `, (err) => {
+      if (err) console.error('❌ Error creating raffle_ticket_purchases table:', err);
+      else console.log('✅ Raffle ticket purchase tracking table is ready.');
     });
 
     console.log('✅ Database initialization complete.');
@@ -581,6 +639,76 @@ async function robUser(robberId, targetId) {
 
 // --------------------- Original Functions ---------------------
 
+function normalizeEpochSeconds(value) {
+  if (!value) return null;
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return null;
+  // If stored as ms, convert to seconds.
+  return num > 1e12 ? Math.floor(num / 1000) : Math.floor(num);
+}
+
+function cooldownToSeconds(value, unit) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  const multipliers = {
+    minute: 60,
+    hour: 60 * 60,
+    day: 24 * 60 * 60,
+    month: 30 * 24 * 60 * 60,
+  };
+  const normalizedUnit = String(unit || '').toLowerCase().replace(/s$/, '');
+  return Math.floor(amount * (multipliers[normalizedUnit] || 0));
+}
+
+function formatRemainingSeconds(seconds) {
+  const remaining = Math.max(0, Math.ceil(seconds));
+  const units = [
+    { label: 'month', seconds: 30 * 24 * 60 * 60 },
+    { label: 'day', seconds: 24 * 60 * 60 },
+    { label: 'hour', seconds: 60 * 60 },
+    { label: 'minute', seconds: 60 },
+    { label: 'second', seconds: 1 },
+  ];
+  const parts = [];
+  let remainder = remaining;
+  for (const unit of units) {
+    if (remainder < unit.seconds) continue;
+    const value = Math.floor(remainder / unit.seconds);
+    remainder -= value * unit.seconds;
+    parts.push(`${value} ${value === 1 ? unit.label : `${unit.label}s`}`);
+    if (parts.length >= 2) break;
+  }
+  return parts.length ? parts.join(' ') : 'less than a minute';
+}
+
+function checkJobCooldown(userID, jobID, cooldownValue, cooldownUnit) {
+  return new Promise((resolve, reject) => {
+    const cooldownSeconds = cooldownToSeconds(cooldownValue, cooldownUnit);
+    if (!cooldownSeconds) {
+      return resolve({ onCooldown: false, remainingSeconds: 0 });
+    }
+    db.get(
+      `SELECT created_at FROM job_submissions
+       WHERE userID = ? AND jobID = ?
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [userID, jobID],
+      (err, row) => {
+        if (err) return reject(new Error('Database error while checking cooldown'));
+        if (!row) return resolve({ onCooldown: false, remainingSeconds: 0 });
+        const submittedAt = normalizeEpochSeconds(row.created_at);
+        if (!submittedAt) return resolve({ onCooldown: false, remainingSeconds: 0 });
+        const nowSeconds = Math.floor(Date.now() / 1000);
+        const expiresAt = submittedAt + cooldownSeconds;
+        if (nowSeconds < expiresAt) {
+          return resolve({ onCooldown: true, remainingSeconds: expiresAt - nowSeconds });
+        }
+        return resolve({ onCooldown: false, remainingSeconds: 0 });
+      }
+    );
+  });
+}
+
 function assignJobById(userID, jobID) {
   return new Promise((resolve, reject) => {
     if (!userID || !jobID) {
@@ -597,21 +725,30 @@ function assignJobById(userID, jobID) {
           
           // Verify that the job exists
           db.get(
-            `SELECT jobID, description FROM joblist WHERE jobID = ?`,
+            `SELECT jobID, description, cooldown_value, cooldown_unit FROM joblist WHERE jobID = ?`,
             [jobID],
             (err, job) => {
               if (err) return reject(new Error("Database error while verifying job"));
               if (!job) return reject(new Error("Job not found"));
-              
-              // Insert the assignment (this does not change your job cycle)
-              db.run(
-                `INSERT INTO job_assignees (jobID, userID) VALUES (?, ?)`,
-                [jobID, userID],
-                function (err2) {
-                  if (err2) return reject(new Error("Failed to assign job"));
-                  resolve(job);
-                }
-              );
+
+              checkJobCooldown(userID, jobID, job.cooldown_value, job.cooldown_unit)
+                .then(({ onCooldown, remainingSeconds }) => {
+                  if (onCooldown) {
+                    return reject(
+                      new Error(`Quest is on cooldown for ${formatRemainingSeconds(remainingSeconds)}.`)
+                    );
+                  }
+                  // Insert the assignment (this does not change your job cycle)
+                  db.run(
+                    `INSERT INTO job_assignees (jobID, userID) VALUES (?, ?)`,
+                    [jobID, userID],
+                    function (err2) {
+                      if (err2) return reject(new Error("Failed to assign job"));
+                      resolve(job);
+                    }
+                  );
+                })
+                .catch(reject);
             }
           );
         }
@@ -622,7 +759,7 @@ function assignJobById(userID, jobID) {
 
 function getAllJobs() {
   return new Promise((resolve, reject) => {
-    db.all(`SELECT jobID, description FROM joblist ORDER BY jobID ASC`, [], (err, rows) => {
+    db.all(`SELECT jobID, description, cooldown_value, cooldown_unit FROM joblist ORDER BY jobID ASC`, [], (err, rows) => {
       if (err) {
         console.error('Error fetching jobs from the database:', err);
         return reject('🚫 Failed to fetch jobs.');
@@ -680,12 +817,36 @@ function getUserJob(userID) {
 /**
  * Adds a new job to the job list and renumbers jobs.
  */
-function addJob(description) {
+function addJob(description, cooldownValue = null, cooldownUnit = null) {
   return new Promise((resolve, reject) => {
     if (!description || typeof description !== 'string') {
       return reject('Invalid job description');
     }
-    db.run(`INSERT INTO joblist (description) VALUES (?)`, [description], function (err) {
+    let normalizedValue = null;
+    let normalizedUnit = null;
+    const allowedUnits = new Set(['minute', 'hour', 'day', 'month']);
+    if (cooldownValue !== null && cooldownValue !== undefined && cooldownValue !== '') {
+      const parsedValue = Number(cooldownValue);
+      if (!Number.isFinite(parsedValue) || parsedValue <= 0) {
+        return reject('Cooldown value must be a positive number');
+      }
+      normalizedValue = Math.floor(parsedValue);
+      if (!cooldownUnit || typeof cooldownUnit !== 'string') {
+        return reject('Cooldown unit is required when cooldown value is set');
+      }
+      const unit = cooldownUnit.trim().toLowerCase().replace(/s$/, '');
+      if (!allowedUnits.has(unit)) {
+        return reject('Cooldown unit must be minute, hour, day, or month');
+      }
+      normalizedUnit = unit;
+    } else if (cooldownUnit) {
+      return reject('Cooldown value is required when cooldown unit is set');
+    }
+
+    db.run(
+      `INSERT INTO joblist (description, cooldown_value, cooldown_unit) VALUES (?, ?, ?)`,
+      [description, normalizedValue, normalizedUnit],
+      function (err) {
       if (err) return reject('Failed to add job');
       // Renumber job IDs after adding a new job.
       renumberJobs()
@@ -693,10 +854,13 @@ function addJob(description) {
           resolve({
             jobID: this.lastID,
             description,
+            cooldown_value: normalizedValue,
+            cooldown_unit: normalizedUnit,
           })
         )
         .catch(reject);
-    });
+      }
+    );
   });
 }
 
@@ -710,6 +874,8 @@ function getJobList() {
       SELECT 
         j.jobID,
         j.description,
+        j.cooldown_value,
+        j.cooldown_unit,
         GROUP_CONCAT(ja.userID) as assignees
       FROM joblist j
       LEFT JOIN job_assignees ja ON j.jobID = ja.jobID
@@ -721,6 +887,8 @@ function getJobList() {
         const jobs = rows.map((row) => ({
           jobID: row.jobID,
           description: row.description,
+          cooldown_value: row.cooldown_value ?? null,
+          cooldown_unit: row.cooldown_unit ?? null,
           assignees: row.assignees ? row.assignees.split(',') : [],
         }));
         resolve(jobs);
@@ -893,7 +1061,7 @@ function assignCycledJob(userID) {
           return reject('User already has an assigned job');
         }
         // Retrieve all jobs (ordered by jobID for a consistent cycle).
-        db.all(`SELECT jobID, description FROM joblist ORDER BY jobID ASC`, [], (err, jobs) => {
+        db.all(`SELECT jobID, description, cooldown_value, cooldown_unit FROM joblist ORDER BY jobID ASC`, [], (err, jobs) => {
           if (err) {
             db.run('ROLLBACK');
             return reject('Failed to retrieve job list');
@@ -909,33 +1077,49 @@ function assignCycledJob(userID) {
               if (currentIndex < 0 || currentIndex >= jobs.length) {
                 currentIndex = 0;
               }
-              const job = jobs[currentIndex];
-              // Compute the next index (wrap-around to 0 if needed).
-              const nextIndex = (currentIndex + 1) % jobs.length;
-              // Update the job_cycle pointer.
-              setCurrentJobIndex(nextIndex)
-                .then(() => {
-                  // Insert the assignment into job_assignees.
-                  db.run(
-                    `INSERT INTO job_assignees (jobID, userID) VALUES (?, ?)`,
-                    [job.jobID, userID],
-                    (err2) => {
-                      if (err2) {
-                        db.run('ROLLBACK');
-                        return reject('Failed to assign job');
-                      }
-                      db.run('COMMIT');
-                      resolve({
-                        jobID: job.jobID,
-                        description: job.description,
-                      });
-                    }
-                  );
-                })
-                .catch((err) => {
+              const tryAssign = (attempt) => {
+                if (attempt >= jobs.length) {
                   db.run('ROLLBACK');
-                  reject(err);
-                });
+                  return reject('No quests available (all on cooldown).');
+                }
+                const index = (currentIndex + attempt) % jobs.length;
+                const job = jobs[index];
+                checkJobCooldown(userID, job.jobID, job.cooldown_value, job.cooldown_unit)
+                  .then(({ onCooldown }) => {
+                    if (onCooldown) {
+                      return tryAssign(attempt + 1);
+                    }
+                    const nextIndex = (index + 1) % jobs.length;
+                    setCurrentJobIndex(nextIndex)
+                      .then(() => {
+                        db.run(
+                          `INSERT INTO job_assignees (jobID, userID) VALUES (?, ?)`,
+                          [job.jobID, userID],
+                          (err2) => {
+                            if (err2) {
+                              db.run('ROLLBACK');
+                              return reject('Failed to assign job');
+                            }
+                            db.run('COMMIT');
+                            resolve({
+                              jobID: job.jobID,
+                              description: job.description,
+                            });
+                          }
+                        );
+                      })
+                      .catch((err) => {
+                        db.run('ROLLBACK');
+                        reject(err);
+                      });
+                  })
+                  .catch((err) => {
+                    db.run('ROLLBACK');
+                    reject(err);
+                  });
+              };
+
+              tryAssign(0);
             })
             .catch((err) => {
               db.run('ROLLBACK');
@@ -1907,6 +2091,131 @@ async function getRaffleByName(name) {
   });
 }
 
+function extractRaffleNameFromTicket(itemName) {
+  if (!itemName) return null;
+  if (!/raffle ticket/i.test(itemName)) return null;
+  return itemName.replace(/\s*raffle ticket\s*$/i, '').trim();
+}
+
+async function recordRaffleTicketPurchase(userID, itemName, quantity = 1) {
+  const raffleName = extractRaffleNameFromTicket(itemName);
+  if (!raffleName) return null;
+
+  const raffle = await getRaffleByName(raffleName);
+  if (!raffle) return null;
+
+  const safeQty = Math.max(0, Number(quantity) || 0);
+  if (!safeQty) return { raffle, bonusTickets: 0, milestones: [], previousCount: 0, newCount: 0 };
+
+  return new Promise((resolve, reject) => {
+    db.serialize(() => {
+      db.run('BEGIN IMMEDIATE');
+
+      db.run(
+        `INSERT OR IGNORE INTO raffle_ticket_purchases
+         (raffle_id, user_id, purchased_count, bonus_10_given, bonus_25_given, bonus_50_given)
+         VALUES (?, ?, 0, 0, 0, 0)`,
+        [raffle.id, userID],
+        (insertErr) => {
+          if (insertErr) {
+            db.run('ROLLBACK');
+            console.error('Error initializing raffle ticket purchase tracking:', insertErr);
+            return reject(insertErr);
+          }
+
+          db.get(
+            `SELECT purchased_count, bonus_10_given, bonus_25_given, bonus_50_given
+             FROM raffle_ticket_purchases
+             WHERE raffle_id = ? AND user_id = ?`,
+            [raffle.id, userID],
+            (selectErr, row) => {
+              if (selectErr) {
+                db.run('ROLLBACK');
+                console.error('Error fetching raffle ticket purchase tracking:', selectErr);
+                return reject(selectErr);
+              }
+
+              const previousCount = row?.purchased_count || 0;
+              const newCount = previousCount + safeQty;
+
+              let bonusTickets = 0;
+              const milestones = [];
+
+              let bonus10 = row?.bonus_10_given ? 1 : 0;
+              let bonus25 = row?.bonus_25_given ? 1 : 0;
+              let bonus50 = row?.bonus_50_given ? 1 : 0;
+
+              const thresholds = [
+                { count: 10, bonus: 1, flag: 'bonus10' },
+                { count: 25, bonus: 2, flag: 'bonus25' },
+                { count: 50, bonus: 3, flag: 'bonus50' },
+              ];
+
+              for (const threshold of thresholds) {
+                const alreadyGiven =
+                  (threshold.flag === 'bonus10' && bonus10) ||
+                  (threshold.flag === 'bonus25' && bonus25) ||
+                  (threshold.flag === 'bonus50' && bonus50);
+
+                if (!alreadyGiven && previousCount < threshold.count && newCount >= threshold.count) {
+                  bonusTickets += threshold.bonus;
+                  milestones.push({ threshold: threshold.count, bonus: threshold.bonus });
+                  if (threshold.flag === 'bonus10') bonus10 = 1;
+                  if (threshold.flag === 'bonus25') bonus25 = 1;
+                  if (threshold.flag === 'bonus50') bonus50 = 1;
+                }
+              }
+
+              db.run(
+                `UPDATE raffle_ticket_purchases
+                 SET purchased_count = ?,
+                     bonus_10_given = ?,
+                     bonus_25_given = ?,
+                     bonus_50_given = ?
+                 WHERE raffle_id = ? AND user_id = ?`,
+                [newCount, bonus10, bonus25, bonus50, raffle.id, userID],
+                (updateErr) => {
+                  if (updateErr) {
+                    db.run('ROLLBACK');
+                    console.error('Error updating raffle ticket purchase tracking:', updateErr);
+                    return reject(updateErr);
+                  }
+
+                  db.run('COMMIT', (commitErr) => {
+                    if (commitErr) {
+                      console.error('Error committing raffle ticket purchase tracking:', commitErr);
+                      return reject(commitErr);
+                    }
+                    resolve({ raffle, bonusTickets, milestones, previousCount, newCount });
+                  });
+                }
+              );
+            }
+          );
+        }
+      );
+    });
+  });
+}
+
+async function applyRafflePurchaseBonus(userID, itemName, quantity = 1) {
+  const result = await recordRaffleTicketPurchase(userID, itemName, quantity);
+  if (!result || !result.bonusTickets) return result;
+
+  try {
+    const ticketItem = await getShopItemByName(itemName);
+    if (ticketItem) {
+      await addItemToInventory(userID, ticketItem.itemID, result.bonusTickets);
+    } else {
+      console.warn(`⚠️ Could not find raffle ticket item "${itemName}" to award bonus tickets.`);
+    }
+  } catch (err) {
+    console.error('❌ Failed to award bonus raffle tickets:', err);
+  }
+
+  return result;
+}
+
 
 /**
  * getRaffleById(raffle_id)
@@ -2671,6 +2980,7 @@ module.exports = {
   autoEnterRaffle,
   removeRaffleShopItem,
   concludeRaffle,
+  applyRafflePurchaseBonus,
 
   // Jobs
   getActiveJob,
