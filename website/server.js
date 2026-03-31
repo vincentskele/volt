@@ -466,7 +466,18 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
        WHERE username IS NOT NULL AND username != ''
        ORDER BY LOWER(username) ASC`
     );
-    return res.json(rows || []);
+    const users = await Promise.all(
+      (rows || []).map(async (row) => {
+        let userTag = null;
+        try {
+          userTag = await resolveUsername(row.userID);
+        } catch (tagErr) {
+          console.error(`Failed to resolve user tag for ${row.userID}:`, tagErr);
+        }
+        return { ...row, userTag };
+      })
+    );
+    return res.json(users);
   } catch (err) {
     console.error('Error in /api/admin/users:', err);
     return res.status(500).json({ message: 'Failed to load users.' });

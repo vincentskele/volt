@@ -111,10 +111,10 @@ async function fetchUserInventory(userID) {
     const localUserId = localStorage.getItem('discordUserID');
     const nameLabel = currentProfileUsername || userID;
     if (userID && localUserId && userID !== localUserId) {
-      setInventoryHeader(nameLabel, true);
+      setInventoryHeader(nameLabel, true, userID);
     } else {
       const selfName = localStorage.getItem('username');
-      setInventoryHeader(selfName, false);
+      setInventoryHeader(selfName, false, localUserId);
     }
 
     const response = await fetch(`/api/public-inventory/${userID}`);
@@ -356,7 +356,7 @@ async function fetchInventory() {
     const selfName = localStorage.getItem('username');
     currentProfileUserId = localStorage.getItem('discordUserID') || null;
     currentProfileUsername = selfName || currentProfileUserId;
-    setInventoryHeader(selfName, true);
+    setInventoryHeader(selfName, true, currentProfileUserId);
     const response = await fetch('/api/inventory', {
       method: 'GET',
       headers: {
@@ -1393,8 +1393,10 @@ async function loadAdminUsers() {
       const item = document.createElement('div');
       item.className = 'admin-item';
       item.style.cursor = 'pointer';
-      item.textContent = user.username || user.userID;
+      item.textContent = user.userTag || user.username || user.userID;
       item.addEventListener('click', () => {
+        currentProfileUserId = user.userID;
+        currentProfileUsername = user.userTag || user.username || user.userID;
         fetchUserInventory(user.userID);
         showSection('inventorySection');
       });
@@ -2942,13 +2944,16 @@ let currentUserTokens = [];
 let currentProfileUserId = null;
 let currentProfileUsername = null;
 
-function setInventoryHeader(userName, showProfileButton) {
+function setInventoryHeader(userName, showProfileButton, userId) {
   const title = document.getElementById('inventoryTitle');
   const profileButton = document.getElementById('inventoryProfileButton');
+  const avatar = document.getElementById('inventoryAvatar');
+  const tag = document.getElementById('inventoryTag');
   if (title) {
     title.textContent = userName ? `${userName}'s Inventory` : 'Inventory';
   }
   if (profileButton) profileButton.style.display = showProfileButton ? 'inline-flex' : 'none';
+  hydrateUserAvatar(userId, avatar, tag);
 }
 
 const inventoryProfileButton = document.getElementById('inventoryProfileButton');
@@ -4195,7 +4200,7 @@ async function fetchInventory() {
     const selfName = localStorage.getItem('username');
     currentProfileUserId = localStorage.getItem('discordUserID') || null;
     currentProfileUsername = selfName || currentProfileUserId;
-    setInventoryHeader(selfName, true);
+    setInventoryHeader(selfName, true, currentProfileUserId);
     const response = await fetch('/api/inventory', {
       method: 'GET',
       headers: {

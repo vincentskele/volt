@@ -1167,6 +1167,29 @@ code {
   margin-top: 4px;
 }
 
+.inventory-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.inventory-header-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.inventory-avatar {
+  width: 48px;
+  height: 48px;
+}
+
+.inventory-header-text h2 {
+  margin: 0;
+}
+
 .profile-fields {
   display: grid;
   gap: 8px;
