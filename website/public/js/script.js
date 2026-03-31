@@ -137,19 +137,6 @@ async function fetchUserInventory(userID) {
           <p class="text-body text-primary">${item.description}</p>
         `;
 
-        // Event for clicking to use the item
-        itemContainer.addEventListener('click', async () => {
-          const command = `%use "${item.name}"`;
-          try {
-            await navigator.clipboard.writeText(command);
-            alert(`Copied to clipboard: ${command}\n\nClick OK to go to Discord and use your item!`);
-          } catch (err) {
-            console.error('Clipboard copy failed:', err);
-            alert('Failed to copy. Please copy manually.');
-          }
-          window.open('https://discord.com/channels/1014872741846974514/1336779333641179146', '_blank');
-        });
-
         inventoryItems.appendChild(itemContainer);
       });
     }
