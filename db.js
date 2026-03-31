@@ -83,6 +83,7 @@ function initializeDatabase() {
         price INTEGER,
         isAvailable BOOLEAN DEFAULT 1,
         isHidden BOOLEAN DEFAULT 0,
+        isRedeemable BOOLEAN DEFAULT 1,
         quantity INTEGER DEFAULT 1
       )
     `, (err) => {
@@ -101,6 +102,14 @@ function initializeDatabase() {
         db.run("ALTER TABLE items ADD COLUMN isHidden BOOLEAN DEFAULT 0", (alterErr) => {
           if (alterErr) console.error("❌ Error adding 'isHidden' column:", alterErr);
           else console.log("✅ 'isHidden' column added successfully.");
+        });
+      }
+      const hasIsRedeemable = columns.some(col => col.name === 'isRedeemable');
+      if (!hasIsRedeemable) {
+        console.log("➕ Adding missing 'isRedeemable' column to items table...");
+        db.run("ALTER TABLE items ADD COLUMN isRedeemable BOOLEAN DEFAULT 1", (alterErr) => {
+          if (alterErr) console.error("❌ Error adding 'isRedeemable' column:", alterErr);
+          else console.log("✅ 'isRedeemable' column added successfully.");
         });
       }
     });
@@ -971,11 +980,11 @@ function getShopItemByName(name) {
   });
 }
 
-function addShopItem(price, name, description, quantity = 1, isHidden = 0) {
+function addShopItem(price, name, description, quantity = 1, isHidden = 0, isRedeemable = 1) {
   return new Promise((resolve, reject) => {
     db.run(
-      `INSERT INTO items (price, name, description, quantity, isAvailable, isHidden) VALUES (?, ?, ?, ?, 1, ?)`,
-      [price, name, description, quantity, isHidden ? 1 : 0],
+      `INSERT INTO items (price, name, description, quantity, isAvailable, isHidden, isRedeemable) VALUES (?, ?, ?, ?, 1, ?, ?)`,
+      [price, name, description, quantity, isHidden ? 1 : 0, isRedeemable ? 1 : 0],
       (err) => {
         if (err) {
           console.error('Error adding new shop item:', err);
@@ -1086,7 +1095,7 @@ async function addItemToInventory(userID, itemID, quantity = 1) {
 
 function redeemItem(userID, itemName) {
   return new Promise((resolve, reject) => {
-    const findItemQuery = `SELECT itemID, name FROM items WHERE name = ?`;
+    const findItemQuery = `SELECT itemID, name, COALESCE(isRedeemable, 1) AS isRedeemable FROM items WHERE name = ?`;
     db.get(findItemQuery, [itemName], (err, itemRow) => {
       if (err) {
         console.error('Database error in redeemItem (item lookup):', err);
@@ -1094,6 +1103,9 @@ function redeemItem(userID, itemName) {
       }
       if (!itemRow) {
         return reject(`🚫 The item "${itemName}" does not exist or is not available.`);
+      }
+      if (!itemRow.isRedeemable) {
+        return reject(`🚫 "${itemName}" cannot be redeemed.`);
       }
       const { itemID } = itemRow;
       const findInventoryQuery = `SELECT quantity FROM inventory WHERE userID = ? AND itemID = ?`;

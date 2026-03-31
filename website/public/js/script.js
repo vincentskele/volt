@@ -2094,6 +2094,20 @@ function buildShopItemModal({ title, item, confirmMessage, requireDoubleConfirm,
 
   modalBox.appendChild(visibilityRow);
 
+  const redeemableRow = document.createElement('div');
+  redeemableRow.style.display = 'flex';
+  redeemableRow.style.gap = '8px';
+  redeemableRow.style.alignItems = 'center';
+  redeemableRow.style.marginTop = '10px';
+
+  const redeemableInput = document.createElement('input');
+  redeemableInput.type = 'checkbox';
+  redeemableInput.dataset.key = 'isRedeemable';
+  redeemableInput.checked = item?.isRedeemable !== 0;
+  redeemableRow.appendChild(redeemableInput);
+  redeemableRow.appendChild(document.createTextNode('Redeemable'));
+  modalBox.appendChild(redeemableRow);
+
   const buttons = document.createElement('div');
   buttons.className = 'modal-buttons';
   buttons.innerHTML = `
@@ -2109,7 +2123,11 @@ function buildShopItemModal({ title, item, confirmMessage, requireDoubleConfirm,
     const data = {};
     modalBox.querySelectorAll('input').forEach((input) => {
       if (input.type === 'radio') return;
-      data[input.dataset.key] = input.value;
+      if (input.type === 'checkbox') {
+        data[input.dataset.key] = input.checked;
+      } else {
+        data[input.dataset.key] = input.value;
+      }
     });
 
     const visibility = modalBox.querySelector('input[name="shopVisibility"]:checked')?.value || 'available';
@@ -2139,6 +2157,7 @@ function buildShopItemModal({ title, item, confirmMessage, requireDoubleConfirm,
       quantity,
       isAvailable: !isHidden,
       isHidden,
+      isRedeemable: !!data.isRedeemable,
     };
 
     const runSubmit = async () => {
@@ -2171,7 +2190,7 @@ async function loadAdminShopItems() {
   createBtn.addEventListener('click', () => {
     buildShopItemModal({
       title: 'Create Shop Item',
-      item: { name: '', description: '', price: '', quantity: 1, isAvailable: 1, isHidden: 0 },
+      item: { name: '', description: '', price: '', quantity: 1, isAvailable: 1, isHidden: 0, isRedeemable: 1 },
       confirmMessage: 'Create this shop item?',
       requireDoubleConfirm: false,
       onSubmit: async (data) => {
@@ -2220,7 +2239,7 @@ async function loadAdminShopItems() {
       row.appendChild(desc);
 
       const meta = document.createElement('div');
-      meta.textContent = `Hidden: ${item.isHidden ? 'Yes' : 'No'}`;
+      meta.textContent = `Hidden: ${item.isHidden ? 'Yes' : 'No'} | Redeemable: ${item.isRedeemable ? 'Yes' : 'No'}`;
       row.appendChild(meta);
 
       const actions = document.createElement('div');

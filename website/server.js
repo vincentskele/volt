@@ -120,6 +120,14 @@ db.all(`PRAGMA table_info(items)`, (err, columns) => {
       else console.log("✅ 'isHidden' column added successfully.");
     });
   }
+  const hasIsRedeemable = columns.some((col) => col.name === 'isRedeemable');
+  if (!hasIsRedeemable) {
+    console.log("➕ Adding missing 'isRedeemable' column to items table...");
+    db.run("ALTER TABLE items ADD COLUMN isRedeemable BOOLEAN DEFAULT 1", (alterErr) => {
+      if (alterErr) console.error("❌ Error adding 'isRedeemable' column:", alterErr);
+      else console.log("✅ 'isRedeemable' column added successfully.");
+    });
+  }
 });
 
 function ensureJobSubmissionColumn(columnName, ddl) {
@@ -616,7 +624,8 @@ app.get('/api/admin/shop-items', authenticateToken, requireAdmin, async (req, re
   try {
     const rows = await dbAll(
       `SELECT itemID, name, description, price, quantity, isAvailable,
-              COALESCE(isHidden, 0) AS isHidden
+              COALESCE(isHidden, 0) AS isHidden,
+              COALESCE(isRedeemable, 1) AS isRedeemable
        FROM items
        ORDER BY name ASC`
     );
@@ -634,6 +643,7 @@ app.post('/api/admin/shop-items/create', authenticateToken, requireAdmin, async 
     const price = Number(req.body?.price);
     const quantity = Number.isFinite(Number(req.body?.quantity)) ? Number(req.body?.quantity) : 1;
     const isHidden = req.body?.isHidden ? 1 : 0;
+    const isRedeemable = req.body?.isRedeemable === false || req.body?.isRedeemable === 0 ? 0 : 1;
     const isAvailable = isHidden ? 0 : 1;
 
     if (!rawName || !rawDescription || !Number.isFinite(price) || price <= 0 || quantity < 0) {
@@ -641,9 +651,9 @@ app.post('/api/admin/shop-items/create', authenticateToken, requireAdmin, async 
     }
 
     await dbRun(
-      `INSERT INTO items (name, description, price, quantity, isAvailable, isHidden)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [rawName, rawDescription, price, quantity, isAvailable, isHidden]
+      `INSERT INTO items (name, description, price, quantity, isAvailable, isHidden, isRedeemable)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [rawName, rawDescription, price, quantity, isAvailable, isHidden, isRedeemable]
     );
 
     await logAdminChange(req.user.userId, 'Shop item created', [
@@ -652,6 +662,7 @@ app.post('/api/admin/shop-items/create', authenticateToken, requireAdmin, async 
       `Quantity: ${quantity}`,
       `Available: ${isAvailable ? 'Yes' : 'No'}`,
       `Hidden: ${isHidden ? 'Yes' : 'No'}`,
+      `Redeemable: ${isRedeemable ? 'Yes' : 'No'}`,
     ]);
 
     return res.json({ message: 'Shop item created.' });
@@ -681,6 +692,7 @@ app.post('/api/admin/shop-items/:id/update', authenticateToken, requireAdmin, as
     const price = Number(req.body?.price);
     const quantity = Number.isFinite(Number(req.body?.quantity)) ? Number(req.body?.quantity) : existing.quantity;
     const isHidden = req.body?.isHidden ? 1 : 0;
+    const isRedeemable = req.body?.isRedeemable === false || req.body?.isRedeemable === 0 ? 0 : 1;
     const isAvailable = isHidden ? 0 : 1;
 
     if (!rawName || !rawDescription || !Number.isFinite(price) || price <= 0 || quantity < 0) {
@@ -689,9 +701,9 @@ app.post('/api/admin/shop-items/:id/update', authenticateToken, requireAdmin, as
 
     await dbRun(
       `UPDATE items
-       SET name = ?, description = ?, price = ?, quantity = ?, isAvailable = ?, isHidden = ?
+       SET name = ?, description = ?, price = ?, quantity = ?, isAvailable = ?, isHidden = ?, isRedeemable = ?
        WHERE itemID = ?`,
-      [rawName, rawDescription, price, quantity, isAvailable, isHidden, itemId]
+      [rawName, rawDescription, price, quantity, isAvailable, isHidden, isRedeemable, itemId]
     );
 
     const changes = [];
@@ -701,6 +713,7 @@ app.post('/api/admin/shop-items/:id/update', authenticateToken, requireAdmin, as
     if (Number(existing.quantity) !== quantity) changes.push(`Quantity: ${existing.quantity} -> ${quantity}`);
     if (Number(existing.isAvailable) !== isAvailable) changes.push(`Available: ${existing.isAvailable ? 'Yes' : 'No'} -> ${isAvailable ? 'Yes' : 'No'}`);
     if (Number(existing.isHidden || 0) !== isHidden) changes.push(`Hidden: ${existing.isHidden ? 'Yes' : 'No'} -> ${isHidden ? 'Yes' : 'No'}`);
+    if (Number(existing.isRedeemable ?? 1) !== isRedeemable) changes.push(`Redeemable: ${existing.isRedeemable ? 'Yes' : 'No'} -> ${isRedeemable ? 'Yes' : 'No'}`);
 
     await logAdminChange(req.user.userId, `Shop item updated (#${itemId})`, changes);
 

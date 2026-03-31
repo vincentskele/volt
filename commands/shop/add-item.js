@@ -22,6 +22,10 @@ module.exports = {
     .addIntegerOption(option =>
       option.setName('quantity')
         .setDescription('The quantity available in the shop (default: 1)')
+        .setRequired(false))
+    .addBooleanOption(option =>
+      option.setName('redeemable')
+        .setDescription('Whether the item can be redeemed from inventory (default: true)')
         .setRequired(false)),
 
   async execute(interaction) {
@@ -33,20 +37,22 @@ module.exports = {
     const name = interaction.options.getString('name');
     const description = interaction.options.getString('description');
     const quantity = interaction.options.getInteger('quantity') || 1;
+    const redeemable = interaction.options.getBoolean('redeemable');
 
     if (!price || price <= 0 || !name || !description) {
       return interaction.reply({ content: '🚫 Invalid input. Ensure all fields are filled.', ephemeral: true });
     }
 
     try {
-      await db.addShopItem(price, name.trim(), description.trim(), quantity);
+      await db.addShopItem(price, name.trim(), description.trim(), quantity, 0, redeemable ?? true);
 
       const embed = new EmbedBuilder()
         .setTitle(`✅ Added ${name.trim()} to the Shop`)
         .addFields(
           { name: 'Price', value: `${formatCurrency(price)}` },
           { name: 'Quantity', value: `${quantity}` },
-          { name: 'Description', value: `${description.trim()}` }
+          { name: 'Description', value: `${description.trim()}` },
+          { name: 'Redeemable', value: `${redeemable ?? true ? 'Yes' : 'No'}` }
         )
         .setColor(0x32CD32)
         .setTimestamp();
