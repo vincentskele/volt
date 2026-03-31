@@ -633,8 +633,8 @@ app.post('/api/admin/shop-items/create', authenticateToken, requireAdmin, async 
     const rawDescription = String(req.body?.description || '').trim();
     const price = Number(req.body?.price);
     const quantity = Number.isFinite(Number(req.body?.quantity)) ? Number(req.body?.quantity) : 1;
-    const isAvailable = req.body?.isAvailable === false || req.body?.isAvailable === 0 ? 0 : 1;
     const isHidden = req.body?.isHidden ? 1 : 0;
+    const isAvailable = isHidden ? 0 : 1;
 
     if (!rawName || !rawDescription || !Number.isFinite(price) || price <= 0 || quantity < 0) {
       return res.status(400).json({ message: 'Invalid item data.' });
@@ -680,8 +680,8 @@ app.post('/api/admin/shop-items/:id/update', authenticateToken, requireAdmin, as
     const rawDescription = String(req.body?.description || '').trim();
     const price = Number(req.body?.price);
     const quantity = Number.isFinite(Number(req.body?.quantity)) ? Number(req.body?.quantity) : existing.quantity;
-    const isAvailable = req.body?.isAvailable === false || req.body?.isAvailable === 0 ? 0 : 1;
     const isHidden = req.body?.isHidden ? 1 : 0;
+    const isAvailable = isHidden ? 0 : 1;
 
     if (!rawName || !rawDescription || !Number.isFinite(price) || price <= 0 || quantity < 0) {
       return res.status(400).json({ message: 'Invalid item data.' });
@@ -711,6 +711,35 @@ app.post('/api/admin/shop-items/:id/update', authenticateToken, requireAdmin, as
       ? 'Item name already exists.'
       : 'Failed to update shop item.';
     return res.status(500).json({ message });
+  }
+});
+
+app.post('/api/admin/shop-items/:id/delete', authenticateToken, requireAdmin, async (req, res) => {
+  const itemId = Number(req.params.id);
+  if (!Number.isFinite(itemId)) {
+    return res.status(400).json({ message: 'Invalid item ID.' });
+  }
+
+  try {
+    const existing = await dbGet(`SELECT name FROM items WHERE itemID = ?`, [itemId]);
+    if (!existing) {
+      return res.status(404).json({ message: 'Item not found.' });
+    }
+
+    await dbRun('BEGIN TRANSACTION');
+    await dbRun(`DELETE FROM inventory WHERE itemID = ?`, [itemId]);
+    await dbRun(`DELETE FROM items WHERE itemID = ?`, [itemId]);
+    await dbRun('COMMIT');
+
+    await logAdminChange(req.user.userId, `Shop item deleted (#${itemId})`, [
+      `Name: "${existing.name}"`,
+    ]);
+
+    return res.json({ message: 'Shop item deleted.' });
+  } catch (err) {
+    console.error('Error deleting shop item:', err);
+    try { await dbRun('ROLLBACK'); } catch (rollbackErr) {}
+    return res.status(500).json({ message: 'Failed to delete shop item.' });
   }
 });
 

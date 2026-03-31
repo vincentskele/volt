@@ -1086,7 +1086,7 @@ async function addItemToInventory(userID, itemID, quantity = 1) {
 
 function redeemItem(userID, itemName) {
   return new Promise((resolve, reject) => {
-    const findItemQuery = `SELECT itemID, name FROM items WHERE name = ? AND isAvailable = 1`;
+    const findItemQuery = `SELECT itemID, name FROM items WHERE name = ?`;
     db.get(findItemQuery, [itemName], (err, itemRow) => {
       if (err) {
         console.error('Database error in redeemItem (item lookup):', err);

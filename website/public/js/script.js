@@ -2068,37 +2068,44 @@ function buildShopItemModal({ title, item, confirmMessage, requireDoubleConfirm,
     modalBox.appendChild(input);
   });
 
-  const checkboxRow = document.createElement('div');
-  checkboxRow.style.display = 'flex';
-  checkboxRow.style.gap = '16px';
-  checkboxRow.style.alignItems = 'center';
-  checkboxRow.style.marginTop = '10px';
+  const visibilityRow = document.createElement('div');
+  visibilityRow.style.display = 'flex';
+  visibilityRow.style.gap = '16px';
+  visibilityRow.style.alignItems = 'center';
+  visibilityRow.style.marginTop = '10px';
+
+  const visibilityLabel = document.createElement('div');
+  visibilityLabel.textContent = 'Visibility';
+  visibilityLabel.style.fontWeight = 'bold';
+  visibilityRow.appendChild(visibilityLabel);
 
   const availableLabel = document.createElement('label');
   availableLabel.style.display = 'flex';
   availableLabel.style.gap = '8px';
   availableLabel.style.alignItems = 'center';
   const availableInput = document.createElement('input');
-  availableInput.type = 'checkbox';
-  availableInput.dataset.key = 'isAvailable';
-  availableInput.checked = item?.isAvailable !== 0;
+  availableInput.type = 'radio';
+  availableInput.name = 'shopVisibility';
+  availableInput.value = 'available';
+  availableInput.checked = !item?.isHidden;
   availableLabel.appendChild(availableInput);
   availableLabel.appendChild(document.createTextNode('Available'));
-  checkboxRow.appendChild(availableLabel);
+  visibilityRow.appendChild(availableLabel);
 
   const hiddenLabel = document.createElement('label');
   hiddenLabel.style.display = 'flex';
   hiddenLabel.style.gap = '8px';
   hiddenLabel.style.alignItems = 'center';
   const hiddenInput = document.createElement('input');
-  hiddenInput.type = 'checkbox';
-  hiddenInput.dataset.key = 'isHidden';
+  hiddenInput.type = 'radio';
+  hiddenInput.name = 'shopVisibility';
+  hiddenInput.value = 'hidden';
   hiddenInput.checked = !!item?.isHidden;
   hiddenLabel.appendChild(hiddenInput);
   hiddenLabel.appendChild(document.createTextNode('Hidden'));
-  checkboxRow.appendChild(hiddenLabel);
+  visibilityRow.appendChild(hiddenLabel);
 
-  modalBox.appendChild(checkboxRow);
+  modalBox.appendChild(visibilityRow);
 
   const buttons = document.createElement('div');
   buttons.className = 'modal-buttons';
@@ -2114,12 +2121,12 @@ function buildShopItemModal({ title, item, confirmMessage, requireDoubleConfirm,
   document.getElementById('adminEditConfirm').addEventListener('click', () => {
     const data = {};
     modalBox.querySelectorAll('input').forEach((input) => {
-      if (input.type === 'checkbox') {
-        data[input.dataset.key] = input.checked;
-      } else {
-        data[input.dataset.key] = input.value;
-      }
+      if (input.type === 'radio') return;
+      data[input.dataset.key] = input.value;
     });
+
+    const visibility = modalBox.querySelector('input[name="shopVisibility"]:checked')?.value || 'available';
+    const isHidden = visibility === 'hidden';
 
     const name = String(data.name || '').trim();
     const description = String(data.description || '').trim();
@@ -2143,8 +2150,8 @@ function buildShopItemModal({ title, item, confirmMessage, requireDoubleConfirm,
       description,
       price,
       quantity,
-      isAvailable: !!data.isAvailable,
-      isHidden: !!data.isHidden,
+      isAvailable: !isHidden,
+      isHidden,
     };
 
     const runSubmit = async () => {
@@ -2212,8 +2219,11 @@ async function loadAdminShopItems() {
 
       const title = document.createElement('div');
       const statusFlags = [];
-      if (!item.isAvailable) statusFlags.push('Unavailable');
-      if (item.isHidden) statusFlags.push('Hidden');
+      if (item.isHidden) {
+        statusFlags.push('Hidden');
+      } else if (!item.isAvailable) {
+        statusFlags.push('Unavailable');
+      }
       const statusText = statusFlags.length ? ` (${statusFlags.join(', ')})` : '';
       title.innerHTML = `<strong>${item.name}</strong> — ⚡${item.price} | Qty: ${item.quantity}${statusText}`;
       row.appendChild(title);
@@ -2252,6 +2262,23 @@ async function loadAdminShopItems() {
         });
       });
       actions.appendChild(editBtn);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'btn';
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.addEventListener('click', () => {
+        confirmTwice(`Delete "${item.name}"?`, async () => {
+          const result = await adminActionRequest(`/api/admin/shop-items/${item.itemID}/delete`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (result.ok) {
+            adminShopItemsCache = null;
+            loadAdminShopItems();
+          }
+        });
+      });
+      actions.appendChild(deleteBtn);
 
       row.appendChild(actions);
       list.appendChild(row);
