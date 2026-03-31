@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { redeemItem, getInventory } = require('../../db'); // Ensure you have both functions
+const { redeemItem, getInventory, logItemRedemption } = require('../../db'); // Ensure you have both functions
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -11,11 +11,18 @@ module.exports = {
         .setDescription('The name of the item to use.')
         .setRequired(true)
         .setAutocomplete(true) // Enable autocomplete
+    )
+    .addStringOption(option =>
+      option
+        .setName('wallet')
+        .setDescription('Paste your Solana wallet address here.')
+        .setRequired(true)
     ),
 
   async execute(interaction) {
     const userId = interaction.user.id;
     const itemName = interaction.options.getString('item');
+    const walletAddress = interaction.options.getString('wallet');
 
     if (!itemName) {
       return interaction.reply({
@@ -23,25 +30,100 @@ module.exports = {
         ephemeral: true,
       });
     }
+    if (!walletAddress) {
+      return interaction.reply({
+        content: 'Please paste your Solana wallet address.',
+        ephemeral: true,
+      });
+    }
 
     try {
+      await interaction.deferReply();
       // Fetch user inventory to verify ownership
       const inventory = await getInventory(userId);
       const ownedItem = inventory.find(item => item.name.toLowerCase() === itemName.toLowerCase());
 
       if (!ownedItem) {
-        return interaction.reply({
+        return interaction.editReply({
           content: `🚫 You do not have "${itemName}" in your inventory.`,
-          ephemeral: true,
         });
       }
 
       // Attempt to redeem the item
       const resultMsg = await redeemItem(userId, itemName);
+      await interaction.editReply({ content: resultMsg });
 
-      return interaction.reply({ content: resultMsg });
+      const now = new Date();
+      const unix = Math.floor(now.getTime() / 1000);
+      let channelName = 'Unknown Channel';
+      let messageLink = null;
+      try {
+        if (interaction.channel) {
+          channelName = `#${interaction.channel.name}`;
+        }
+        const replyMessage = await interaction.fetchReply();
+        if (interaction.guildId && interaction.channelId && replyMessage?.id) {
+          messageLink = `https://discord.com/channels/${interaction.guildId}/${interaction.channelId}/${replyMessage.id}`;
+        }
+      } catch (fetchErr) {
+        console.error('Failed to fetch reply for message link:', fetchErr);
+      }
+      const beforeQty = ownedItem.quantity;
+      const afterQty = Math.max(beforeQty - 1, 0);
+      const commandText = `/redeem item="${itemName}" wallet="${walletAddress}"`;
+
+      try {
+        await logItemRedemption({
+          userID: userId,
+          userTag: interaction.user.tag,
+          itemName,
+          walletAddress,
+          source: 'discord',
+          channelName,
+          channelId: interaction.channelId,
+          messageLink,
+          commandText,
+          inventoryBefore: beforeQty,
+          inventoryAfter: afterQty,
+        });
+      } catch (dbErr) {
+        console.error('Failed to store redemption log:', dbErr);
+      }
+
+      const channelId = process.env.SUBMISSION_CHANNEL_ID;
+      if (channelId) {
+        const messageLines = [
+          '🧾 Item Redeemed',
+          `Who: ${interaction.user.tag} (${interaction.user.id})`,
+          `What: ${itemName}`,
+          `Where: Discord /redeem in ${channelName}`,
+          `Channel ID: ${interaction.channelId || 'unknown'}`,
+          `Inventory: ${itemName} ${beforeQty} -> ${afterQty}`,
+          `When: <t:${unix}:F>`,
+          `Solana Wallet: ${walletAddress}`,
+          `Command: ${commandText}`,
+        ];
+        if (messageLink) {
+          messageLines.push(`Message: ${messageLink}`);
+        }
+        try {
+          const channel = await interaction.client.channels.fetch(channelId);
+          if (channel) {
+            await channel.send(messageLines.join('\n'));
+          }
+        } catch (logErr) {
+          console.error('Failed to log redemption:', logErr);
+        }
+      }
+
+      return;
     } catch (error) {
       console.error('Error using item:', error);
+      if (interaction.deferred || interaction.replied) {
+        return interaction.editReply({
+          content: error?.toString() || 'An error occurred while using the item.',
+        });
+      }
       return interaction.reply({
         content: error?.toString() || 'An error occurred while using the item.',
         ephemeral: true,

@@ -54,6 +54,29 @@ db.run(
   }
 );
 
+// ✅ Item redemptions audit log
+db.run(
+  `CREATE TABLE IF NOT EXISTS item_redemptions (
+    redemption_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    userID TEXT NOT NULL,
+    user_tag TEXT,
+    item_name TEXT NOT NULL,
+    wallet_address TEXT NOT NULL,
+    source TEXT NOT NULL,
+    channel_name TEXT,
+    channel_id TEXT,
+    message_link TEXT,
+    command_text TEXT,
+    inventory_before INTEGER,
+    inventory_after INTEGER,
+    created_at INTEGER DEFAULT (strftime('%s', 'now'))
+  )`,
+  (err) => {
+    if (err) console.error('❌ Error creating item_redemptions table:', err);
+    else console.log('✅ Item redemptions table is ready.');
+  }
+);
+
 // ✅ Simple Chat Messages table
 db.run(
   `CREATE TABLE IF NOT EXISTS chat_messages (
@@ -267,6 +290,27 @@ app.get('/api/admin/submissions', authenticateToken, requireAdmin, async (req, r
   } catch (err) {
     console.error('Error in /api/admin/submissions:', err);
     return res.status(500).json({ message: 'Failed to load submissions.' });
+  }
+});
+
+/**
+ * GET /api/admin/redemptions
+ * Returns item redemption logs (admin only).
+ */
+app.get('/api/admin/redemptions', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT redemption_id, userID, user_tag, item_name, wallet_address, source,
+              channel_name, channel_id, message_link, command_text,
+              inventory_before, inventory_after, created_at
+       FROM item_redemptions
+       ORDER BY created_at DESC
+       LIMIT 200`
+    );
+    return res.json(rows || []);
+  } catch (err) {
+    console.error('Error in /api/admin/redemptions:', err);
+    return res.status(500).json({ message: 'Failed to load redemptions.' });
   }
 });
 
@@ -1750,6 +1794,107 @@ app.get('/api/public-inventory/:userId', (req, res) => {
   );
 });
 
+/**
+ * POST /api/redeem
+ * Redeem (use) an item from the user's inventory.
+ */
+app.post('/api/redeem', authenticateToken, async (req, res) => {
+  const userId = req.user.userId;
+  const { itemName, walletAddress } = req.body;
+
+  if (!itemName) {
+    return res.status(400).json({ error: 'Missing item name.' });
+  }
+  if (!walletAddress) {
+    return res.status(400).json({ error: 'Missing Solana wallet address.' });
+  }
+
+  try {
+    const beforeRow = await dbGet(
+      `SELECT inv.quantity
+       FROM inventory inv
+       JOIN items i ON inv.itemID = i.itemID
+       WHERE inv.userID = ? AND i.name = ?`,
+      [userId, itemName]
+    );
+    const beforeQty = beforeRow?.quantity ?? null;
+    const resultMsg = await redeemItem(userId, itemName);
+    const afterRow = await dbGet(
+      `SELECT inv.quantity
+       FROM inventory inv
+       JOIN items i ON inv.itemID = i.itemID
+       WHERE inv.userID = ? AND i.name = ?`,
+      [userId, itemName]
+    );
+    const afterQty = afterRow?.quantity ?? 0;
+
+    let userTag = null;
+    try {
+      userTag = await resolveUsername(userId);
+    } catch (tagErr) {
+      console.error('Failed to resolve username for redemption log:', tagErr);
+    }
+    if (!userTag) {
+      userTag = `UnknownUser(${userId})`;
+    }
+
+    try {
+      await dbRun(
+        `INSERT INTO item_redemptions (
+          userID, user_tag, item_name, wallet_address, source,
+          channel_name, channel_id, message_link, command_text,
+          inventory_before, inventory_after
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          userId,
+          userTag,
+          itemName,
+          walletAddress,
+          'web',
+          null,
+          null,
+          null,
+          'WEB_UI',
+          Number.isFinite(beforeQty) ? beforeQty : null,
+          Number.isFinite(afterQty) ? afterQty : null,
+        ]
+      );
+    } catch (insertErr) {
+      console.error('Failed to store web redemption log:', insertErr);
+    }
+
+    const channelId = process.env.SUBMISSION_CHANNEL_ID;
+    if (channelId) {
+      try {
+        const now = new Date();
+        const unix = Math.floor(now.getTime() / 1000);
+        const channel = await client.channels.fetch(channelId);
+        if (channel) {
+          const messageLines = [
+            '🧾 Item Redeemed',
+            `Who: ${userTag} (${userId})`,
+            `What: ${itemName}`,
+            'Where: Web UI Inventory',
+            beforeQty !== null
+              ? `Inventory: ${itemName} ${beforeQty} -> ${afterQty}`
+              : `Inventory: ${itemName} -> ${afterQty}`,
+            `When: <t:${unix}:F>`,
+            `Solana Wallet: ${walletAddress}`,
+          ];
+          await channel.send(messageLines.join('\n'));
+        }
+      } catch (logErr) {
+        console.error('Failed to log web redemption:', logErr);
+      }
+    }
+
+    return res.json({ message: resultMsg });
+  } catch (error) {
+    console.error('Error redeeming item via web:', error);
+    return res.status(500).json({ error: error?.toString() || 'Failed to redeem item.' });
+  }
+});
+
 
 /**
  * POST /api/buy
@@ -1931,6 +2076,7 @@ const {
   getActiveJob,
   getActiveRaffles,
   getShopItemByName,
+  redeemItem,
   renumberJobs,
   saveGiveaway,
   createRaffle,

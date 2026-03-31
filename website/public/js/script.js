@@ -1331,6 +1331,7 @@ function initAdminToggles() {
         if (targetId === 'adminGiveawaysPanel') loadAdminGiveaways();
         if (targetId === 'adminRafflesPanel') loadAdminRaffles();
         if (targetId === 'adminJoblistPanel') loadAdminJoblist();
+        if (targetId === 'adminRedemptionsPanel') loadAdminRedemptions();
       }
     });
   });
@@ -1963,6 +1964,56 @@ async function loadAdminJoblist() {
   }
 }
 
+async function loadAdminRedemptions() {
+  const token = localStorage.getItem('token');
+  const list = document.getElementById('adminRedemptionsList');
+  if (!token || !list) return;
+  list.innerHTML = '';
+  try {
+    const res = await fetch('/api/admin/redemptions', { headers: { Authorization: `Bearer ${token}` } });
+    const rows = await res.json();
+    if (!res.ok) {
+      throw new Error(rows?.message || 'Failed to load redemptions.');
+    }
+    if (!Array.isArray(rows) || rows.length === 0) {
+      list.innerHTML = '<div class="admin-item">No redemptions found.</div>';
+      return;
+    }
+
+    rows.forEach((row) => {
+      const item = document.createElement('div');
+      item.className = 'admin-item';
+      const when = row.created_at ? new Date(row.created_at * 1000).toLocaleString() : 'Unknown time';
+      const who = row.user_tag ? `${row.user_tag} (${row.userID})` : row.userID;
+      const channelLabel = row.channel_name || 'Unknown Channel';
+      const channelId = row.channel_id || 'unknown';
+      const inventoryLine = (row.inventory_before !== null && row.inventory_after !== null)
+        ? `${row.item_name} ${row.inventory_before} -> ${row.inventory_after}`
+        : `${row.item_name} -> ${row.inventory_after ?? 'unknown'}`;
+      const commandText = row.command_text ? row.command_text : 'N/A';
+      const messageLink = row.message_link
+        ? `<a href="${row.message_link}" target="_blank" class="link">Message Link</a>`
+        : 'No message link';
+
+      item.innerHTML = `
+        <div><strong>Who:</strong> ${who}</div>
+        <div><strong>What:</strong> ${row.item_name}</div>
+        <div><strong>Where:</strong> ${row.source === 'discord' ? `Discord in ${channelLabel}` : 'Web UI Inventory'}</div>
+        <div><strong>Channel ID:</strong> ${channelId}</div>
+        <div><strong>When:</strong> ${when}</div>
+        <div><strong>Solana Wallet:</strong> ${row.wallet_address}</div>
+        <div><strong>Inventory:</strong> ${inventoryLine}</div>
+        <div><strong>Command:</strong> ${commandText}</div>
+        <div><strong>Message:</strong> ${messageLink}</div>
+      `;
+      list.appendChild(item);
+    });
+  } catch (error) {
+    console.error('❌ Failed to load redemptions:', error);
+    list.innerHTML = '<div class="admin-item">Failed to load redemptions.</div>';
+  }
+}
+
 let adminPollingIntervalId = null;
 function startAdminPolling() {
   if (adminPollingIntervalId) return;
@@ -1975,6 +2026,7 @@ function startAdminPolling() {
     if (document.getElementById('adminGiveawaysPanel')?.style.display === 'block') loadAdminGiveaways();
     if (document.getElementById('adminRafflesPanel')?.style.display === 'block') loadAdminRaffles();
     if (document.getElementById('adminJoblistPanel')?.style.display === 'block') loadAdminJoblist();
+    if (document.getElementById('adminRedemptionsPanel')?.style.display === 'block') loadAdminRedemptions();
   }, 15000);
 }
 
@@ -3418,6 +3470,70 @@ async function submitOffer(url, quantity, price) {
 //
 // SPECIAL RULES FOR LOGGED IN
 //
+function showRedeemModal(itemName) {
+  const token = localStorage.getItem("token");
+  if (!token) {
+    alert('Please log in first!');
+    return;
+  }
+
+  const existingModal = document.getElementById('redeemModal');
+  if (existingModal) existingModal.remove();
+
+  const modalOverlay = document.createElement('div');
+  modalOverlay.className = 'modal-overlay';
+  modalOverlay.id = 'redeemModal';
+
+  const modalBox = document.createElement('div');
+  modalBox.className = 'modal-box';
+  modalBox.innerHTML = `
+    <h2>ARE YOU SURE YOU WANT TO USE ${itemName}?</h2>
+    <p style="margin-bottom: 8px;">Paste your Solana wallet address:</p>
+    <input type="text" id="redeemWalletAddress" placeholder="Solana wallet address" style="margin:5px 0; width: 100%; padding: 8px;" />
+    <div class="modal-buttons">
+      <button id="redeemConfirmButton" class="confirm-button">YES, USE IT</button>
+      <button id="redeemCancelButton" class="cancel-button">CANCEL</button>
+    </div>
+  `;
+
+  modalOverlay.appendChild(modalBox);
+  document.body.appendChild(modalOverlay);
+
+  const close = () => modalOverlay.remove();
+  document.getElementById('redeemCancelButton').addEventListener('click', close);
+
+  document.getElementById('redeemConfirmButton').addEventListener('click', async () => {
+    const walletAddress = document.getElementById('redeemWalletAddress').value.trim();
+    if (!walletAddress) {
+      showConfirmationPopup('❌ Please paste your Solana wallet address.');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/redeem', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ itemName, walletAddress }),
+      });
+      const result = await response.json();
+      if (response.ok) {
+        showConfirmationPopup(`✅ ${result.message}`);
+        await fetchInventory();
+      } else {
+        showConfirmationPopup(`❌ ${result.error || 'Failed to redeem item.'}`);
+      }
+    } catch (error) {
+      console.error('Error redeeming item:', error);
+      showConfirmationPopup('❌ Failed to redeem item.');
+    } finally {
+      close();
+    }
+  });
+}
+
 // Function to handle inventory click events dynamically
 function handleInventoryClickEvents() {
   const token = localStorage.getItem("token"); // Check if user is logged in
@@ -3430,9 +3546,10 @@ function handleInventoryClickEvents() {
     itemElement.parentNode.replaceChild(clonedElement, itemElement);
 
     if (token) {
-      // ✅ LOGGED IN: Remove click events completely
-      clonedElement.onclick = null;
-      clonedElement.removeAttribute("onclick");
+      // ✅ LOGGED IN: Redeem flow
+      clonedElement.addEventListener("click", () => {
+        showRedeemModal(itemName);
+      });
     } else {
       // 🚀 NOT LOGGED IN: Add click event to copy command & open Discord
       clonedElement.addEventListener("click", async () => {

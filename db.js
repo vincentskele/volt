@@ -214,6 +214,29 @@ db.run(`
       }
     );
 
+    // Item Redemptions (Audit Log)
+    db.run(
+      `CREATE TABLE IF NOT EXISTS item_redemptions (
+        redemption_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userID TEXT NOT NULL,
+        user_tag TEXT,
+        item_name TEXT NOT NULL,
+        wallet_address TEXT NOT NULL,
+        source TEXT NOT NULL,
+        channel_name TEXT,
+        channel_id TEXT,
+        message_link TEXT,
+        command_text TEXT,
+        inventory_before INTEGER,
+        inventory_after INTEGER,
+        created_at INTEGER DEFAULT (strftime('%s', 'now'))
+      )`,
+      (err) => {
+        if (err) console.error('❌ Error creating item_redemptions table:', err);
+        else console.log('✅ Item redemptions table is ready.');
+      }
+    );
+
     // Job Cycle (Round-Robin Assignments)
     db.run(`
       CREATE TABLE IF NOT EXISTS job_cycle (
@@ -1082,6 +1105,50 @@ function redeemItem(userID, itemName) {
           });
         }
       });
+    });
+  });
+}
+
+function logItemRedemption({
+  userID,
+  userTag,
+  itemName,
+  walletAddress,
+  source,
+  channelName,
+  channelId,
+  messageLink,
+  commandText,
+  inventoryBefore,
+  inventoryAfter,
+}) {
+  return new Promise((resolve, reject) => {
+    const query = `
+      INSERT INTO item_redemptions (
+        userID, user_tag, item_name, wallet_address, source,
+        channel_name, channel_id, message_link, command_text,
+        inventory_before, inventory_after
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    const params = [
+      userID,
+      userTag || null,
+      itemName,
+      walletAddress,
+      source,
+      channelName || null,
+      channelId || null,
+      messageLink || null,
+      commandText || null,
+      Number.isFinite(inventoryBefore) ? inventoryBefore : null,
+      Number.isFinite(inventoryAfter) ? inventoryAfter : null,
+    ];
+    db.run(query, params, (err) => {
+      if (err) {
+        console.error('Database error in logItemRedemption:', err);
+        return reject(err);
+      }
+      resolve();
     });
   });
 }
@@ -2525,6 +2592,7 @@ module.exports = {
   addItemToInventory,
   updateShopItemQuantity,
   redeemItem,
+  logItemRedemption,
   getRaffleParticipants,
   addRaffleEntry,
   upsertShopItem,
