@@ -1826,10 +1826,12 @@ async function createRaffle(channelId, name, prize, cost, quantity, winners, end
 
         // ✅ Single "upsert" query for the raffle ticket
         const insertUpsert = `
-          INSERT INTO items (name, description, price, isAvailable, quantity)
-          VALUES (?, ?, ?, 1, ?)
+          INSERT INTO items (name, description, price, isAvailable, isHidden, isRedeemable, quantity)
+          VALUES (?, ?, ?, 1, 0, 0, ?)
           ON CONFLICT(name) 
-          DO UPDATE SET quantity = items.quantity + excluded.quantity
+          DO UPDATE SET
+            quantity = items.quantity + excluded.quantity,
+            isRedeemable = 0
         `;
         
         db.run(insertUpsert, [ticketName, ticketDesc, cost, quantity], (err2) => {

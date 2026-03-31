@@ -3929,6 +3929,7 @@ function handleInventoryClickEvents() {
 
   document.querySelectorAll(".inventory-item").forEach((itemElement) => {
     const itemName = itemElement.getAttribute("data-name");
+    const isRedeemable = itemElement.getAttribute("data-redeemable") !== '0';
 
     // Remove all existing event listeners by cloning & replacing
     const clonedElement = itemElement.cloneNode(true);
@@ -3937,6 +3938,10 @@ function handleInventoryClickEvents() {
     if (token) {
       // ✅ LOGGED IN: Redeem flow
       clonedElement.addEventListener("click", () => {
+        if (!isRedeemable) {
+          showConfirmationPopup(`❌ "${itemName}" is not redeemable.`);
+          return;
+        }
         showRedeemModal(itemName);
       });
     } else {
@@ -3999,6 +4004,7 @@ async function fetchInventory() {
       const itemContainer = document.createElement('div');
       itemContainer.className = 'inventory-item raffle-item bg-content border border-accent rounded-lg p-3 my-2 shadow-md text-primary';
       itemContainer.setAttribute("data-name", item.name);
+      itemContainer.setAttribute("data-redeemable", item.isRedeemable ? '1' : '0');
 
       // Item title
       const itemTitle = document.createElement('h3');

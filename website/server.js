@@ -1907,7 +1907,7 @@ app.get('/api/inventory', authenticateToken, (req, res) => {
   const userId = req.user.userId; // Get user ID from JWT
 
   db.all(
-    `SELECT i.itemID, i.name, i.description, inv.quantity
+    `SELECT i.itemID, i.name, i.description, inv.quantity, COALESCE(i.isRedeemable, 1) AS isRedeemable
      FROM inventory inv
      JOIN items i ON inv.itemID = i.itemID
      WHERE inv.userID = ?`,
@@ -1927,7 +1927,7 @@ app.get('/api/public-inventory/:userId', (req, res) => {
   const userId = req.params.userId;
 
   db.all(
-    `SELECT i.itemID, i.name, i.description, inv.quantity
+    `SELECT i.itemID, i.name, i.description, inv.quantity, COALESCE(i.isRedeemable, 1) AS isRedeemable
      FROM inventory inv
      JOIN items i ON inv.itemID = i.itemID
      WHERE inv.userID = ?`,
