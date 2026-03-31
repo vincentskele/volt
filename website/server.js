@@ -22,13 +22,9 @@ function getSolanaExplorerUrl(walletAddress) {
   return `https://solscan.io/account/${walletAddress}`;
 }
 
-function formatSolanaWalletField(walletAddress) {
+function formatSolanaWalletMessage(walletAddress) {
   if (!walletAddress) return null;
-  return {
-    name: "Solana Wallet",
-    value: `\`\`\`\n${walletAddress}\n\`\`\``,
-    inline: false,
-  };
+  return `${walletAddress}`;
 }
 
 
@@ -2066,9 +2062,6 @@ app.post('/api/redeem', authenticateToken, async (req, res) => {
             },
             { name: 'When', value: `<t:${unix}:F>`, inline: false },
           ];
-          const walletField = formatSolanaWalletField(walletAddress);
-          if (walletField) fields.push(walletField);
-
           const embed = new EmbedBuilder()
             .setTitle('🧾 Item Redeemed')
             .setColor(SUBMISSION_EMBED_COLORS.itemRedemption)
@@ -2076,6 +2069,10 @@ app.post('/api/redeem', authenticateToken, async (req, res) => {
             .setTimestamp(now);
 
           await channel.send({ embeds: [embed] });
+          const walletMessage = formatSolanaWalletMessage(walletAddress);
+          if (walletMessage) {
+            await channel.send({ content: walletMessage });
+          }
         }
       } catch (logErr) {
         console.error('Failed to log web redemption:', logErr);

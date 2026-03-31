@@ -16,13 +16,9 @@ function getSolanaExplorerUrl(walletAddress) {
   return `https://solscan.io/account/${walletAddress}`;
 }
 
-function formatSolanaWalletField(walletAddress) {
+function formatSolanaWalletMessage(walletAddress) {
   if (!walletAddress) return null;
-  return {
-    name: 'Solana Wallet',
-    value: `\`\`\`\n${walletAddress}\n\`\`\``,
-    inline: false,
-  };
+  return `${walletAddress}`;
 }
 
 function readRoboCheckHolders() {
@@ -143,8 +139,6 @@ module.exports = {
               { name: 'When', value: `<t:${unix}:F>`, inline: false },
               { name: 'Command', value: commandText, inline: false },
             ];
-            const walletField = formatSolanaWalletField(walletAddress);
-            if (walletField) fields.push(walletField);
             if (messageLink) {
               fields.push({ name: 'Message', value: messageLink, inline: false });
             }
@@ -154,6 +148,10 @@ module.exports = {
               .addFields(fields)
               .setTimestamp(now);
             await channel.send({ embeds: [embed] });
+            const walletMessage = formatSolanaWalletMessage(walletAddress);
+            if (walletMessage) {
+              await channel.send({ content: walletMessage });
+            }
           }
         } catch (logErr) {
           console.error('Failed to log redemption:', logErr);
