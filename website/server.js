@@ -308,6 +308,25 @@ async function resolveUsername(userId) {
 }
 
 /**
+ * Helper: fetch Discord user info (username, tag, avatar URL).
+ */
+async function fetchDiscordUserInfo(userId) {
+  try {
+    const user = await client.users.fetch(userId);
+    if (!user) return null;
+    return {
+      userId: user.id,
+      username: user.username,
+      tag: user.tag,
+      avatarUrl: user.displayAvatarURL({ extension: 'png', size: 128 }),
+    };
+  } catch (err) {
+    console.error(`Error fetching Discord user info for ID ${userId}: ${err.message}`);
+    return null;
+  }
+}
+
+/**
  * GET /api/leaderboard
  * Return top 10 by total (wallet + bank), plus userTag in place of userID.
  */
@@ -1532,6 +1551,28 @@ app.get('/api/resolveUser/:userId', async (req, res) => {
   } catch (error) {
     console.error(`Error resolving user ID ${userId}:`, error);
     res.json({ username: null });
+  }
+});
+
+/**
+ * GET /api/discord-user/:userId
+ * Return Discord profile info, including avatar URL.
+ */
+app.get('/api/discord-user/:userId', async (req, res) => {
+  const { userId } = req.params;
+  if (!userId) {
+    return res.status(400).json({ message: 'User ID is required.' });
+  }
+
+  try {
+    const info = await fetchDiscordUserInfo(userId);
+    if (!info) {
+      return res.status(404).json({ message: 'Discord user not found.' });
+    }
+    return res.json(info);
+  } catch (error) {
+    console.error(`Error fetching Discord user info for ID ${userId}:`, error);
+    return res.status(500).json({ message: 'Failed to fetch Discord user info.' });
   }
 });
 

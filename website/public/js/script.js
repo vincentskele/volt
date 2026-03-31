@@ -2708,6 +2708,13 @@ function showPostLoginButtons() {
   userActionContainer.style.alignItems = 'flex-end';
   userActionContainer.style.gap = '4px'; // Keep spacing between buttons
 
+  // ========== USER AVATAR ==========
+  const userAvatar = document.createElement('img');
+  userAvatar.id = 'userActionAvatar';
+  userAvatar.className = 'user-action-avatar';
+  userAvatar.alt = 'Your Discord avatar';
+  userActionContainer.appendChild(userAvatar);
+
   // ========== INVENTORY BUTTON ==========
   const inventoryButton = document.createElement('button');
   inventoryButton.textContent = 'INVENTORY';
@@ -2799,6 +2806,9 @@ function showPostLoginButtons() {
     document.body.appendChild(userActionContainer);
   }
 
+  const loggedInUserId = localStorage.getItem('discordUserID');
+  hydrateUserAvatar(loggedInUserId, userAvatar);
+
   // ✅ Show the Volt menu only after login
   if (voltMenuContainer) voltMenuContainer.style.display = 'block';
 
@@ -2888,6 +2898,44 @@ function safeText(value, fallback = 'Unknown') {
     return fallback;
   }
   return String(value);
+}
+
+async function fetchDiscordUserMeta(userId) {
+  if (!userId) return null;
+  try {
+    const res = await fetch(`/api/discord-user/${userId}`);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch Discord user meta: ${res.statusText}`);
+    }
+    return await res.json();
+  } catch (error) {
+    console.error('Error fetching Discord user meta:', error);
+    return null;
+  }
+}
+
+function applyAvatarImage(imgEl, url) {
+  if (!imgEl) return;
+  if (url) {
+    imgEl.src = url;
+    imgEl.style.display = 'block';
+  } else {
+    imgEl.removeAttribute('src');
+    imgEl.style.display = 'none';
+  }
+}
+
+async function hydrateUserAvatar(userId, imgEl, tagEl) {
+  if (!userId) {
+    applyAvatarImage(imgEl, null);
+    if (tagEl) tagEl.textContent = '';
+    return;
+  }
+  const meta = await fetchDiscordUserMeta(userId);
+  applyAvatarImage(imgEl, meta?.avatarUrl || null);
+  if (tagEl) {
+    tagEl.textContent = meta?.tag ? `@${meta.tag}` : '';
+  }
 }
 
 let currentUserTokens = [];
@@ -3103,6 +3151,8 @@ function renderSolarianMosaic(tokens) {
 async function fetchUserHoldingsFor(userId) {
   const grid = document.getElementById('userHoldingsGrid');
   const profileTitle = document.getElementById('userProfileTitle');
+  const profileAvatar = document.getElementById('userProfileAvatar');
+  const profileTag = document.getElementById('userProfileTag');
   if (!grid) return;
 
   currentProfileUserId = userId || null;
@@ -3113,6 +3163,7 @@ async function fetchUserHoldingsFor(userId) {
   if (!userId) {
     grid.innerHTML = '<div class="empty-state">No Discord ID found for this profile.</div>';
     if (profileTitle) profileTitle.textContent = '👤 User Profile';
+    hydrateUserAvatar(null, profileAvatar, profileTag);
     return;
   }
 
@@ -3128,6 +3179,7 @@ async function fetchUserHoldingsFor(userId) {
       const nameLabel = username || userId;
       profileTitle.textContent = `${nameLabel}'s Profile`;
     }
+    hydrateUserAvatar(userId, profileAvatar, profileTag);
 
     const response = await fetch(`/api/holder/${userId}`);
     if (!response.ok) {
@@ -3145,6 +3197,7 @@ async function fetchUserHoldingsFor(userId) {
     console.error('Error loading holdings:', error);
     grid.innerHTML = '<div class="empty-state">Could not load holdings data.</div>';
     if (profileTitle) profileTitle.textContent = 'User Profile';
+    hydrateUserAvatar(userId, profileAvatar, profileTag);
   }
 }
 

@@ -1098,6 +1098,16 @@ code {
   z-index: 30;
 }
 
+.user-action-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: var(--bg-dark);
+  object-fit: cover;
+  align-self: flex-end;
+}
+
 #voltBalance {
   display: block; /* Ensures it's on a new line */
   margin-top: 5px;
@@ -1125,6 +1135,36 @@ code {
   justify-content: center;
   gap: 8px;
   margin-bottom: 8px;
+}
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  text-align: left;
+}
+
+.profile-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: var(--bg-dark);
+  object-fit: cover;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.profile-header-text h2 {
+  margin: 0;
+}
+
+.profile-tag {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
 }
 
 .profile-fields {
@@ -1382,6 +1422,10 @@ code {
     background: var(--bg-content);
     border: 1px solid var(--accent);
     border-radius: 8px;
+  }
+
+  .user-action-avatar {
+    align-self: center;
   }
 
   #userButtons button {
