@@ -16,6 +16,7 @@ module.exports = {
         .setName('item')
         .setDescription('The name of the item to reward.')
         .setRequired(true)
+        .setAutocomplete(true)
     )
     .addIntegerOption(option =>
       option
@@ -23,6 +24,20 @@ module.exports = {
         .setDescription('Quantity of the item to reward (default is 1).')
         .setRequired(false)
     ),
+
+  // Provide dropdown suggestions for available (non-hidden) shop items.
+  async autocomplete(interaction) {
+    const focusedValue = interaction.options.getFocused().toLowerCase();
+    try {
+      const items = await db.getShopItems();
+      const choices = items.map(item => item.name);
+      const filtered = choices.filter(choice => choice.toLowerCase().includes(focusedValue));
+      await interaction.respond(filtered.slice(0, 25).map(choice => ({ name: choice, value: choice })));
+    } catch (err) {
+      console.error('Autocomplete Error:', err);
+      await interaction.respond([]);
+    }
+  },
 
   async execute(interaction) {
     // Check that the caller is an admin.
@@ -54,11 +69,11 @@ module.exports = {
     }
 
     try {
-      // Look up the item details from the shop.
-      const shopItem = await db.getShopItemByName(itemName);
+      // Look up the item details, including hidden/unavailable items.
+      const shopItem = await db.getAnyShopItemByName(itemName);
       if (!shopItem) {
         return interaction.reply({
-          content: `Item "${itemName}" is not available in the shop.`,
+          content: `Item "${itemName}" does not exist.`,
           ephemeral: true
         });
       }
