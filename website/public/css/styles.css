@@ -1356,6 +1356,23 @@ code {
     align-self: center;
     width: min(260px, 90%);
   }
+
+  .solarian-mosaic-grid {
+    grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+    grid-auto-rows: 64px;
+  }
+
+  .solarian-mosaic-grid.mosaic-count-1,
+  .solarian-mosaic-grid.mosaic-count-2,
+  .solarian-mosaic-grid.mosaic-count-3 {
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    grid-auto-rows: minmax(130px, 1fr);
+  }
+
+  .solarian-mosaic-grid.mosaic-count-10 {
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    grid-auto-rows: 100px;
+  }
 }
 
 .solarian-mosaic {
@@ -1402,6 +1419,31 @@ code {
   border-radius: 6px;
 }
 
+.solarian-mosaic-grid.mosaic-count-1,
+.solarian-mosaic-grid.mosaic-count-2,
+.solarian-mosaic-grid.mosaic-count-3 {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-auto-rows: minmax(160px, 1fr);
+  gap: 10px;
+  justify-content: center;
+  align-content: center;
+  padding: 12px;
+}
+
+.solarian-mosaic-grid.mosaic-count-10 {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-auto-rows: 120px;
+  gap: 6px;
+  padding: 8px;
+}
+
+.solarian-mosaic-grid.mosaic-count-20 {
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  grid-auto-rows: 90px;
+  gap: 4px;
+  padding: 6px;
+}
+
 .solarian-mosaic-grid img {
   width: 100%;
   height: 100%;
@@ -1421,6 +1463,14 @@ code {
   background-color: var(--bg-content);
   border-radius: 10px;
   box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
+}
+
+.inventory-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
 }
 
 /* Ensures inventory items are properly centered */

@@ -73,9 +73,12 @@ if (showLeaderboardButton) {
           item.className = 'leaderboard-item';
           item.style.cursor = 'pointer'; // Indicates that the item is clickable
 
-          // When clicked, fetch and display the inventory for that user
+          // When clicked, fetch and display the profile for that user
           item.addEventListener('click', () => {
-            fetchUserInventory(entry.userID);
+            fetchUserHoldingsFor(entry.userID);
+            if (typeof showSection === 'function') {
+              showSection('userProfileSection');
+            }
           });
 
           // Create the content for this leaderboard entry
@@ -105,6 +108,15 @@ if (showLeaderboardButton) {
  */
 async function fetchUserInventory(userID) {
   try {
+    const localUserId = localStorage.getItem('discordUserID');
+    const nameLabel = currentProfileUsername || userID;
+    if (userID && localUserId && userID !== localUserId) {
+      setInventoryHeader(nameLabel, true);
+    } else {
+      const selfName = localStorage.getItem('username');
+      setInventoryHeader(selfName, false);
+    }
+
     const response = await fetch(`/api/public-inventory/${userID}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch inventory for user ${userID}`);
@@ -354,6 +366,10 @@ async function fetchInventory() {
   }
 
   try {
+    const selfName = localStorage.getItem('username');
+    currentProfileUserId = localStorage.getItem('discordUserID') || null;
+    currentProfileUsername = selfName || currentProfileUserId;
+    setInventoryHeader(selfName, true);
     const response = await fetch('/api/inventory', {
       method: 'GET',
       headers: {
@@ -1332,6 +1348,7 @@ function initAdminToggles() {
         if (targetId === 'adminRafflesPanel') loadAdminRaffles();
         if (targetId === 'adminJoblistPanel') loadAdminJoblist();
         if (targetId === 'adminRedemptionsPanel') loadAdminRedemptions();
+        if (targetId === 'adminShopItemsPanel') loadAdminShopItems();
       }
     });
   });
@@ -2014,6 +2031,240 @@ async function loadAdminRedemptions() {
   }
 }
 
+function buildShopItemModal({ title, item, confirmMessage, requireDoubleConfirm, onSubmit }) {
+  const existing = document.getElementById('adminEditModal');
+  if (existing) existing.remove();
+
+  const modalOverlay = document.createElement('div');
+  modalOverlay.className = 'modal-overlay';
+  modalOverlay.id = 'adminEditModal';
+
+  const modalBox = document.createElement('div');
+  modalBox.className = 'modal-box';
+  modalBox.innerHTML = `<h2>${title}</h2>`;
+
+  const fields = [
+    { key: 'name', label: 'Name', value: item?.name || '' },
+    { key: 'description', label: 'Description', value: item?.description || '' },
+    { key: 'price', label: 'Price', value: item?.price ?? '' },
+    { key: 'quantity', label: 'Quantity', value: item?.quantity ?? 1 },
+  ];
+
+  fields.forEach((field) => {
+    const label = document.createElement('label');
+    label.textContent = field.label;
+    label.style.display = 'block';
+    label.style.marginTop = '8px';
+    modalBox.appendChild(label);
+
+    const input = document.createElement('input');
+    input.type = field.key === 'price' || field.key === 'quantity' ? 'number' : 'text';
+    input.value = field.value;
+    input.placeholder = field.label;
+    input.dataset.key = field.key;
+    input.style.margin = '6px 0';
+    input.style.width = '100%';
+    input.style.padding = '6px';
+    modalBox.appendChild(input);
+  });
+
+  const checkboxRow = document.createElement('div');
+  checkboxRow.style.display = 'flex';
+  checkboxRow.style.gap = '16px';
+  checkboxRow.style.alignItems = 'center';
+  checkboxRow.style.marginTop = '10px';
+
+  const availableLabel = document.createElement('label');
+  availableLabel.style.display = 'flex';
+  availableLabel.style.gap = '8px';
+  availableLabel.style.alignItems = 'center';
+  const availableInput = document.createElement('input');
+  availableInput.type = 'checkbox';
+  availableInput.dataset.key = 'isAvailable';
+  availableInput.checked = item?.isAvailable !== 0;
+  availableLabel.appendChild(availableInput);
+  availableLabel.appendChild(document.createTextNode('Available'));
+  checkboxRow.appendChild(availableLabel);
+
+  const hiddenLabel = document.createElement('label');
+  hiddenLabel.style.display = 'flex';
+  hiddenLabel.style.gap = '8px';
+  hiddenLabel.style.alignItems = 'center';
+  const hiddenInput = document.createElement('input');
+  hiddenInput.type = 'checkbox';
+  hiddenInput.dataset.key = 'isHidden';
+  hiddenInput.checked = !!item?.isHidden;
+  hiddenLabel.appendChild(hiddenInput);
+  hiddenLabel.appendChild(document.createTextNode('Hidden'));
+  checkboxRow.appendChild(hiddenLabel);
+
+  modalBox.appendChild(checkboxRow);
+
+  const buttons = document.createElement('div');
+  buttons.className = 'modal-buttons';
+  buttons.innerHTML = `
+    <button class="confirm-button" id="adminEditConfirm">Confirm</button>
+    <button class="cancel-button" id="adminEditCancel">Cancel</button>
+  `;
+  modalBox.appendChild(buttons);
+  modalOverlay.appendChild(modalBox);
+  document.body.appendChild(modalOverlay);
+
+  document.getElementById('adminEditCancel').addEventListener('click', () => modalOverlay.remove());
+  document.getElementById('adminEditConfirm').addEventListener('click', () => {
+    const data = {};
+    modalBox.querySelectorAll('input').forEach((input) => {
+      if (input.type === 'checkbox') {
+        data[input.dataset.key] = input.checked;
+      } else {
+        data[input.dataset.key] = input.value;
+      }
+    });
+
+    const name = String(data.name || '').trim();
+    const description = String(data.description || '').trim();
+    const price = Number(data.price);
+    const quantity = Number(data.quantity);
+    if (!name || !description) {
+      showConfirmationPopup('❌ Name and description are required.');
+      return;
+    }
+    if (!Number.isFinite(price) || price <= 0) {
+      showConfirmationPopup('❌ Price must be a positive number.');
+      return;
+    }
+    if (!Number.isFinite(quantity) || quantity < 0) {
+      showConfirmationPopup('❌ Quantity must be 0 or more.');
+      return;
+    }
+
+    const submitPayload = {
+      name,
+      description,
+      price,
+      quantity,
+      isAvailable: !!data.isAvailable,
+      isHidden: !!data.isHidden,
+    };
+
+    const runSubmit = async () => {
+      await onSubmit(submitPayload);
+      modalOverlay.remove();
+    };
+
+    if (requireDoubleConfirm) {
+      confirmTwice(confirmMessage || 'Are you sure you want to edit this item?', runSubmit);
+    } else {
+      customConfirm(confirmMessage || 'Create this item?', runSubmit);
+    }
+  });
+}
+
+async function loadAdminShopItems() {
+  const token = localStorage.getItem('token');
+  const list = document.getElementById('adminShopItemsList');
+  if (!token || !list) return;
+  list.innerHTML = '';
+
+  const createRow = document.createElement('div');
+  createRow.className = 'admin-actions';
+  const createBtn = document.createElement('button');
+  createBtn.className = 'btn';
+  createBtn.textContent = 'Create Item';
+  createRow.appendChild(createBtn);
+  list.appendChild(createRow);
+
+  createBtn.addEventListener('click', () => {
+    buildShopItemModal({
+      title: 'Create Shop Item',
+      item: { name: '', description: '', price: '', quantity: 1, isAvailable: 1, isHidden: 0 },
+      confirmMessage: 'Create this shop item?',
+      requireDoubleConfirm: false,
+      onSubmit: async (data) => {
+        const result = await adminActionRequest('/api/admin/shop-items/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(data),
+        });
+        if (result.ok) {
+          adminShopItemsCache = null;
+          loadAdminShopItems();
+        }
+      },
+    });
+  });
+
+  try {
+    const res = await fetch('/api/admin/shop-items', { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error('Failed to load shop items.');
+    const items = await res.json();
+    if (!Array.isArray(items) || items.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'admin-item';
+      empty.textContent = 'No shop items found.';
+      list.appendChild(empty);
+      return;
+    }
+
+    items.forEach((item) => {
+      const row = document.createElement('div');
+      row.className = 'admin-item';
+
+      const title = document.createElement('div');
+      const statusFlags = [];
+      if (!item.isAvailable) statusFlags.push('Unavailable');
+      if (item.isHidden) statusFlags.push('Hidden');
+      const statusText = statusFlags.length ? ` (${statusFlags.join(', ')})` : '';
+      title.innerHTML = `<strong>${item.name}</strong> — ⚡${item.price} | Qty: ${item.quantity}${statusText}`;
+      row.appendChild(title);
+
+      const desc = document.createElement('p');
+      desc.textContent = item.description || '';
+      row.appendChild(desc);
+
+      const meta = document.createElement('div');
+      meta.textContent = `Hidden: ${item.isHidden ? 'Yes' : 'No'}`;
+      row.appendChild(meta);
+
+      const actions = document.createElement('div');
+      actions.className = 'admin-actions';
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'btn';
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', () => {
+        buildShopItemModal({
+          title: `Edit ${item.name}`,
+          item,
+          confirmMessage: 'Are you sure you want to edit this item?',
+          requireDoubleConfirm: true,
+          onSubmit: async (data) => {
+            const result = await adminActionRequest(`/api/admin/shop-items/${item.itemID}/update`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify(data),
+            });
+            if (result.ok) {
+              adminShopItemsCache = null;
+              loadAdminShopItems();
+            }
+          },
+        });
+      });
+      actions.appendChild(editBtn);
+
+      row.appendChild(actions);
+      list.appendChild(row);
+    });
+  } catch (error) {
+    console.error('❌ Failed to load shop items:', error);
+    const empty = document.createElement('div');
+    empty.className = 'admin-item';
+    empty.textContent = 'Failed to load shop items.';
+    list.appendChild(empty);
+  }
+}
+
 let adminPollingIntervalId = null;
 function startAdminPolling() {
   if (adminPollingIntervalId) return;
@@ -2027,6 +2278,7 @@ function startAdminPolling() {
     if (document.getElementById('adminRafflesPanel')?.style.display === 'block') loadAdminRaffles();
     if (document.getElementById('adminJoblistPanel')?.style.display === 'block') loadAdminJoblist();
     if (document.getElementById('adminRedemptionsPanel')?.style.display === 'block') loadAdminRedemptions();
+    if (document.getElementById('adminShopItemsPanel')?.style.display === 'block') loadAdminShopItems();
   }, 15000);
 }
 
@@ -2518,6 +2770,31 @@ function safeText(value, fallback = 'Unknown') {
 }
 
 let currentUserTokens = [];
+let currentProfileUserId = null;
+let currentProfileUsername = null;
+
+function setInventoryHeader(userName, showProfileButton) {
+  const title = document.getElementById('inventoryTitle');
+  const profileButton = document.getElementById('inventoryProfileButton');
+  if (title) {
+    title.textContent = userName ? `${userName}'s Inventory` : 'Inventory';
+  }
+  if (profileButton) profileButton.style.display = showProfileButton ? 'inline-flex' : 'none';
+}
+
+const inventoryProfileButton = document.getElementById('inventoryProfileButton');
+if (inventoryProfileButton) {
+  inventoryProfileButton.addEventListener('click', () => {
+    if (!currentProfileUserId) {
+      alert('No profile selected.');
+      return;
+    }
+    fetchUserHoldingsFor(currentProfileUserId);
+    if (typeof showSection === 'function') {
+      showSection('userProfileSection');
+    }
+  });
+}
 
 const titleOrder = [
   'commander',
@@ -2672,6 +2949,27 @@ function renderSolarianMosaic(tokens) {
   if (!mosaicGrid) return;
 
   mosaicGrid.innerHTML = '';
+  mosaicGrid.classList.remove(
+    'mosaic-count-1',
+    'mosaic-count-2',
+    'mosaic-count-3',
+    'mosaic-count-10',
+    'mosaic-count-20'
+  );
+
+  const count = Array.isArray(tokens) ? tokens.length : 0;
+  if (count <= 1) {
+    mosaicGrid.classList.add('mosaic-count-1');
+  } else if (count <= 2) {
+    mosaicGrid.classList.add('mosaic-count-2');
+  } else if (count <= 3) {
+    mosaicGrid.classList.add('mosaic-count-3');
+  } else if (count <= 10) {
+    mosaicGrid.classList.add('mosaic-count-10');
+  } else if (count <= 20) {
+    mosaicGrid.classList.add('mosaic-count-20');
+  }
+
   tokens.forEach((token) => {
     if (!token?.metadata?.image) return;
     const img = document.createElement('img');
@@ -2685,6 +2983,9 @@ async function fetchUserHoldingsFor(userId) {
   const grid = document.getElementById('userHoldingsGrid');
   const profileTitle = document.getElementById('userProfileTitle');
   if (!grid) return;
+
+  currentProfileUserId = userId || null;
+  currentProfileUsername = null;
 
   grid.innerHTML = '<div class="empty-state">Loading holdings...</div>';
 
@@ -2701,8 +3002,10 @@ async function fetchUserHoldingsFor(userId) {
     } else {
       username = await resolveUsername(userId);
     }
+    currentProfileUsername = username || userId;
     if (profileTitle) {
-      profileTitle.textContent = `👤 ${username || userId}`;
+      const nameLabel = username || userId;
+      profileTitle.textContent = `${nameLabel}'s Profile`;
     }
 
     const response = await fetch(`/api/holder/${userId}`);
@@ -2720,13 +3023,37 @@ async function fetchUserHoldingsFor(userId) {
   } catch (error) {
     console.error('Error loading holdings:', error);
     grid.innerHTML = '<div class="empty-state">Could not load holdings data.</div>';
-    if (profileTitle) profileTitle.textContent = '👤 User Profile';
+    if (profileTitle) profileTitle.textContent = 'User Profile';
   }
 }
 
 async function fetchUserHoldings() {
   const discordUserId = localStorage.getItem('discordUserID');
   return fetchUserHoldingsFor(discordUserId);
+}
+
+const viewProfileInventoryButton = document.getElementById('viewProfileInventoryButton');
+if (viewProfileInventoryButton) {
+  viewProfileInventoryButton.addEventListener('click', () => {
+    const localUserId = localStorage.getItem('discordUserID');
+    const targetUserId = currentProfileUserId || localUserId;
+
+    if (!targetUserId) {
+      alert('No profile selected.');
+      return;
+    }
+
+    if (targetUserId === localUserId) {
+      if (typeof fetchInventory === 'function') {
+        fetchInventory();
+      }
+      if (typeof showSection === 'function') {
+        showSection('inventorySection');
+      }
+    } else {
+      fetchUserInventory(targetUserId);
+    }
+  });
 }
 
 
@@ -3296,6 +3623,12 @@ async function showRobotOilMarket() {
 
     const labels = history.map(entry => entry.date);
     const prices = history.map(entry => entry.price);
+    const ctx = oilChartCanvas.getContext('2d');
+    const isUp = prices.length > 1 ? prices[prices.length - 1] >= prices[0] : true;
+    const lineColor = isUp ? '#22c55e' : '#ef4444';
+    const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+    gradient.addColorStop(0, isUp ? 'rgba(34, 197, 94, 0.35)' : 'rgba(239, 68, 68, 0.35)');
+    gradient.addColorStop(1, 'rgba(30, 41, 59, 0.0)');
 
     if (window.oilChartInstance) window.oilChartInstance.destroy();
 
@@ -3304,24 +3637,46 @@ async function showRobotOilMarket() {
       data: {
         labels,
         datasets: [{
-          label: 'Robot Oil Price (⚡ per barrel)',
+          label: 'Robot Oil Price',
           data: prices,
-          borderColor: 'yellow',
-          backgroundColor: 'rgba(255, 255, 0, 0.2)',
-          borderWidth: 2,
-          pointBackgroundColor: 'yellow',
-          pointBorderColor: 'yellow'
+          borderColor: lineColor,
+          backgroundColor: gradient,
+          borderWidth: 2.5,
+          pointRadius: 0,
+          pointHoverRadius: 5,
+          pointHitRadius: 12,
+          tension: 0.35,
+          fill: true
         }]
       },
       options: {
         responsive: true,
         plugins: {
-          legend: { labels: { color: '#fafafa', font: { size: 14, weight: 'bold' } } },
-          tooltip: { backgroundColor: '#27393F', titleColor: '#fafafa', bodyColor: '#fafafa' }
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#0f172a',
+            titleColor: '#e2e8f0',
+            bodyColor: '#e2e8f0',
+            displayColors: false,
+            callbacks: {
+              label: (context) => `⚡ ${context.parsed.y} / barrel`,
+            },
+          }
         },
+        interaction: { mode: 'index', intersect: false },
         scales: {
-          x: { grid: { color: '#405D67' }, ticks: { color: '#fafafa' } },
-          y: { beginAtZero: true, grid: { color: '#405D67' }, ticks: { color: '#fafafa' } }
+          x: {
+            grid: { display: false },
+            ticks: { color: '#94a3b8', maxTicksLimit: 6 }
+          },
+          y: {
+            beginAtZero: false,
+            grid: { color: 'rgba(148, 163, 184, 0.15)' },
+            ticks: {
+              color: '#94a3b8',
+              callback: (value) => `⚡ ${value}`,
+            }
+          }
         }
       }
     });
@@ -3351,8 +3706,9 @@ async function loadOrderBook() {
       const div = document.createElement('div');
       div.className = 'listing-row';
       div.style.cssText = 'margin-bottom: 10px; padding: 8px; background: #3b4c5a; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;';
+      const sellerLabel = listing.seller_tag || listing.seller_id;
       div.innerHTML = `
-        <span>🧑 ${listing.seller_id}</span>
+        <span>🧑 <a href="https://discord.com/users/${listing.seller_id}" target="_blank" class="link">@${sellerLabel}</a></span>
         <span>🛢️ Qty: ${listing.quantity}</span>
         <span>⚡ ${listing.price_per_unit} / barrel</span>
       `;
@@ -3581,6 +3937,10 @@ async function fetchInventory() {
   }
 
   try {
+    const selfName = localStorage.getItem('username');
+    currentProfileUserId = localStorage.getItem('discordUserID') || null;
+    currentProfileUsername = selfName || currentProfileUserId;
+    setInventoryHeader(selfName, true);
     const response = await fetch('/api/inventory', {
       method: 'GET',
       headers: {

@@ -92,6 +92,14 @@ module.exports = {
         if (messageOrInteraction) return messageOrInteraction.reply(replyPayload);
         return context.reply(replyPayload);
       }
+      if (shopItem.isHidden) {
+        const replyPayload = {
+          content: `🚫 "${itemName}" is not available in the shop.`,
+          ephemeral: true,
+        };
+        if (messageOrInteraction) return messageOrInteraction.reply(replyPayload);
+        return context.reply(replyPayload);
+      }
 
       if (shopItem.quantity < quantity) {
         const replyPayload = {

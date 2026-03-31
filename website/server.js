@@ -106,6 +106,22 @@ db.run(
   }
 );
 
+db.all(`PRAGMA table_info(items)`, (err, columns) => {
+  if (err) {
+    console.error('❌ Error checking items schema:', err);
+    return;
+  }
+  if (!Array.isArray(columns) || columns.length === 0) return;
+  const hasIsHidden = columns.some((col) => col.name === 'isHidden');
+  if (!hasIsHidden) {
+    console.log("➕ Adding missing 'isHidden' column to items table...");
+    db.run("ALTER TABLE items ADD COLUMN isHidden BOOLEAN DEFAULT 0", (alterErr) => {
+      if (alterErr) console.error("❌ Error adding 'isHidden' column:", alterErr);
+      else console.log("✅ 'isHidden' column added successfully.");
+    });
+  }
+});
+
 function ensureJobSubmissionColumn(columnName, ddl) {
   db.all(`PRAGMA table_info(job_submissions)`, (err, columns) => {
     if (err) {
@@ -599,7 +615,8 @@ app.get('/api/admin/joblist', authenticateToken, requireAdmin, async (req, res) 
 app.get('/api/admin/shop-items', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const rows = await dbAll(
-      `SELECT name
+      `SELECT itemID, name, description, price, quantity, isAvailable,
+              COALESCE(isHidden, 0) AS isHidden
        FROM items
        ORDER BY name ASC`
     );
@@ -607,6 +624,93 @@ app.get('/api/admin/shop-items', authenticateToken, requireAdmin, async (req, re
   } catch (err) {
     console.error('Error in /api/admin/shop-items:', err);
     return res.status(500).json({ message: 'Failed to load shop items.' });
+  }
+});
+
+app.post('/api/admin/shop-items/create', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const rawName = String(req.body?.name || '').trim();
+    const rawDescription = String(req.body?.description || '').trim();
+    const price = Number(req.body?.price);
+    const quantity = Number.isFinite(Number(req.body?.quantity)) ? Number(req.body?.quantity) : 1;
+    const isAvailable = req.body?.isAvailable === false || req.body?.isAvailable === 0 ? 0 : 1;
+    const isHidden = req.body?.isHidden ? 1 : 0;
+
+    if (!rawName || !rawDescription || !Number.isFinite(price) || price <= 0 || quantity < 0) {
+      return res.status(400).json({ message: 'Invalid item data.' });
+    }
+
+    await dbRun(
+      `INSERT INTO items (name, description, price, quantity, isAvailable, isHidden)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [rawName, rawDescription, price, quantity, isAvailable, isHidden]
+    );
+
+    await logAdminChange(req.user.userId, 'Shop item created', [
+      `Name: "${rawName}"`,
+      `Price: ${price}`,
+      `Quantity: ${quantity}`,
+      `Available: ${isAvailable ? 'Yes' : 'No'}`,
+      `Hidden: ${isHidden ? 'Yes' : 'No'}`,
+    ]);
+
+    return res.json({ message: 'Shop item created.' });
+  } catch (err) {
+    console.error('Error creating shop item:', err);
+    const message = err?.message?.includes('UNIQUE')
+      ? 'Item name already exists.'
+      : 'Failed to create shop item.';
+    return res.status(500).json({ message });
+  }
+});
+
+app.post('/api/admin/shop-items/:id/update', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const itemId = Number(req.params.id);
+    if (!Number.isFinite(itemId)) {
+      return res.status(400).json({ message: 'Invalid item ID.' });
+    }
+
+    const existing = await dbGet(`SELECT * FROM items WHERE itemID = ?`, [itemId]);
+    if (!existing) {
+      return res.status(404).json({ message: 'Item not found.' });
+    }
+
+    const rawName = String(req.body?.name || '').trim();
+    const rawDescription = String(req.body?.description || '').trim();
+    const price = Number(req.body?.price);
+    const quantity = Number.isFinite(Number(req.body?.quantity)) ? Number(req.body?.quantity) : existing.quantity;
+    const isAvailable = req.body?.isAvailable === false || req.body?.isAvailable === 0 ? 0 : 1;
+    const isHidden = req.body?.isHidden ? 1 : 0;
+
+    if (!rawName || !rawDescription || !Number.isFinite(price) || price <= 0 || quantity < 0) {
+      return res.status(400).json({ message: 'Invalid item data.' });
+    }
+
+    await dbRun(
+      `UPDATE items
+       SET name = ?, description = ?, price = ?, quantity = ?, isAvailable = ?, isHidden = ?
+       WHERE itemID = ?`,
+      [rawName, rawDescription, price, quantity, isAvailable, isHidden, itemId]
+    );
+
+    const changes = [];
+    if (existing.name !== rawName) changes.push(`Name: "${existing.name}" -> "${rawName}"`);
+    if (existing.description !== rawDescription) changes.push('Description updated');
+    if (Number(existing.price) !== price) changes.push(`Price: ${existing.price} -> ${price}`);
+    if (Number(existing.quantity) !== quantity) changes.push(`Quantity: ${existing.quantity} -> ${quantity}`);
+    if (Number(existing.isAvailable) !== isAvailable) changes.push(`Available: ${existing.isAvailable ? 'Yes' : 'No'} -> ${isAvailable ? 'Yes' : 'No'}`);
+    if (Number(existing.isHidden || 0) !== isHidden) changes.push(`Hidden: ${existing.isHidden ? 'Yes' : 'No'} -> ${isHidden ? 'Yes' : 'No'}`);
+
+    await logAdminChange(req.user.userId, `Shop item updated (#${itemId})`, changes);
+
+    return res.json({ message: 'Shop item updated.' });
+  } catch (err) {
+    console.error('Error updating shop item:', err);
+    const message = err?.message?.includes('UNIQUE')
+      ? 'Item name already exists.'
+      : 'Failed to update shop item.';
+    return res.status(500).json({ message });
   }
 });
 
@@ -1173,7 +1277,9 @@ app.get('/api/shop', (req, res) => {
   db.all(
     `SELECT itemID AS id, name, price, description, quantity 
      FROM items
-     WHERE isAvailable=1`,
+     WHERE isAvailable = 1
+       AND quantity > 0
+       AND COALESCE(isHidden, 0) = 0`,
     [],
     (err, rows) => {
       if (err) {
@@ -1910,7 +2016,11 @@ app.post('/api/buy', authenticateToken, async (req, res) => {
   }
 
   try {
-    db.get(`SELECT * FROM items WHERE name = ? AND isAvailable = 1`, [itemName], (err, item) => {
+    db.get(
+      `SELECT * FROM items
+       WHERE name = ? AND isAvailable = 1 AND COALESCE(isHidden, 0) = 0`,
+      [itemName],
+      (err, item) => {
       if (err) {
         console.error('Error fetching shop item:', err);
         return res.status(500).json({ error: 'Database error. Please try again later.' });
@@ -2268,7 +2378,23 @@ app.get('/api/oil-market', async (req, res) => {
           return res.status(500).json({ error: 'Failed to fetch oil market listings.' });
         }
 
-        res.json(rows);
+        const uniqueSellerIds = [...new Set(rows.map((row) => row.seller_id))];
+        const sellerTags = {};
+        await Promise.all(uniqueSellerIds.map(async (sellerId) => {
+          try {
+            sellerTags[sellerId] = await resolveUsername(sellerId);
+          } catch (tagErr) {
+            console.error(`Failed to resolve username for ${sellerId}:`, tagErr);
+            sellerTags[sellerId] = `UnknownUser(${sellerId})`;
+          }
+        }));
+
+        const withTags = rows.map((row) => ({
+          ...row,
+          seller_tag: sellerTags[row.seller_id] || `UnknownUser(${row.seller_id})`,
+        }));
+
+        res.json(withTags);
       }
     );
   } catch (error) {

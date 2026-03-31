@@ -82,11 +82,27 @@ function initializeDatabase() {
         description TEXT,
         price INTEGER,
         isAvailable BOOLEAN DEFAULT 1,
+        isHidden BOOLEAN DEFAULT 0,
         quantity INTEGER DEFAULT 1
       )
     `, (err) => {
       if (err) console.error('❌ Error creating items table:', err);
       else console.log('✅ Items table is ready.');
+    });
+
+    db.all(`PRAGMA table_info(items)`, (err, columns) => {
+      if (err) {
+        console.error('❌ Failed to inspect items table:', err);
+        return;
+      }
+      const hasIsHidden = columns.some(col => col.name === 'isHidden');
+      if (!hasIsHidden) {
+        console.log("➕ Adding missing 'isHidden' column to items table...");
+        db.run("ALTER TABLE items ADD COLUMN isHidden BOOLEAN DEFAULT 0", (alterErr) => {
+          if (alterErr) console.error("❌ Error adding 'isHidden' column:", alterErr);
+          else console.log("✅ 'isHidden' column added successfully.");
+        });
+      }
     });
 
     
@@ -928,13 +944,17 @@ function assignCycledJob(userID) {
 
 function getShopItems() {
   return new Promise((resolve, reject) => {
-    db.all(`SELECT * FROM items WHERE isAvailable = 1 AND quantity > 0`, [], (err, rows) => {
-      if (err) {
-        console.error('Error retrieving shop items:', err);
-        return reject('🚫 Shop is currently unavailable. Please try again later.');
+    db.all(
+      `SELECT * FROM items WHERE isAvailable = 1 AND quantity > 0 AND COALESCE(isHidden, 0) = 0`,
+      [],
+      (err, rows) => {
+        if (err) {
+          console.error('Error retrieving shop items:', err);
+          return reject('🚫 Shop is currently unavailable. Please try again later.');
+        }
+        resolve(rows || []);
       }
-      resolve(rows || []);
-    });
+    );
   });
 }
 
@@ -951,11 +971,11 @@ function getShopItemByName(name) {
   });
 }
 
-function addShopItem(price, name, description, quantity = 1) {
+function addShopItem(price, name, description, quantity = 1, isHidden = 0) {
   return new Promise((resolve, reject) => {
     db.run(
-      `INSERT INTO items (price, name, description, quantity, isAvailable) VALUES (?, ?, ?, ?, 1)`,
-      [price, name, description, quantity],
+      `INSERT INTO items (price, name, description, quantity, isAvailable, isHidden) VALUES (?, ?, ?, ?, 1, ?)`,
+      [price, name, description, quantity, isHidden ? 1 : 0],
       (err) => {
         if (err) {
           console.error('Error adding new shop item:', err);
