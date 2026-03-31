@@ -17,6 +17,10 @@ const SUBMISSION_EMBED_COLORS = {
   adminChange: 0xf59e0b,
 };
 
+const QUEST_SUBMISSION_CHANNEL_ID = process.env.QUEST_SUBMISSION_CHANNEL_ID || process.env.SUBMISSION_CHANNEL_ID;
+const WEB_ADMIN_EDITS_CHANNEL_ID = process.env.WEB_ADMIN_EDITS_CHANNEL_ID || process.env.SUBMISSION_CHANNEL_ID;
+const ITEM_REDEMPTION_CHANNEL_ID = process.env.ITEM_REDEMPTION_CHANNEL_ID || process.env.SUBMISSION_CHANNEL_ID;
+
 function getSolanaExplorerUrl(walletAddress) {
   if (!walletAddress) return null;
   return `https://solscan.io/account/${walletAddress}`;
@@ -959,7 +963,7 @@ app.post('/api/admin/submissions/:submissionId/complete', authenticateToken, req
     );
 
     try {
-      const channelId = process.env.SUBMISSION_CHANNEL_ID;
+      const channelId = QUEST_SUBMISSION_CHANNEL_ID;
       if (channelId) {
         const channel = await client.channels.fetch(channelId);
         if (channel) {
@@ -1713,7 +1717,7 @@ async function requireAdmin(req, res, next) {
 
 async function logAdminChange(adminId, title, lines = []) {
   try {
-    const channelId = process.env.SUBMISSION_CHANNEL_ID;
+    const channelId = WEB_ADMIN_EDITS_CHANNEL_ID;
     if (!channelId) return;
     const channel = await client.channels.fetch(channelId);
     if (!channel) return;
@@ -2041,7 +2045,7 @@ app.post('/api/redeem', authenticateToken, async (req, res) => {
       console.error('Failed to store web redemption log:', insertErr);
     }
 
-    const channelId = process.env.SUBMISSION_CHANNEL_ID;
+    const channelId = ITEM_REDEMPTION_CHANNEL_ID;
     if (channelId) {
       try {
         const now = new Date();
@@ -2375,8 +2379,8 @@ app.post("/api/submit-job", upload.single("image"), async (req, res) => {
   if (!title || !description) return res.status(400).json({ error: "Title and description are required." });
 
   try {
-    const channel = await client.channels.fetch(process.env.SUBMISSION_CHANNEL_ID);
-    if (!channel) return res.status(500).json({ error: "Submission channel not found." });
+const channel = await client.channels.fetch(QUEST_SUBMISSION_CHANNEL_ID);
+      if (!channel) return res.status(500).json({ error: "Quest submission channel not found." });
 
     // ✅ Try to resolve user tag
     let footerText = `Submitted by: <@${userID}>`; // fallback

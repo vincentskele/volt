@@ -125,7 +125,7 @@ module.exports = {
         console.error('Failed to store redemption log:', dbErr);
       }
 
-      const channelId = process.env.SUBMISSION_CHANNEL_ID;
+      const channelId = process.env.ITEM_REDEMPTION_CHANNEL_ID || process.env.SUBMISSION_CHANNEL_ID;
       if (channelId) {
         try {
           const channel = await interaction.client.channels.fetch(channelId);
