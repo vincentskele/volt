@@ -3874,11 +3874,15 @@ function showRedeemModal(itemName) {
   modalOverlay.id = 'redeemModal';
 
   const modalBox = document.createElement('div');
-  modalBox.className = 'modal-box';
+  modalBox.className = 'modal-box redeem-modal-box';
   modalBox.innerHTML = `
     <h2>ARE YOU SURE YOU WANT TO USE ${itemName}?</h2>
     <p style="margin-bottom: 8px;">Paste your Solana wallet address:</p>
-    <input type="text" id="redeemWalletAddress" placeholder="Solana wallet address" style="margin:5px 0; width: 100%; padding: 8px;" />
+    <div class="redeem-wallet-row">
+      <textarea id="redeemWalletAddress" class="redeem-wallet-input" placeholder="Solana wallet address" rows="2" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+      <button id="redeemWalletEdit" class="redeem-wallet-edit" type="button" aria-label="Edit wallet address" title="Edit wallet address">✎</button>
+    </div>
+    <div id="redeemWalletHint" class="redeem-wallet-hint" aria-live="polite"></div>
     <div class="modal-buttons">
       <button id="redeemConfirmButton" class="confirm-button">YES, USE IT</button>
       <button id="redeemCancelButton" class="cancel-button">CANCEL</button>
@@ -3887,6 +3891,58 @@ function showRedeemModal(itemName) {
 
   modalOverlay.appendChild(modalBox);
   document.body.appendChild(modalOverlay);
+
+  const walletInput = document.getElementById('redeemWalletAddress');
+  const walletHint = document.getElementById('redeemWalletHint');
+  const walletEditButton = document.getElementById('redeemWalletEdit');
+  if (walletEditButton) {
+    walletEditButton.style.display = 'none';
+    walletEditButton.addEventListener('click', () => {
+      if (!walletInput) return;
+      walletInput.readOnly = false;
+      walletInput.classList.remove('is-readonly');
+      walletInput.focus();
+      walletInput.select();
+      if (walletHint) {
+        walletHint.textContent = 'Editing enabled. Double-check the address.';
+      }
+    });
+  }
+  if (walletInput) {
+    walletInput.addEventListener('click', async () => {
+      if (!walletInput.value || !walletInput.readOnly) return;
+      try {
+        await navigator.clipboard.writeText(walletInput.value);
+        walletInput.select();
+        if (walletHint) {
+          walletHint.textContent = 'Copied wallet address to clipboard.';
+        }
+      } catch (error) {
+        console.error('Error copying wallet address:', error);
+      }
+    });
+  }
+  const discordUserId = localStorage.getItem('discordUserID');
+  if (discordUserId && walletInput) {
+    fetch(`/api/holder/${discordUserId}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((holder) => {
+        if (holder?.walletAddress && !walletInput.value) {
+          walletInput.value = holder.walletAddress;
+          walletInput.readOnly = true;
+          walletInput.classList.add('is-readonly');
+          if (walletHint) {
+            walletHint.textContent = 'Auto-filled from Robo-Check holder profile.';
+          }
+          if (walletEditButton) {
+            walletEditButton.style.display = 'inline-flex';
+          }
+        }
+      })
+      .catch((error) => {
+        console.error('Error auto-filling redeem wallet address:', error);
+      });
+  }
 
   const close = () => modalOverlay.remove();
   document.getElementById('redeemCancelButton').addEventListener('click', close);

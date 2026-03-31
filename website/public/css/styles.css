@@ -1542,6 +1542,60 @@ code {
   max-width: 400px;
 }
 
+.redeem-modal-box {
+  max-width: min(520px, 92vw);
+}
+
+.redeem-wallet-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 5px 0;
+}
+
+.redeem-wallet-input {
+  width: 100%;
+  padding: 8px;
+  flex: 1;
+  font-size: 0.85rem;
+  line-height: 1.2;
+  resize: none;
+  word-break: break-all;
+  white-space: pre-wrap;
+  min-height: 46px;
+}
+
+.redeem-wallet-input.is-readonly {
+  cursor: copy;
+}
+
+.redeem-wallet-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.redeem-wallet-edit:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.redeem-wallet-hint {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  min-height: 0.9rem;
+  margin-top: 4px;
+}
+
 .modal-buttons {
   display: flex;
   justify-content: center;

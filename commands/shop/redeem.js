@@ -1,5 +1,25 @@
 const { SlashCommandBuilder } = require('discord.js');
+const fs = require('fs');
+const path = require('path');
 const { redeemItem, getInventory, logItemRedemption } = require('../../db'); // Ensure you have both functions
+
+const ROBO_CHECK_HOLDERS_PATH =
+  process.env.ROBO_CHECK_HOLDERS_PATH ||
+  path.resolve(__dirname, '..', '..', '..', 'robo-check', 'src', 'data', 'holders.json');
+
+function readRoboCheckHolders() {
+  try {
+    if (!fs.existsSync(ROBO_CHECK_HOLDERS_PATH)) {
+      return [];
+    }
+    const raw = fs.readFileSync(ROBO_CHECK_HOLDERS_PATH, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.error('Error reading Robo-Check holders file:', error);
+    return [];
+  }
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -17,6 +37,7 @@ module.exports = {
         .setName('wallet')
         .setDescription('Paste your Solana wallet address here.')
         .setRequired(true)
+        .setAutocomplete(true)
     ),
 
   async execute(interaction) {
@@ -133,7 +154,18 @@ module.exports = {
 
   async autocomplete(interaction) {
     const userId = interaction.user.id;
-    const focusedValue = interaction.options.getFocused();
+    const focused = interaction.options.getFocused(true);
+    const focusedValue = focused.value || '';
+
+    if (focused.name === 'wallet') {
+      const holders = readRoboCheckHolders();
+      const holder = holders.find((entry) => String(entry.discordId) === String(userId));
+      if (!holder?.walletAddress) {
+        return interaction.respond([]);
+      }
+      const label = `Robo-Check wallet (${holder.walletAddress.slice(0, 4)}...${holder.walletAddress.slice(-4)})`;
+      return interaction.respond([{ name: label, value: holder.walletAddress }]);
+    }
     
     let inventoryItems;
     try {
