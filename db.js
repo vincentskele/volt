@@ -967,6 +967,22 @@ function getShopItems() {
   });
 }
 
+function getAllShopItems() {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT * FROM items`,
+      [],
+      (err, rows) => {
+        if (err) {
+          console.error('Error retrieving all shop items:', err);
+          return reject('🚫 Shop items are currently unavailable. Please try again later.');
+        }
+        resolve(rows || []);
+      }
+    );
+  });
+}
+
 function getShopItemByName(name) {
   return new Promise((resolve, reject) => {
     db.get(`SELECT * FROM items WHERE name = ? AND isAvailable = 1`, [name], (err, row) => {
@@ -2631,6 +2647,7 @@ module.exports = {
 
   // Shop
   getShopItems,
+  getAllShopItems,
   getShopItemByName,
   getAnyShopItemByName,
   addShopItem,
