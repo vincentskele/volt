@@ -10,6 +10,27 @@ const multer = require("multer");
 const { EmbedBuilder, AttachmentBuilder } = require("discord.js");
 const { points, formatCurrency } = require("../points");
 
+const SUBMISSION_EMBED_COLORS = {
+  jobSubmission: 0x3b82f6,
+  questComplete: 0x22c55e,
+  itemRedemption: 0x8b5cf6,
+  adminChange: 0xf59e0b,
+};
+
+function getSolanaExplorerUrl(walletAddress) {
+  if (!walletAddress) return null;
+  return `https://solscan.io/account/${walletAddress}`;
+}
+
+function formatSolanaWalletField(walletAddress) {
+  if (!walletAddress) return null;
+  return {
+    name: "Solana Wallet",
+    value: `\`\`\`\n${walletAddress}\n\`\`\``,
+    inline: false,
+  };
+}
+
 
 
 // Import your Discord bot client so we can fetch usernames
@@ -403,7 +424,7 @@ app.post('/api/admin/giveaways/create', authenticateToken, requireAdmin, async (
   try {
     // Match create-giveaway.js: if prize is not numeric, it must be a valid shop item.
     if (Number.isNaN(Number(finalPrize))) {
-      const shopItem = await getShopItemByName(finalPrize);
+      const shopItem = await getAnyShopItemByName(finalPrize);
       if (!shopItem) {
         return res.status(400).json({ message: `Invalid prize. "${finalPrize}" is not a valid shop item.` });
       }
@@ -541,7 +562,7 @@ app.post('/api/admin/raffles/create', authenticateToken, requireAdmin, async (re
 
     // Match create-raffle.js: if prize is not numeric, it must be a valid shop item.
     if (Number.isNaN(Number(finalPrize))) {
-      const shopItem = await getShopItemByName(finalPrize);
+      const shopItem = await getAnyShopItemByName(finalPrize);
       if (!shopItem) {
         return res.status(400).json({ message: `Invalid prize. "${finalPrize}" is not a valid shop item.` });
       }
@@ -948,18 +969,26 @@ app.post('/api/admin/submissions/:submissionId/complete', authenticateToken, req
         if (channel) {
           const userTag = await resolveUsername(submission.userID);
           const adminTag = await resolveUsername(req.user.userId);
-          const messageLines = [
-            '✅ Quest marked complete!',
-            `User: ${userTag}`,
-            `Marked by: ${adminTag}`,
-            `Volts awarded: ${rewardAmount}`,
-            `Title: ${submission.title}`,
-            `Description: ${submission.description}`,
-          ];
+          const embed = new EmbedBuilder()
+            .setTitle('✅ Quest Marked Complete')
+            .setColor(SUBMISSION_EMBED_COLORS.questComplete)
+            .addFields(
+              { name: 'User', value: userTag, inline: true },
+              { name: 'Marked By', value: adminTag, inline: true },
+              { name: 'Volts Awarded', value: String(rewardAmount), inline: true },
+              { name: 'Title', value: submission.title || '—', inline: false },
+              { name: 'Description', value: submission.description || '—', inline: false }
+            )
+            .setTimestamp();
           if (submission.image_url) {
-            messageLines.push(`Image: ${submission.image_url}`);
+            embed.setImage(submission.image_url);
+            embed.addFields({
+              name: 'Image',
+              value: `[View Image](${submission.image_url})`,
+              inline: false,
+            });
           }
-          await channel.send(messageLines.join('\n'));
+          await channel.send({ embeds: [embed] });
         }
       }
     } catch (notifyErr) {
@@ -1693,12 +1722,17 @@ async function logAdminChange(adminId, title, lines = []) {
     const channel = await client.channels.fetch(channelId);
     if (!channel) return;
     const adminTag = await resolveUsername(adminId);
-    const message = [
-      `🛠️ Admin Change: ${title}`,
-      `Admin: ${adminTag}`,
-      ...lines,
-    ].join('\n');
-    await channel.send(message);
+    const details = lines.length ? lines.join('\n') : 'No additional details.';
+    const embed = new EmbedBuilder()
+      .setTitle('🛠️ Admin Change')
+      .setColor(SUBMISSION_EMBED_COLORS.adminChange)
+      .setDescription(`**${title}**`)
+      .addFields(
+        { name: 'Admin', value: adminTag, inline: true },
+        { name: 'Details', value: details, inline: false }
+      )
+      .setTimestamp();
+    await channel.send({ embeds: [embed] });
   } catch (err) {
     console.error('❌ Failed to log admin change:', err);
   }
@@ -2018,18 +2052,30 @@ app.post('/api/redeem', authenticateToken, async (req, res) => {
         const unix = Math.floor(now.getTime() / 1000);
         const channel = await client.channels.fetch(channelId);
         if (channel) {
-          const messageLines = [
-            '🧾 Item Redeemed',
-            `Who: ${userTag} (${userId})`,
-            `What: ${itemName}`,
-            'Where: Web UI Inventory',
-            beforeQty !== null
-              ? `Inventory: ${itemName} ${beforeQty} -> ${afterQty}`
-              : `Inventory: ${itemName} -> ${afterQty}`,
-            `When: <t:${unix}:F>`,
-            `Solana Wallet: ${walletAddress}`,
+          const fields = [
+            { name: 'Who', value: `${userTag} (${userId})`, inline: true },
+            { name: 'What', value: itemName, inline: true },
+            { name: 'Where', value: 'Web UI Inventory', inline: true },
+            {
+              name: 'Inventory',
+              value:
+                beforeQty !== null
+                  ? `${itemName} ${beforeQty} → ${afterQty}`
+                  : `${itemName} → ${afterQty}`,
+              inline: false,
+            },
+            { name: 'When', value: `<t:${unix}:F>`, inline: false },
           ];
-          await channel.send(messageLines.join('\n'));
+          const walletField = formatSolanaWalletField(walletAddress);
+          if (walletField) fields.push(walletField);
+
+          const embed = new EmbedBuilder()
+            .setTitle('🧾 Item Redeemed')
+            .setColor(SUBMISSION_EMBED_COLORS.itemRedemption)
+            .addFields(fields)
+            .setTimestamp(now);
+
+          await channel.send({ embeds: [embed] });
         }
       } catch (logErr) {
         console.error('Failed to log web redemption:', logErr);
@@ -2228,6 +2274,7 @@ const {
   getActiveJob,
   getActiveRaffles,
   getShopItemByName,
+  getAnyShopItemByName,
   redeemItem,
   renumberJobs,
   saveGiveaway,
@@ -2346,7 +2393,7 @@ app.post("/api/submit-job", upload.single("image"), async (req, res) => {
     console.log("📤 Sending embed to Discord...");
     const embed = new EmbedBuilder()
       .setTitle("📢 New Job Submission!")
-      .setColor("#0099ff")
+      .setColor(SUBMISSION_EMBED_COLORS.jobSubmission)
       .setDescription(`**Title:** ${title}\n**Description:** ${description}`)
       .setFooter({ text: footerText })
       .setTimestamp();

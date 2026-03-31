@@ -7,7 +7,7 @@ const {
   getShopItems,
   addItemToInventory,
   getGiveawayEntries,
-  getShopItemByName,
+  getAnyShopItemByName,
 } = require('../../db'); 
 require('dotenv').config();
 
@@ -65,7 +65,7 @@ module.exports = {
 
     // Validate prize if it's not a number (must be a valid shop item)
     if (isNaN(prizeInput)) {
-      const shopItem = await getShopItemByName(prizeInput);
+      const shopItem = await getAnyShopItemByName(prizeInput);
       if (!shopItem) {
         return interaction.reply({
           content: `🚫 Invalid prize. "${prizeInput}" is not a valid shop item.`,

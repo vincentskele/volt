@@ -109,7 +109,7 @@ module.exports = {
 
       // Validate prize if it's not a number (must exist in shop)
       if (isNaN(prizeInput)) {
-        const shopItem = await db.getShopItemByName(prizeInput);
+        const shopItem = await db.getAnyShopItemByName(prizeInput);
         if (!shopItem) {
           return interaction.reply({
             content: `🚫 Invalid prize. "${prizeInput}" is not a valid shop item.`,
@@ -231,7 +231,7 @@ module.exports = {
                 `Prize: **${formatCurrency(prizeAmount)}**`
               );
             } else {
-              const shopItem = await db.getShopItemByName(prizeInput);
+              const shopItem = await db.getAnyShopItemByName(prizeInput);
               if (!shopItem) {
                 await channel.send(
                   `⚠️ **${giveawayName}** ended, but the prize item "**${prizeInput}**" no longer exists in the shop.`

@@ -90,7 +90,7 @@ module.exports = {
 
       // Validate prize if it's not a number (must be a valid shop item)
       if (isNaN(prizeInput)) {
-        const shopItem = await db.getShopItemByName(prizeInput);
+        const shopItem = await db.getAnyShopItemByName(prizeInput);
         if (!shopItem) {
           return interaction.reply({ 
             content: `🚫 Invalid prize. "${prizeInput}" is not a valid shop item.`, 
@@ -253,7 +253,7 @@ async function concludeRaffle(raffleId) {
       }
     } else {
       // Prize is a shop item
-      const shopItem = await db.getShopItemByName(raffle.prize);
+      const shopItem = await db.getAnyShopItemByName(raffle.prize);
       if (!shopItem) {
         console.error(`⚠️ Shop item "${raffle.prize}" not found`);
         // Try to announce error

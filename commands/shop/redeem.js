@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const { redeemItem, getInventory, logItemRedemption } = require('../../db'); // Ensure you have both functions
@@ -6,6 +6,24 @@ const { redeemItem, getInventory, logItemRedemption } = require('../../db'); // 
 const ROBO_CHECK_HOLDERS_PATH =
   process.env.ROBO_CHECK_HOLDERS_PATH ||
   path.resolve(__dirname, '..', '..', '..', 'robo-check', 'src', 'data', 'holders.json');
+
+const SUBMISSION_EMBED_COLORS = {
+  itemRedemption: 0x8b5cf6,
+};
+
+function getSolanaExplorerUrl(walletAddress) {
+  if (!walletAddress) return null;
+  return `https://solscan.io/account/${walletAddress}`;
+}
+
+function formatSolanaWalletField(walletAddress) {
+  if (!walletAddress) return null;
+  return {
+    name: 'Solana Wallet',
+    value: `\`\`\`\n${walletAddress}\n\`\`\``,
+    inline: false,
+  };
+}
 
 function readRoboCheckHolders() {
   try {
@@ -113,24 +131,29 @@ module.exports = {
 
       const channelId = process.env.SUBMISSION_CHANNEL_ID;
       if (channelId) {
-        const messageLines = [
-          '🧾 Item Redeemed',
-          `Who: ${interaction.user.tag} (${interaction.user.id})`,
-          `What: ${itemName}`,
-          `Where: Discord /redeem in ${channelName}`,
-          `Channel ID: ${interaction.channelId || 'unknown'}`,
-          `Inventory: ${itemName} ${beforeQty} -> ${afterQty}`,
-          `When: <t:${unix}:F>`,
-          `Solana Wallet: ${walletAddress}`,
-          `Command: ${commandText}`,
-        ];
-        if (messageLink) {
-          messageLines.push(`Message: ${messageLink}`);
-        }
         try {
           const channel = await interaction.client.channels.fetch(channelId);
           if (channel) {
-            await channel.send(messageLines.join('\n'));
+            const fields = [
+              { name: 'Who', value: `${interaction.user.tag} (${interaction.user.id})`, inline: true },
+              { name: 'What', value: itemName, inline: true },
+              { name: 'Where', value: `Discord /redeem in ${channelName}`, inline: true },
+              { name: 'Channel ID', value: interaction.channelId || 'unknown', inline: true },
+              { name: 'Inventory', value: `${itemName} ${beforeQty} → ${afterQty}`, inline: false },
+              { name: 'When', value: `<t:${unix}:F>`, inline: false },
+              { name: 'Command', value: commandText, inline: false },
+            ];
+            const walletField = formatSolanaWalletField(walletAddress);
+            if (walletField) fields.push(walletField);
+            if (messageLink) {
+              fields.push({ name: 'Message', value: messageLink, inline: false });
+            }
+            const embed = new EmbedBuilder()
+              .setTitle('🧾 Item Redeemed')
+              .setColor(SUBMISSION_EMBED_COLORS.itemRedemption)
+              .addFields(fields)
+              .setTimestamp(now);
+            await channel.send({ embeds: [embed] });
           }
         } catch (logErr) {
           console.error('Failed to log redemption:', logErr);

@@ -980,6 +980,18 @@ function getShopItemByName(name) {
   });
 }
 
+function getAnyShopItemByName(name) {
+  return new Promise((resolve, reject) => {
+    db.get(`SELECT * FROM items WHERE name = ?`, [name], (err, row) => {
+      if (err) {
+        console.error(`Error looking up item "${name}":`, err);
+        return reject('🚫 Unable to retrieve item information. Please try again.');
+      }
+      resolve(row || null);
+    });
+  });
+}
+
 function addShopItem(price, name, description, quantity = 1, isHidden = 0, isRedeemable = 1) {
   return new Promise((resolve, reject) => {
     db.run(
@@ -2620,6 +2632,7 @@ module.exports = {
   // Shop
   getShopItems,
   getShopItemByName,
+  getAnyShopItemByName,
   addShopItem,
   removeShopItem,
   getInventory,
