@@ -3128,8 +3128,12 @@ function renderSolarianMosaic(tokens) {
     'mosaic-count-2',
     'mosaic-count-3',
     'mosaic-count-10',
-    'mosaic-count-20'
+    'mosaic-count-20',
+    'mosaic-fit-contain'
   );
+  mosaicGrid.style.removeProperty('grid-template-columns');
+  mosaicGrid.style.removeProperty('grid-template-rows');
+  mosaicGrid.style.removeProperty('grid-auto-rows');
 
   const count = Array.isArray(tokens) ? tokens.length : 0;
   if (count <= 1) {
@@ -3144,6 +3148,10 @@ function renderSolarianMosaic(tokens) {
     mosaicGrid.classList.add('mosaic-count-20');
   }
 
+  if (count > 1 && count <= 3) {
+    mosaicGrid.classList.add('mosaic-fit-contain');
+  }
+
   tokens.forEach((token) => {
     if (!token?.metadata?.image) return;
     const img = document.createElement('img');
@@ -3151,6 +3159,50 @@ function renderSolarianMosaic(tokens) {
     img.alt = 'Solarian';
     mosaicGrid.appendChild(img);
   });
+
+  requestAnimationFrame(() => {
+    applySolarianMosaicLayout(mosaicGrid, count);
+  });
+}
+
+function applySolarianMosaicLayout(mosaicGrid, count) {
+  if (!mosaicGrid || count <= 0) return;
+
+  const gridWidth = mosaicGrid.clientWidth;
+  const gridHeight = mosaicGrid.clientHeight;
+  if (!gridWidth || !gridHeight) return;
+
+  // For moderate counts, compute a near-square grid to maximize coverage.
+  if (count <= 60) {
+    let columns;
+    let rows;
+
+    if (count === 1) {
+      columns = 1;
+      rows = 1;
+    } else if (count <= 3) {
+      columns = 2;
+      rows = 2;
+    } else {
+      const aspect = gridWidth / gridHeight;
+      columns = Math.max(2, Math.ceil(Math.sqrt(count * aspect)));
+      rows = Math.ceil(count / columns);
+      if (rows === 1) {
+        rows = 2;
+        columns = Math.ceil(count / rows);
+      }
+    }
+
+    mosaicGrid.style.gridTemplateColumns = `repeat(${columns}, minmax(0, 1fr))`;
+    mosaicGrid.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
+    mosaicGrid.style.gridAutoRows = '1fr';
+    return;
+  }
+
+  // For large counts, fall back to fixed sizing + scroll (CSS defaults).
+  mosaicGrid.style.removeProperty('grid-template-columns');
+  mosaicGrid.style.removeProperty('grid-template-rows');
+  mosaicGrid.style.removeProperty('grid-auto-rows');
 }
 
 async function fetchUserHoldingsFor(userId) {
@@ -4274,8 +4326,8 @@ async function fetchInventory() {
   const solarianMosaic = document.getElementById('solarianMosaic');
   if (viewSolariansButton && solarianMosaic) {
     viewSolariansButton.addEventListener('click', () => {
-      renderSolarianMosaic(currentUserTokens);
       solarianMosaic.classList.remove('mosaic-hidden');
+      renderSolarianMosaic(currentUserTokens);
     });
   }
 
@@ -4292,4 +4344,9 @@ async function fetchInventory() {
       }
     });
   }
+
+  window.addEventListener('resize', () => {
+    if (!solarianMosaic || solarianMosaic.classList.contains('mosaic-hidden')) return;
+    renderSolarianMosaic(currentUserTokens);
+  });
 });

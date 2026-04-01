@@ -1569,6 +1569,11 @@ code {
   display: block;
 }
 
+.solarian-mosaic-grid.mosaic-fit-contain img {
+  object-fit: contain;
+  background: var(--bg-dark);
+}
+
 /* --------------------------------------------------
    INVENTORY PAGE FIXES
 -------------------------------------------------- */
