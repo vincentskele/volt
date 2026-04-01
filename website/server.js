@@ -771,7 +771,10 @@ app.post('/api/admin/shop-items/create', authenticateToken, requireAdmin, async 
     const quantity = Number.isFinite(Number(req.body?.quantity)) ? Number(req.body?.quantity) : 1;
     const isHidden = req.body?.isHidden ? 1 : 0;
     const isRedeemable = req.body?.isRedeemable === false || req.body?.isRedeemable === 0 ? 0 : 1;
-    const isAvailable = isHidden ? 0 : 1;
+    const requestedAvailability = req.body?.isAvailable;
+    const isAvailable = isHidden
+      ? 0
+      : (requestedAvailability === false || requestedAvailability === 0 ? 0 : 1);
 
     if (!rawName || !rawDescription || !Number.isFinite(price) || price <= 0 || quantity < 0) {
       return res.status(400).json({ message: 'Invalid item data.' });
@@ -820,7 +823,10 @@ app.post('/api/admin/shop-items/:id/update', authenticateToken, requireAdmin, as
     const quantity = Number.isFinite(Number(req.body?.quantity)) ? Number(req.body?.quantity) : existing.quantity;
     const isHidden = req.body?.isHidden ? 1 : 0;
     const isRedeemable = req.body?.isRedeemable === false || req.body?.isRedeemable === 0 ? 0 : 1;
-    const isAvailable = isHidden ? 0 : 1;
+    const requestedAvailability = req.body?.isAvailable;
+    const isAvailable = isHidden
+      ? 0
+      : (requestedAvailability === false || requestedAvailability === 0 ? 0 : 1);
 
     if (!rawName || !rawDescription || !Number.isFinite(price) || price <= 0 || quantity < 0) {
       return res.status(400).json({ message: 'Invalid item data.' });
@@ -1876,6 +1882,10 @@ async function logAdminChange(adminId, title, lines = []) {
   try {
     const channelId = WEB_ADMIN_EDITS_CHANNEL_ID;
     if (!channelId) return;
+    if (channelId === ITEM_REDEMPTION_CHANNEL_ID) {
+      console.warn('Skipping admin change log because WEB_ADMIN_EDITS_CHANNEL_ID matches ITEM_REDEMPTION_CHANNEL_ID.');
+      return;
+    }
     const channel = await client.channels.fetch(channelId);
     if (!channel) return;
     const adminTag = await resolveUsername(adminId);
@@ -2178,26 +2188,19 @@ app.post('/api/redeem', authenticateToken, async (req, res) => {
     }
 
     try {
-      await dbRun(
-        `INSERT INTO item_redemptions (
-          userID, user_tag, item_name, wallet_address, source,
-          channel_name, channel_id, message_link, command_text,
-          inventory_before, inventory_after
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          userId,
-          userTag,
-          itemName,
-          walletAddress,
-          'web',
-          null,
-          null,
-          null,
-          'WEB_UI',
-          Number.isFinite(beforeQty) ? beforeQty : null,
-          Number.isFinite(afterQty) ? afterQty : null,
-        ]
-      );
+      await dbHelpers.logItemRedemption({
+        userID: userId,
+        userTag,
+        itemName,
+        walletAddress,
+        source: 'web',
+        channelName: 'Web UI Inventory',
+        channelId: null,
+        messageLink: null,
+        commandText: `WEB_UI redeem item="${itemName}" wallet="${walletAddress}"`,
+        inventoryBefore: Number.isFinite(beforeQty) ? beforeQty : null,
+        inventoryAfter: Number.isFinite(afterQty) ? afterQty : null,
+      });
     } catch (insertErr) {
       console.error('Failed to store web redemption log:', insertErr);
     }
