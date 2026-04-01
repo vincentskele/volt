@@ -1192,11 +1192,17 @@ function getAnyShopItemByName(name) {
   });
 }
 
-function addShopItem(price, name, description, quantity = 1, isHidden = 0, isRedeemable = 1) {
+function addShopItem(price, name, description, quantity = 1, isHidden = 0, isRedeemable = 1, isAvailable = null) {
   return new Promise((resolve, reject) => {
+    const normalizedHidden = isHidden ? 1 : 0;
+    const normalizedAvailable =
+      isAvailable === null || typeof isAvailable === 'undefined'
+        ? (normalizedHidden ? 0 : 1)
+        : (isAvailable ? 1 : 0);
+
     db.run(
-      `INSERT INTO items (price, name, description, quantity, isAvailable, isHidden, isRedeemable) VALUES (?, ?, ?, ?, 1, ?, ?)`,
-      [price, name, description, quantity, isHidden ? 1 : 0, isRedeemable ? 1 : 0],
+      `INSERT INTO items (price, name, description, quantity, isAvailable, isHidden, isRedeemable) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [price, name, description, quantity, normalizedAvailable, normalizedHidden, isRedeemable ? 1 : 0],
       (err) => {
         if (err) {
           console.error('Error adding new shop item:', err);

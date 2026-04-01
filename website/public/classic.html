@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Volt</title>
+  <link rel="stylesheet" href="css/classic.css">
+  <link rel="icon" href="./favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<div class="classic-return">
+  <a href="/" aria-label="Switch to the new Volt dashboard" title="New Volt UI"></a>
+</div>
+  
+
+<!-- Slim Login Modal with Form -->
+<div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+  <div class="bg-white px-2 py-1 rounded shadow-lg flex items-center gap-2">
+    
+    <!-- Form Wrapper -->
+    <form id="loginForm" class="flex items-center gap-2" onsubmit="return false;">
+      
+      <label for="loginUsername" class="text-xs font-bold">USERNAME</label>
+      <input
+        type="text"
+        id="loginUsername"
+        class="p-1 border rounded h-8 text-sm w-32"
+        placeholder="Enter username"
+      />
+
+      <label for="loginPassword" class="text-xs font-bold">PASSWORD</label>
+      <input
+        type="password"
+        id="loginPassword"
+        class="p-1 border rounded h-8 text-sm w-32"
+        placeholder="Enter password"
+      />
+
+      <button
+        id="submitLogin"
+        class="btn text-sm font-bold h-6 px-3"
+        style="
+          height: 19px !important;
+          min-height: 19px !important;
+          max-height: 19px !important;
+          line-height: 19px !important;
+          padding: 0 12px !important;
+          width: auto !important;
+        "
+      >
+        LOGIN
+      </button>
+      <button
+        id="discordLoginButton"
+        type="button"
+        class="btn text-sm font-bold h-6 px-3"
+        style="
+          height: 19px !important;
+          min-height: 19px !important;
+          max-height: 19px !important;
+          line-height: 19px !important;
+          padding: 0 12px !important;
+          width: auto !important;
+        "
+      >
+        LOGIN WITH DISCORD
+      </button>
+    </form>
+
+<!-- Volt Balance Display -->
+<div id="voltMenuContainer" class="absolute right-10 top-[20px] flex justify-end">
+  <div id="voltMenu" class="bg-gray-900 text-white rounded-lg shadow-lg px-4 py-3 border border-yellow-500 text-center w-64">
+    <p class="text-md font-bold text-yellow-400 tracking-widest">⚡ VOLT BALANCE:</p>
+    
+    <!-- Force items into three lines -->
+    <div id="voltBalances" class="flex flex-col items-center gap-1 text-sm sm:text-lg font-bold text-center">
+      <div id="solarianBalance" class="text-green-400 w-full">Volts: 0</div>
+      <div id="batteryBankBalance" class="text-blue-400 w-full">Battery Bank: 0</div>
+      <div id="totalBalance" class="text-yellow-300 w-full">Total: 0</div>
+    </div>
+    <div id="questStatusValue" class="profile-status">Quest Status: --</div>
+  </div>
+</div>
+
+
+
+
+
+
+
+
+    
+    
+    
+
+
+
+
+
+
+  </div>
+</div>
+
+
+
+
+
+
+
+
+
+  <header>
+    <h1 
+      onclick="this.style.transform=`rotate(5deg) scale(1.1)`; 
+               this.style.color=`#ffcc00`; 
+               this.style.textShadow=`0px 0px 10px rgba(255, 204, 0, 0.8)`; 
+               setTimeout(() => { 
+                   this.style.color=''; 
+                   this.style.textShadow=''; 
+               }, 300); 
+               setTimeout(() => location.reload(), 600);"
+    
+      onmouseover="this.style.transform=`rotate(5deg) scale(1.1)`; 
+                   this.style.color=`#ffcc00`; 
+                   this.style.textShadow=`0px 0px 10px rgba(255, 204, 0, 0.8)`;"
+    
+      onmouseout="this.style.transform=`none`; 
+                  this.style.color=''; 
+                  this.style.textShadow='';"
+    
+      style="cursor: pointer; 
+             transition: transform 0.2s ease, 
+                         color 0.3s ease, 
+                         text-shadow 0.3s ease;">
+      ⚡ Vol<span style="margin-left: -6px;"></span>t Dashboard
+    </h1>
+  </header>
+
+<!-- Landing Page Section -->
+<div id="landingPage" class="content">
+   <div class="buttons">
+    
+    <button id="showGiveawayListButton" class="btn">Giveaway List</button>
+    <button id="showRafflesButton" class="btn">Raffles</button>
+    <button id="showShopButton" class="btn">Shop</button>
+    <button id="showDailyTasksButton" class="btn">Auto Quests</button>
+    <button id="showJobListButton" class="btn">Quests</button>
+    <button id="showRobotOilButton" class="btn">Robot Oil</button>
+    <button id="showLeaderboardButton" class="btn">Leaderboard</button>
+    <button id="showAdminListButton" class="btn">Admin List</button>
+    <button id="showConsoleButton" class="btn">Logs</button>
+
+  </div>
+
+
+
+<!-- Quick Start Section -->
+<div id="quickSteps" class="quick-steps">
+  <h2 style="text-decoration: underline; text-decoration-thickness: 2px;">Quick Start</h2>
+<!--q
+  </div>
+  -->
+  <li>Click the Login With Discord button at the top.</li>  </p>
+  <li>Click the Quests button and submit a quest</li>
+  <p> </p>
+  <li>join the weekly giveaway.</li>
+  <p> </p>
+  <li>do the quests (and daily quests).</li>
+  <p>  </p>
+  <li>use volts to buy raffle tickets. The more you have, the better chance you have at winning.</li>
+
+</div>
+
+
+
+
+  
+</div>
+
+
+<!-- Raffles Section -->
+<div id="rafflesSection" class="content" style="display: none;">
+  <h2>🎟️ Raffles</h2>
+  <p>Enter raffles and stand a chance to win exclusive prizes! Click on the raffle to buy a ticket.
+  </p>
+
+  <ul id="rafflesList" class="raffles-list">
+    <!-- Raffle items will be dynamically inserted here -->
+  </ul>
+
+  <button class="back-button">Home</button>
+</div>
+
+
+<!-- Robot Oil Section (ENTIRE block inside one div!) -->
+<div id="robotOilSection" class="content" style="display: none; flex-direction: column; gap: 20px; height: 100%;">
+  <h2>🛢️ Robot Oil Market</h2>
+
+  <!-- Robot Oil Chart Container -->
+  <div style="background: #1e293b; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+    <canvas id="oilChart" style="max-width: 100%; height: 300px;"></canvas>
+  </div>
+
+  <!-- Order Book Section -->
+  <div id="orderBookSection" style="flex: 1 1 auto; overflow-y: auto; padding: 10px; background-color: #2d3e50; border-radius: 8px;">
+    <h3 style="text-align: center; margin-bottom: 10px;">📋 Order Book</h3>
+
+    <!-- Sell Orders -->
+    <div style="margin-bottom: 20px;">
+      <h4 style="color: #facc15;">📈 Sell Orders</h4>
+      <div id="sellOrders" style="padding: 10px; background: #1e293b; border-radius: 8px;"></div>
+    </div>
+
+    <!-- Buy Orders -->
+    <div>
+      <h4 style="color: #60a5fa;">📉 Buy Orders</h4>
+      <div id="buyOrders" style="padding: 10px; background: #1e293b; border-radius: 8px;"></div>
+    </div>
+  </div>
+
+  <!-- Action Buttons -->
+  <div style="margin-top: 20px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;">
+    <button id="marketBuyButton" class="btn" style="background-color: #4CAF50;">Market Buy</button>
+    <button id="marketSellButton" class="btn" style="background-color: #EF4444;">Market Sell</button>
+    <button id="offerBuyButton" class="btn" style="background-color: #3B82F6;">Bid</button>
+    <button id="offerSaleButton" class="btn" style="background-color: #F59E0B;">List</button>
+  </div>
+
+  <!-- Home Button -->
+  <button class="back-button" style="margin-top: 20px;">Home</button>
+</div>
+
+
+
+
+
+
+  <!-- Leaderboard Section -->
+  <div id="leaderboard" class="content" style="display: none;">
+    <h2>🏆 Leaderboard</h2>
+    <ul id="leaderboardList" class=""></ul>
+    <p>Click on a user to see their profile.</p>
+    <button class="back-button">Home</button>
+  </div>
+
+<!-- Admin List Section -->
+<div id="adminList" class="content" style="display: none;">
+  <h2>🔧 Admin List</h2>
+  <ul id="adminListContent" class="admin-list">
+    <!-- Dynamically generated admin items will be appended here -->
+  </ul>
+  
+  <button class="back-button">Home</button>
+</div>
+
+<!-- Admin Dashboard Section (Admins Only) -->
+<div id="adminPage" class="content" style="display: none;">
+  <h2>🛠️ Admin Dashboard</h2>
+  <div class="admin-sections">
+    <button class="btn admin-toggle" data-target="adminSubmissionsPanel">Quest Submissions</button>
+    <button class="btn admin-toggle" data-target="adminUserPanel">User List</button>
+    <button class="btn admin-toggle" data-target="adminTitleGiveawaysPanel">Title Giveaways</button>
+    <button class="btn admin-toggle" data-target="adminGiveawaysPanel">Giveaways</button>
+    <button class="btn admin-toggle" data-target="adminRafflesPanel">Raffles</button>
+    <button class="btn admin-toggle" data-target="adminJoblistPanel">Quest List</button>
+    <button class="btn admin-toggle" data-target="adminShopItemsPanel">Shop Items</button>
+    <button class="btn admin-toggle" data-target="adminRedemptionsPanel">ITEM REDMPTION</button>
+  </div>
+
+  <div id="adminSubmissionsPanel" class="admin-panel" style="display: none;">
+    <h3>⏳ Pending Quest Submissions</h3>
+    <div id="adminSubmissionsList" class="admin-list"></div>
+    <div id="adminSubmissionsEmpty" class="empty-state" style="display: none;">
+      No pending submissions.
+    </div>
+  </div>
+
+  <div id="adminUserPanel" class="admin-panel" style="display: none;">
+    <h3>👥 Users</h3>
+    <div id="adminUserList" class="admin-list"></div>
+  </div>
+
+  <div id="adminTitleGiveawaysPanel" class="admin-panel" style="display: none;">
+    <h3>🏆 Title Giveaways</h3>
+    <div id="adminTitleGiveawaysList" class="admin-list"></div>
+  </div>
+
+  <div id="adminGiveawaysPanel" class="admin-panel" style="display: none;">
+    <h3>🎁 Giveaways</h3>
+    <div id="adminGiveawaysList" class="admin-list"></div>
+  </div>
+
+  <div id="adminRafflesPanel" class="admin-panel" style="display: none;">
+    <h3>🎟️ Raffles</h3>
+    <div id="adminRafflesList" class="admin-list"></div>
+  </div>
+
+  <div id="adminJoblistPanel" class="admin-panel" style="display: none;">
+    <h3>🧩 Quest List</h3>
+    <div class="admin-actions">
+      <button id="adminAddJob" class="btn">Add Quest</button>
+    </div>
+    <div id="adminJobList" class="admin-list"></div>
+  </div>
+  <div id="adminRedemptionsPanel" class="admin-panel" style="display: none;">
+    <h3>🧾 Item Redemptions</h3>
+    <div id="adminRedemptionsList" class="admin-list"></div>
+  </div>
+
+  <div id="adminShopItemsPanel" class="admin-panel" style="display: none;">
+    <h3>🛒 Shop Items</h3>
+    <div id="adminShopItemsList" class="admin-list"></div>
+  </div>
+  <button class="back-button">Home</button>
+</div>
+
+<!-- Chat Section -->
+<div id="chatSection" class="content" style="display: none;">
+  <h2>💬 Chat</h2>
+  <div class="chat-layout">
+    <div class="chat-main">
+      <div id="chatMessages" class="chat-messages"></div>
+    </div>
+    <aside class="chat-sidebar">
+      <h3>Online</h3>
+      <ul id="chatOnlineList" class="chat-list"></ul>
+    </aside>
+  </div>
+  <div class="chat-input-row">
+    <input id="chatInput" type="text" placeholder="Type a message..." maxlength="500" />
+    <button id="sendChatButton" class="btn">Send</button>
+  </div>
+  <button class="back-button">Home</button>
+</div>
+
+
+
+  <!-- Shop Section -->
+<div id="shop" class="content" style="display: none;">
+  <h2>🛒 Shop</h2>
+  <ul id="shopItems" class="shop-list"></ul>
+    <!-- Instructions for Using the Shop -->
+    <h2>To use the shop:</h2>
+    <ul class="shop-instructions">
+      <li>
+        Click on the item you wish to purchase.
+      </li>
+      <li>
+        To use the item, open a 
+        <a href="https://discord.com/channels/1014872741846974514/1220357242663075890" target="_blank" rel="noopener noreferrer" class="link">
+          ticket
+        </a> 
+        and use <code>/redeem &lt;item name&gt;</code>.
+      </li>
+    </ul>
+  
+  <button class="back-button">Home</button>
+</div>
+
+
+<!-- Job List Section -->
+<div id="jobList" class="content" style="display: none;">
+  <h2>💠 Quests</h2>
+  <div class="job-list" id="jobListContent">
+    <!-- Dynamically generated job items will be appended here -->
+  </div>
+  <div id="jobListParagraph">
+    <p>
+      Click on the quest youd like to do.
+    </p>
+    <p>
+        When youre finished with your quest, click submit and share relevant text link for proof of completion (upload image if necessary).
+    </p>
+    <p>
+        After submission, an admin will see your progress and mark the quest as complete. You will also be able to accept and submit a new quest.
+    </p>
+  </div>
+
+  <button id="quitJobButton" class="btn danger">Quit</button>
+  <button id="submitJobButton" class="btn success">Submit</button>
+
+  <button class="back-button">Home</button>
+
+<!-- Job Submission Modal -->
+<div id="jobSubmissionModal">
+  <div>
+    <h2>Submit Quest</h2>
+
+    <!-- Task Description -->
+    <label for="jobSubmissionText">Quest Description</label>
+    <textarea id="jobSubmissionText" placeholder="Describe your work"></textarea>
+
+    <!-- Drag & Drop Upload -->
+    <div id="dropArea">
+      <p>Drag & drop an image here or <label for="jobSubmissionImage">browse</label></p>
+      <input type="file" id="jobSubmissionImage" accept="image/*">
+    </div>
+
+    <!-- Image Preview -->
+    <div id="imagePreviewContainer">
+      <img id="imagePreview" src="" alt="Preview">
+      <button id="removeImage">❌ Remove</button>
+    </div>
+
+    <!-- Upload Progress Bar -->
+    <div id="uploadProgressBar">
+      <div id="uploadProgress"></div>
+    </div>
+
+    <!-- Buttons -->
+    <div>
+      <button id="cancelSubmissionButton">Cancel</button>
+      <button id="sendSubmissionButton">Submit</button>
+    </div>
+  </div>
+</div>
+
+
+
+
+</div>
+
+
+
+  <!-- Giveaway List Section -->
+  <div id="giveawayList" class="content" style="display: none;">
+    <h2>🎁 Giveaway List</h2>
+    <ul id="giveawayItems" class="giveaway-list"></ul>
+      <div class="giveaway-info">
+        Click the giveaway to enter!
+      </div>    
+    <button class="back-button">Home</button>
+  </div>
+
+<!-- Auto Quests Section -->
+<div id="dailyTasksPage" class="content" style="display: none;">
+  <h2>🤖 Auto Quests</h2>
+  <p>Automated ways to earn Volts.</p>
+
+  <div class="auto-quests-wrapper">
+    <div class="auto-quests-box">
+      <h3>📋 Daily Quests</h3>
+      <p>Complete your daily quests before the reset!</p>
+
+      <!-- Countdown Timer -->
+      <div class="countdown-container">
+        <h3>⏳ Next Reset In:</h3>
+        <p id="countdownTimer" class="countdown-timer"></p>
+      </div>
+
+      <ul id="dailyTasksList">
+        <li>🎁 User's first message of the day receives a bonus of 8 Vol<span style="margin-left: -2px;"></span>ts.</li>
+        <li>💬 Send up to 16 messages in <a href="https://discord.com/channels/1014872741846974514/1015078531526574141">#robo-chat</a>
+          to get charged up 1 Vol<span style="margin-left: -2px;"></span>t per message.</li>
+        <li>🤖 React to a new message in <a href="https://discord.com/channels/1014872741846974514/1015076041934520330">#announcements</a> once per day to receive 8 Vol<span style="margin-left: -2px;"></span>ts.</li>
+        <li>🪨 Use <code>/rps</code> to play rock paper sissors. First 3 wins of the day get a bonus 8 Volts.</li>
+      </ul>
+    </div>
+
+    <div class="auto-quests-box">
+      <h3>🗓️ Other Auto Quests</h3>
+      <p>These are not affected by the daily reset.</p>
+      <ul id="autoTasksList">
+        <li>🎙️ Join the weekly DAO call for at least 15 minutes to earn 40 Vol<span style="margin-left: -2px;"></span>ts.</li>
+        <li>🎟️ Buy 10 Raffle tickets get 1 free.</li>
+        <li>🎟️ Buy 25 Raffle tickets get 2 free.</li>
+        <li>🎟️ Buy 50 Raffle tickets get 3 free.</li>
+      </ul>
+    </div>
+  </div>
+  
+
+  <button class="back-button">Home</button>
+</div>
+
+<!-- Inventory Section -->
+<div id="inventorySection" class="content" style="display: none;">
+  <div class="inventory-header">
+    <div class="inventory-header-main">
+      <img id="inventoryAvatar" class="profile-avatar inventory-avatar" alt="Discord avatar" />
+      <div class="inventory-header-text">
+        <h2 id="inventoryTitle">Inventory</h2>
+        <div id="inventoryTag" class="profile-tag muted"></div>
+      </div>
+    </div>
+    <button id="inventoryProfileButton" class="btn text-sm font-bold" style="display: none;">USER PROFILE</button>
+  </div>
+  <p></p>
+  <ul id="inventoryItems" class="inventory-list">
+    <!-- Dynamically populated by script.js -->
+  </ul>
+
+  <button class="back-button">Home</button>
+</div>
+
+<!-- User Profile Section -->
+<div id="userProfileSection" class="content" style="display: none;">
+  <div class="profile-header">
+    <img id="userProfileAvatar" class="profile-avatar" alt="Discord avatar" />
+    <div class="profile-header-text">
+      <h2 id="userProfileTitle">User Profile</h2>
+      <div id="userProfileTag" class="profile-tag muted"></div>
+    </div>
+  </div>
+  <div class="profile-actions">
+    <button id="viewSolariansButton" class="btn text-sm font-bold">VIEW ALL 0 SOLARIANS</button>
+    <button id="viewProfileInventoryButton" class="btn text-sm font-bold">VIEW INVENTORY</button>
+  </div>
+  <div id="userHoldingsGrid" class="holdings-section-list"></div>
+
+  <div id="solarianMosaic" class="solarian-mosaic mosaic-hidden">
+    <div class="solarian-mosaic-inner">
+      <button id="closeSolariansButton" class="btn text-sm font-bold">Close</button>
+      <div id="solarianMosaicGrid" class="solarian-mosaic-grid"></div>
+    </div>
+  </div>
+
+  <button class="back-button">Home</button>
+</div>
+
+<!-- Console Section -->
+<div id="consoleSection" class="content" style="display: none;">
+  <h2>🖥️ Logs</h2>
+  <p></p>
+
+  <div class="console-box">
+    <ul id="consoleLogs" class="console-list">
+      <!-- Console logs will be dynamically added here -->
+    </ul>
+  </div>
+
+  <p>miscellaneous nerd info</p>
+
+  <button class="back-button">Home</button>
+</div>
+
+
+<footer>
+  <p>© 2025 Volt Dashboard | <b>Exclusive to RoboDAO Members</b> | Powered by RoboDAO.</p>
+  <p><strong>Disclaimer:</strong> Any abuse of the platform will not be tolerated. Item redemptions resulting from such actions will not be honored.</p>
+  <p><a href="https://verify.solarians.world">Click here to verify for our in-house discord verification!</a></p>
+</footer>
+
+
+
+  <!-- JavaScript -->
+  <script src="js/script.js"></script>
+</body>
+</html>

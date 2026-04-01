@@ -10,8 +10,33 @@
     const sectionToShow = document.getElementById(sectionId);
     if (sectionToShow) {
       sectionToShow.style.display = 'block';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }
+
+  function registerImmediateSectionNav(buttonId, sectionId) {
+    const button = document.getElementById(buttonId);
+    if (!button) return;
+
+    button.addEventListener('click', () => {
+      showSection(sectionId);
+    }, true);
+  }
+
+  [
+    ['showInventoryButton', 'inventorySection'],
+    ['showJobListButton', 'jobList'],
+    ['showJobListHeroButton', 'jobList'],
+    ['showGiveawayListButton', 'giveawayList'],
+    ['showRafflesButton', 'rafflesSection'],
+    ['showRafflesHeroButton', 'rafflesSection'],
+    ['showShopButton', 'shop'],
+    ['showDailyTasksButton', 'dailyTasksPage'],
+    ['showLeaderboardButton', 'leaderboard'],
+    ['showAdminListButton', 'adminList'],
+    ['showConsoleButton', 'consoleSection'],
+    ['showRobotOilButton', 'robotOilSection'],
+  ].forEach(([buttonId, sectionId]) => registerImmediateSectionNav(buttonId, sectionId));
 
   // Format data depending on the endpoint type
   function getFormatter(type) {
@@ -50,6 +75,32 @@
       console.error(`Error fetching data from ${url}:`, error);
       targetElement.innerHTML = '<li>Error loading data.</li>';
     }
+  }
+
+  function attachRobotClickEffect(button) {
+    if (!button) return;
+    const spark = button.querySelector('.robot-spark');
+    button.addEventListener('click', () => {
+      button.classList.remove('robot-active');
+      void button.offsetWidth;
+      button.classList.add('robot-active');
+
+      if (spark) {
+        const x = Math.round(20 + Math.random() * 60);
+        const y = Math.round(20 + Math.random() * 60);
+        spark.style.setProperty('--spark-x', `${x}%`);
+        spark.style.setProperty('--spark-y', `${y}%`);
+        spark.classList.remove('robot-spark-active');
+        void spark.offsetWidth;
+        spark.classList.add('robot-spark-active');
+      }
+    });
+
+    button.addEventListener('animationend', (event) => {
+      if (event.animationName === 'robot-shake') {
+        button.classList.remove('robot-active');
+      }
+    });
   }
 
 // ------------------------------
@@ -108,6 +159,10 @@ if (showLeaderboardButton) {
  */
 async function fetchUserInventory(userID) {
   try {
+    if (typeof showSection === 'function') {
+      showSection('inventorySection');
+    }
+
     const localUserId = localStorage.getItem('discordUserID');
     const nameLabel = currentProfileUsername || userID;
     if (userID && localUserId && userID !== localUserId) {
@@ -140,7 +195,6 @@ async function fetchUserInventory(userID) {
         inventoryItems.appendChild(itemContainer);
       });
     }
-    showSection('inventorySection');
   } catch (error) {
     console.error('Error fetching user inventory:', error);
     alert('Failed to load user inventory.');
@@ -341,6 +395,7 @@ function showConfirmationPopup(message) {
 // INVENTORY SECTION
 // ================================================
 const showInventoryButton = document.getElementById('showInventoryButton');
+const shopInventoryButton = document.getElementById('shopInventoryButton');
 const inventorySection = document.getElementById('inventorySection');
 const inventoryItems = document.getElementById('inventoryItems');
 
@@ -424,6 +479,18 @@ if (showInventoryButton) {
     fetchInventory();
     // showSection('inventorySection') is your existing utility to display sections
     showSection('inventorySection');
+  });
+}
+
+if (shopInventoryButton) {
+  attachRobotClickEffect(shopInventoryButton);
+  shopInventoryButton.addEventListener('click', () => {
+    if (typeof fetchInventory === 'function') {
+      fetchInventory();
+    }
+    if (typeof showSection === 'function') {
+      showSection('inventorySection');
+    }
   });
 }
 
@@ -2651,19 +2718,14 @@ async function addAdminButton(userActionContainer, logoutButton) {
 
     const adminButton = document.createElement('button');
     adminButton.textContent = 'ADMIN';
-    adminButton.className = 'btn text-sm font-bold';
-    adminButton.style.height = '24px';
-    adminButton.style.width = '110px';
-    adminButton.style.lineHeight = '24px';
-    adminButton.style.padding = '0 12px';
-    adminButton.style.textAlign = 'center';
+    adminButton.className = 'btn text-sm font-bold user-action-button';
 
     adminButton.addEventListener('click', () => {
-      loadAdminPage();
-      startAdminPolling();
       if (typeof showSection === 'function') {
         showSection('adminPage');
       }
+      loadAdminPage();
+      startAdminPolling();
     });
 
     if (logoutButton && userActionContainer.contains(logoutButton)) {
@@ -2691,6 +2753,7 @@ function showPostLoginButtons() {
   const usernameLabel = document.querySelector('label[for="loginUsername"]');
   const passwordLabel = document.querySelector('label[for="loginPassword"]');
   const voltMenuContainer = document.getElementById('voltMenuContainer');
+  const loginModal = document.getElementById('loginModal');
 
   if (usernameInput) usernameInput.style.display = 'none';
   if (passwordInput) passwordInput.style.display = 'none';
@@ -2702,13 +2765,11 @@ function showPostLoginButtons() {
   // Create a container for the two buttons, top-right corner
   const userActionContainer = document.createElement('div');
   userActionContainer.id = 'userButtons';
-  userActionContainer.style.position = 'absolute';
-  userActionContainer.style.top = '10px';
-  userActionContainer.style.right = '10px';
   userActionContainer.style.display = 'flex';
   userActionContainer.style.flexDirection = 'column';
-  userActionContainer.style.alignItems = 'flex-end';
-  userActionContainer.style.gap = '4px'; // Keep spacing between buttons
+  userActionContainer.style.alignItems = 'stretch';
+  userActionContainer.style.gap = '10px';
+  userActionContainer.style.marginTop = '18px';
 
   // ========== USER AVATAR ==========
   const userAvatar = document.createElement('img');
@@ -2720,32 +2781,22 @@ function showPostLoginButtons() {
   // ========== INVENTORY BUTTON ==========
   const inventoryButton = document.createElement('button');
   inventoryButton.textContent = 'INVENTORY';
-  inventoryButton.className = 'btn text-sm font-bold';
-  inventoryButton.style.height = '24px';
-  inventoryButton.style.width = '110px'; // Ensure consistent width
-  inventoryButton.style.lineHeight = '24px';
-  inventoryButton.style.padding = '0 12px';
-  inventoryButton.style.textAlign = 'center';
+  inventoryButton.className = 'btn text-sm font-bold user-action-button';
 
   // On click, fetch inventory & show the inventory page
   inventoryButton.addEventListener('click', () => {
-    if (typeof fetchInventory === 'function') {
-      fetchInventory();
-    }
     if (typeof showSection === 'function') {
       showSection('inventorySection');
+    }
+    if (typeof fetchInventory === 'function') {
+      fetchInventory();
     }
   });
 
   // ========== USER PROFILE BUTTON ==========
   const userProfileButton = document.createElement('button');
   userProfileButton.textContent = 'PROFILE';
-  userProfileButton.className = 'btn text-sm font-bold';
-  userProfileButton.style.height = '24px';
-  userProfileButton.style.width = '110px';
-  userProfileButton.style.lineHeight = '24px';
-  userProfileButton.style.padding = '0 12px';
-  userProfileButton.style.textAlign = 'center';
+  userProfileButton.className = 'btn text-sm font-bold user-action-button';
 
   userProfileButton.addEventListener('click', () => {
     if (typeof showSection === 'function') {
@@ -2759,33 +2810,23 @@ function showPostLoginButtons() {
   // ========== CHAT BUTTON ==========
   const chatButton = document.createElement('button');
   chatButton.textContent = 'CHAT';
-  chatButton.className = 'btn text-sm font-bold';
-  chatButton.style.height = '24px';
-  chatButton.style.width = '110px';
-  chatButton.style.lineHeight = '24px';
-  chatButton.style.padding = '0 12px';
-  chatButton.style.textAlign = 'center';
+  chatButton.className = 'btn text-sm font-bold user-action-button';
 
   chatButton.addEventListener('click', () => {
+    if (typeof showSection === 'function') {
+      showSection('chatSection');
+    }
     loadChatMessages();
     startChatPolling();
     pingChatPresence();
     loadChatPresence();
     startChatPresencePolling();
-    if (typeof showSection === 'function') {
-      showSection('chatSection');
-    }
   });
 
   // ========== LOGOUT BUTTON ==========
   const logoutButton = document.createElement('button');
   logoutButton.textContent = 'LOGOUT';
-  logoutButton.className = 'btn text-sm font-bold';
-  logoutButton.style.height = '24px';
-  logoutButton.style.width = '110px'; // Matches Inventory button width
-  logoutButton.style.lineHeight = '24px';
-  logoutButton.style.padding = '0 12px';
-  logoutButton.style.textAlign = 'center';
+  logoutButton.className = 'btn text-sm font-bold user-action-button';
 
   logoutButton.addEventListener('click', () => {
     console.log('🚪 Logging out...');
@@ -2802,7 +2843,9 @@ function showPostLoginButtons() {
   addAdminButton(userActionContainer, logoutButton);
 
   // Attach to the DOM
-  if (voltMenuContainer && voltMenuContainer.parentNode) {
+  if (loginModal) {
+    loginModal.appendChild(userActionContainer);
+  } else if (voltMenuContainer && voltMenuContainer.parentNode) {
     voltMenuContainer.parentNode.insertBefore(userActionContainer, voltMenuContainer);
   } else {
     document.body.appendChild(userActionContainer);
@@ -2820,10 +2863,28 @@ function showPostLoginButtons() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  const voltMenuContainer = document.getElementById('voltMenuContainer');
-  const voltMenu = document.getElementById('voltMenu');
-  const toggleVoltMenu = document.getElementById('toggleVoltMenu');
+  const heroQuestButton = document.getElementById('showJobListHeroButton');
+  const heroRafflesButton = document.getElementById('showRafflesHeroButton');
+  const mainQuestButton = document.getElementById('showJobListButton');
+  const mainRafflesButton = document.getElementById('showRafflesButton');
 
+  if (heroQuestButton && mainQuestButton) {
+    heroQuestButton.addEventListener('click', () => mainQuestButton.click());
+  }
+
+  if (heroRafflesButton && mainRafflesButton) {
+    heroRafflesButton.addEventListener('click', () => mainRafflesButton.click());
+  }
+
+  const isClassicPath = window.location.pathname.startsWith('/classic');
+  if (isClassicPath) {
+    document.body.classList.remove('theme-robotic');
+    document.body.classList.add('theme-classic');
+  } else {
+    document.body.classList.remove('theme-classic');
+  }
+
+  const voltMenuContainer = document.getElementById('voltMenuContainer');
   // Hide Volt menu initially
   if (voltMenuContainer) voltMenuContainer.style.display = 'none';
 
@@ -2832,14 +2893,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (token) {
     console.log('✅ User is logged in, showing Volt menu.');
     if (voltMenuContainer) voltMenuContainer.style.display = 'block';
-
-    if (toggleVoltMenu && voltMenu) {
-      toggleVoltMenu.addEventListener('click', () => {
-        console.log('🔄 Toggling Volt menu');
-        voltMenu.style.display =
-          voltMenu.style.display === 'block' ? 'none' : 'block';
-      });
-    }
 
     fetchVoltBalance(); // Fetch balance after login
   } else {
@@ -2871,13 +2924,13 @@ async function fetchVoltBalance() {
 
     const { wallet, bank, totalBalance } = await response.json();
 
-    document.getElementById("solarianBalance").textContent = `Solarian: ${wallet}`;
+    document.getElementById("solarianBalance").textContent = `Volts: ${wallet}`;
     document.getElementById("batteryBankBalance").textContent = `Battery Bank: ${bank}`;
     document.getElementById("totalBalance").textContent = `Total: ${totalBalance}`;
 
     const userProfileSolarian = document.getElementById('userProfileSolarianValue');
     if (userProfileSolarian) {
-      userProfileSolarian.textContent = `Solarian: ${wallet}`;
+      userProfileSolarian.textContent = `Volts: ${wallet}`;
     }
 
     console.log("✅ Volt Balance Updated:", { wallet, bank, totalBalance });
@@ -2890,7 +2943,7 @@ async function fetchVoltBalance() {
 
     const userProfileSolarian = document.getElementById('userProfileSolarianValue');
     if (userProfileSolarian) {
-      userProfileSolarian.textContent = 'Solarian: Error';
+      userProfileSolarian.textContent = 'Volts: Error';
     }
   }
 }
@@ -3311,6 +3364,7 @@ if (viewProfileInventoryButton) {
     sections.forEach((id) => {
       document.getElementById(id).style.display = id === sectionId ? "block" : "none";
     });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   const showRafflesButton = document.getElementById("showRafflesButton");
