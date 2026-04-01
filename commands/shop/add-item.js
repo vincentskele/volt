@@ -24,14 +24,6 @@ module.exports = {
         .setDescription('The quantity available in the shop (default: 1)')
         .setRequired(false))
     .addBooleanOption(option =>
-      option.setName('hidden')
-        .setDescription('Hide the item from the public shop (default: false)')
-        .setRequired(false))
-    .addBooleanOption(option =>
-      option.setName('available')
-        .setDescription('Whether the item can be bought in the shop (default: true unless hidden)')
-        .setRequired(false))
-    .addBooleanOption(option =>
       option.setName('redeemable')
         .setDescription('Whether the item can be redeemed from inventory (default: true)')
         .setRequired(false)),
@@ -45,25 +37,14 @@ module.exports = {
     const name = interaction.options.getString('name');
     const description = interaction.options.getString('description');
     const quantity = interaction.options.getInteger('quantity') || 1;
-    const hidden = interaction.options.getBoolean('hidden') ?? false;
-    const availableOption = interaction.options.getBoolean('available');
     const redeemable = interaction.options.getBoolean('redeemable');
-    const isAvailable = hidden ? false : (availableOption ?? true);
 
     if (!price || price <= 0 || !name || !description) {
       return interaction.reply({ content: '🚫 Invalid input. Ensure all fields are filled.', ephemeral: true });
     }
 
     try {
-      await db.addShopItem(
-        price,
-        name.trim(),
-        description.trim(),
-        quantity,
-        hidden,
-        redeemable ?? true,
-        isAvailable
-      );
+      await db.addShopItem(price, name.trim(), description.trim(), quantity, 0, redeemable ?? true);
 
       const embed = new EmbedBuilder()
         .setTitle(`✅ Added ${name.trim()} to the Shop`)
@@ -71,8 +52,6 @@ module.exports = {
           { name: 'Price', value: `${formatCurrency(price)}` },
           { name: 'Quantity', value: `${quantity}` },
           { name: 'Description', value: `${description.trim()}` },
-          { name: 'Hidden', value: `${hidden ? 'Yes' : 'No'}` },
-          { name: 'Available', value: `${isAvailable ? 'Yes' : 'No'}` },
           { name: 'Redeemable', value: `${redeemable ?? true ? 'Yes' : 'No'}` }
         )
         .setColor(0x32CD32)
