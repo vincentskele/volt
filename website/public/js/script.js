@@ -2077,6 +2077,11 @@ async function loadAdminRedemptions() {
     rows.forEach((row) => {
       const item = document.createElement('div');
       item.className = 'admin-item';
+      const walletAddress = row.wallet_address || '';
+      if (walletAddress) {
+        item.classList.add('admin-redemption-copyable');
+        item.title = 'Click to copy wallet address';
+      }
       const when = row.created_at ? new Date(row.created_at * 1000).toLocaleString() : 'Unknown time';
       const who = row.user_tag ? `${row.user_tag} (${row.userID})` : row.userID;
       const channelLabel = row.channel_name || 'Unknown Channel';
@@ -2095,11 +2100,23 @@ async function loadAdminRedemptions() {
         <div><strong>Where:</strong> ${row.source === 'discord' ? `Discord in ${channelLabel}` : 'Web UI Inventory'}</div>
         <div><strong>Channel ID:</strong> ${channelId}</div>
         <div><strong>When:</strong> ${when}</div>
-        <div><strong>Solana Wallet:</strong> ${row.wallet_address}</div>
+        <div><strong>Solana Wallet:</strong> <span class="wallet-address-preserve-case">${walletAddress || 'N/A'}</span></div>
         <div><strong>Inventory:</strong> ${inventoryLine}</div>
         <div><strong>Command:</strong> ${commandText}</div>
         <div><strong>Message:</strong> ${messageLink}</div>
       `;
+      if (walletAddress) {
+        item.addEventListener('click', async (event) => {
+          if (event.target.closest('a')) return;
+          try {
+            await navigator.clipboard.writeText(walletAddress);
+            showConfirmationPopup('✅ Wallet address copied.');
+          } catch (copyError) {
+            console.error('Failed to copy wallet address:', copyError);
+            showConfirmationPopup('❌ Failed to copy wallet address.');
+          }
+        });
+      }
       list.appendChild(item);
     });
   } catch (error) {

@@ -1719,6 +1719,15 @@ code {
   margin-top: 4px;
 }
 
+.wallet-address-preserve-case {
+  text-transform: none;
+  word-break: break-all;
+}
+
+.admin-redemption-copyable {
+  cursor: pointer;
+}
+
 .modal-buttons {
   display: flex;
   justify-content: center;
