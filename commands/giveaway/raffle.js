@@ -279,7 +279,7 @@ async function concludeRaffle(raffleId) {
 
     // 🎁 Bonus: Award Robot Oil to all participants (one per unique participant)
 try {
-  const robotOil = await db.getShopItemByName('Robot Oil');
+  const robotOil = await db.getAnyShopItemByName('Robot Oil');
   if (robotOil) {
     const awarded = new Set();
     for (const holder of ticketHolders) {
@@ -290,7 +290,7 @@ try {
       }
     }
   } else {
-    console.warn('⚠️ Robot Oil item not found in the shop!');
+    console.warn('⚠️ Robot Oil item not found in items table!');
   }
 } catch (err) {
   console.error('❌ Failed to award Robot Oil:', err);

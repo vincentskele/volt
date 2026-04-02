@@ -2431,7 +2431,7 @@ async function concludeRaffle(raffle) {
       console.log('🔍 [DEBUG] Attempting to fetch Robot Oil item...');
       console.log('🔍 [DEBUG] Participants list (unique users):', uniqueUserIds);
 
-      const robotOilItem = await db.getShopItemByName('Robot Oil');
+      const robotOilItem = await db.getAnyShopItemByName('Robot Oil');
 
       if (!robotOilItem) {
         console.log('⚠️ [DEBUG] Robot Oil item not found.');
