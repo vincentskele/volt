@@ -642,6 +642,34 @@ client.on('interactionCreate', async (interaction) => {
     return; // Exit after processing autocomplete
   }
 
+  if (interaction.isModalSubmit()) {
+    if (interaction.guild && !(await userHasAllowedRole(interaction.user, interaction.guild))) {
+      return interaction.reply({ content: '🚫 You do not have permission to use this command.', ephemeral: true });
+    }
+
+    const modalCommandName = interaction.customId.split(':')[0];
+    const command = client.commands.get(modalCommandName);
+
+    if (command && typeof command.handleModalSubmit === 'function') {
+      try {
+        await command.handleModalSubmit(interaction);
+      } catch (error) {
+        console.error(`Error handling modal submit ${interaction.customId}:`, error);
+        if (!interaction.replied && !interaction.deferred) {
+          try {
+            await interaction.reply({
+              content: '🚫 There was an error handling that modal!',
+              ephemeral: true
+            });
+          } catch (replyErr) {
+            console.error('Failed to send modal error response:', replyErr);
+          }
+        }
+      }
+    }
+    return;
+  }
+
   // Then, handle slash commands
   if (!interaction.isCommand()) return;
 

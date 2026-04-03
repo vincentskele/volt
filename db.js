@@ -771,9 +771,9 @@ function getAllJobs() {
 
 
 /**
- * Retrieves the active job for a given user.
+ * Retrieves the currently assigned job for a given user.
  */
-function getActiveJob(userID) {
+function getAssignedJob(userID) {
   return new Promise((resolve, reject) => {
     db.get(
       `SELECT j.jobID, j.description 
@@ -783,12 +783,42 @@ function getActiveJob(userID) {
       [userID],
       (err, row) => {
         if (err) {
-          reject('Failed to check active job.');
-        } else {
-          resolve(row || null);
+          return reject('Failed to check active job.');
         }
+        return resolve(row || null);
       }
     );
+  });
+}
+
+/**
+ * Retrieves the active job for a given user, including pending web submissions.
+ */
+function getActiveJob(userID) {
+  return new Promise((resolve, reject) => {
+    getAssignedJob(userID)
+      .then((assignedJob) => {
+        if (assignedJob) {
+          return resolve(assignedJob);
+        }
+
+        db.get(
+          `SELECT js.jobID, COALESCE(j.description, js.title) AS description
+           FROM job_submissions js
+           LEFT JOIN joblist j ON j.jobID = js.jobID
+           WHERE js.userID = ? AND js.status = 'pending'
+           ORDER BY js.created_at DESC
+           LIMIT 1`,
+          [userID],
+          (pendingErr, pendingRow) => {
+            if (pendingErr) {
+              return reject('Failed to check pending job submission.');
+            }
+            resolve(pendingRow || null);
+          }
+        );
+      })
+      .catch(reject);
   });
 }
 
@@ -910,25 +940,44 @@ function completeJob(userID, reward) {
           if (err) {
             return reject('Database error while checking job assignment');
           }
-          if (!row) {
-            return resolve({ success: false, message: 'No active job found.' });
-          }
-          const jobID = row.jobID;
-          db.run(`DELETE FROM job_assignees WHERE userID = ?`, [userID], (err2) => {
-            if (err2) {
-              return reject('Failed to remove job assignment');
-            }
-            db.run(
-              `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
-              [reward, userID],
-              (err3) => {
-                if (err3) {
-                  return reject('Failed to add reward');
-                }
-                resolve({ success: true });
+          const finishJob = () => {
+            db.run(`DELETE FROM job_assignees WHERE userID = ?`, [userID], (err2) => {
+              if (err2) {
+                return reject('Failed to remove job assignment');
               }
-            );
-          });
+              db.run(
+                `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
+                [reward, userID],
+                (err3) => {
+                  if (err3) {
+                    return reject('Failed to add reward');
+                  }
+                  resolve({ success: true });
+                }
+              );
+            });
+          };
+
+          if (row) {
+            return finishJob();
+          }
+
+          db.get(
+            `SELECT submission_id FROM job_submissions
+             WHERE userID = ? AND status = 'pending'
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [userID],
+            (pendingErr, pendingSubmission) => {
+              if (pendingErr) {
+                return reject('Database error while checking pending job submission');
+              }
+              if (!pendingSubmission) {
+                return resolve({ success: false, message: 'No active job found.' });
+              }
+              finishJob();
+            }
+          );
         }
       );
     });
@@ -958,6 +1007,99 @@ function markLatestSubmissionCompleted(userID, reward) {
         resolve({ updated: this.changes || 0 });
       }
     );
+  });
+}
+
+/**
+ * Retrieves all pending quest submissions for a user.
+ */
+function getPendingJobSubmissions(userID) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT js.submission_id, js.userID, js.jobID, COALESCE(j.description, js.title) AS title,
+              js.description, js.image_url, js.created_at
+       FROM job_submissions js
+       LEFT JOIN joblist j ON j.jobID = js.jobID
+       WHERE js.userID = ? AND js.status = 'pending'
+       ORDER BY js.created_at ASC, js.submission_id ASC`,
+      [userID],
+      (err, rows) => {
+        if (err) {
+          return reject('Failed to retrieve pending job submissions.');
+        }
+        resolve(rows || []);
+      }
+    );
+  });
+}
+
+/**
+ * Marks a set of pending submissions complete and applies the same reward to each one.
+ */
+function completePendingJobSubmissions(userID, submissionIDs, rewardPerSubmission) {
+  return new Promise((resolve, reject) => {
+    const ids = [...new Set((submissionIDs || []).map((id) => Number(id)).filter(Number.isInteger))];
+    const rewardAmount = Number(rewardPerSubmission);
+
+    if (!userID || !ids.length) {
+      return resolve({ success: false, completedCount: 0, totalReward: 0 });
+    }
+    if (!Number.isFinite(rewardAmount) || rewardAmount < 0) {
+      return reject(new Error('Invalid reward amount.'));
+    }
+
+    const placeholders = ids.map(() => '?').join(', ');
+    const completedAt = Math.floor(Date.now() / 1000);
+
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+
+      db.run(
+        `UPDATE job_submissions
+         SET status = 'completed',
+             reward_amount = ?,
+             completed_at = ?
+         WHERE userID = ?
+           AND status = 'pending'
+           AND submission_id IN (${placeholders})`,
+        [rewardAmount, completedAt, userID, ...ids],
+        function (updateErr) {
+          if (updateErr) {
+            return db.run('ROLLBACK', () => reject('Failed to update pending submissions.'));
+          }
+
+          const completedCount = this.changes || 0;
+          if (!completedCount) {
+            return db.run('ROLLBACK', () => resolve({ success: false, completedCount: 0, totalReward: 0 }));
+          }
+
+          db.run(
+            `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
+            [rewardAmount * completedCount, userID],
+            function (walletErr) {
+              if (walletErr) {
+                return db.run('ROLLBACK', () => reject('Failed to add reward'));
+              }
+              if (this.changes === 0) {
+                return db.run('ROLLBACK', () => reject('User not found in economy table.'));
+              }
+
+              db.run('COMMIT', (commitErr) => {
+                if (commitErr) {
+                  return reject('Failed to commit submission completion.');
+                }
+                resolve({
+                  success: true,
+                  completedCount,
+                  rewardPerSubmission: rewardAmount,
+                  totalReward: rewardAmount * completedCount,
+                });
+              });
+            }
+          );
+        }
+      );
+    });
   });
 }
 
@@ -2989,12 +3131,15 @@ module.exports = {
   applyRafflePurchaseBonus,
 
   // Jobs
+  getAssignedJob,
   getActiveJob,
   getUserJob,
   addJob,
   getJobList,
   completeJob,
   markLatestSubmissionCompleted,
+  getPendingJobSubmissions,
+  completePendingJobSubmissions,
   renumberJobs,
   getCurrentJobIndex,
   setCurrentJobIndex,

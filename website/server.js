@@ -1057,22 +1057,15 @@ app.post('/api/admin/submissions/:submissionId/complete', authenticateToken, req
       return res.status(400).json({ message: 'Submission already processed.' });
     }
 
-    await dbRun(
-      `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
-      [rewardAmount, submission.userID]
+    const completionResult = await dbHelpers.completePendingJobSubmissions(
+      submission.userID,
+      [submission.submission_id],
+      rewardAmount
     );
 
-    await dbRun(
-      `UPDATE job_submissions
-       SET status = 'completed', reward_amount = ?, completed_at = strftime('%s', 'now')
-       WHERE submission_id = ?`,
-      [rewardAmount, submissionId]
-    );
-
-    await dbRun(
-      `DELETE FROM job_assignees WHERE userID = ?`,
-      [submission.userID]
-    );
+    if (!completionResult.success) {
+      return res.status(400).json({ message: 'Submission already processed.' });
+    }
 
     try {
       const channelId = QUEST_SUBMISSION_CHANNEL_ID;
@@ -2450,7 +2443,7 @@ app.post('/api/giveaways/enter', authenticateToken, async (req, res) => {
 
 const {
   assignJobById,
-  getActiveJob,
+  getAssignedJob,
   getActiveRaffles,
   getShopItemByName,
   getAnyShopItemByName,
@@ -2478,7 +2471,7 @@ app.post('/api/assign-job', authenticateToken, async (req, res) => {
   }
 
   try {
-    const activeJob = await getActiveJob(userID);
+    const activeJob = await getAssignedJob(userID);
     if (activeJob) {
       console.warn(`[WARN] User ${userID} already has job ${activeJob.jobID}`);
       return res.status(400).json({ error: 'You already have an assigned quest.' });
