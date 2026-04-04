@@ -28,6 +28,7 @@ function initializeDatabase() {
         profile_about_me TEXT,
         profile_specialties TEXT,
         profile_location TEXT,
+        last_dao_call_reward_at INTEGER,
         wallet INTEGER DEFAULT 0,
         bank INTEGER DEFAULT 0
       )
@@ -46,6 +47,7 @@ function initializeDatabase() {
         const hasProfileAboutMe = columns.some(col => col.name === "profile_about_me");
         const hasProfileSpecialties = columns.some(col => col.name === "profile_specialties");
         const hasProfileLocation = columns.some(col => col.name === "profile_location");
+        const hasLastDaoCallRewardAt = columns.some(col => col.name === "last_dao_call_reward_at");
 
         if (!hasUsername) {
           db.all("PRAGMA table_info(economy)", (err, columns) => {
@@ -97,6 +99,14 @@ function initializeDatabase() {
           db.run("ALTER TABLE economy ADD COLUMN profile_location TEXT", (alterErr) => {
             if (alterErr) console.error("❌ Error adding 'profile_location' column:", alterErr);
             else console.log("✅ 'profile_location' column added successfully.");
+          });
+        }
+
+        if (!hasLastDaoCallRewardAt) {
+          console.log("➕ Adding missing 'last_dao_call_reward_at' column...");
+          db.run("ALTER TABLE economy ADD COLUMN last_dao_call_reward_at INTEGER", (alterErr) => {
+            if (alterErr) console.error("❌ Error adding 'last_dao_call_reward_at' column:", alterErr);
+            else console.log("✅ 'last_dao_call_reward_at' column added successfully.");
           });
         }
       }
@@ -523,6 +533,20 @@ async function updateWallet(userID, amount) {
       function (err) {
         if (err) return reject('Failed to update wallet balance.');
         else resolve({ changes: this.changes });
+      }
+    );
+  });
+}
+
+async function updateDaoCallRewardTimestamp(userID, rewardTimestamp = Math.floor(Date.now() / 1000)) {
+  await initUserEconomy(userID);
+  return new Promise((resolve, reject) => {
+    db.run(
+      `UPDATE economy SET last_dao_call_reward_at = ? WHERE userID = ?`,
+      [rewardTimestamp, userID],
+      function (err) {
+        if (err) return reject('Failed to update DAO call reward timestamp.');
+        resolve({ changes: this.changes });
       }
     );
   });
@@ -3152,6 +3176,7 @@ module.exports = {
   initUserEconomy,
   getBalances,
   updateWallet,
+  updateDaoCallRewardTimestamp,
   transferFromWallet,
   robUser,
   withdraw,

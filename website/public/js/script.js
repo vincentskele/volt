@@ -4794,10 +4794,145 @@ function updateCountdown() {
                               `${seconds.toString().padStart(2, '0')}`;
 }
 
+const dailyQuestDefinitions = [
+  {
+    key: 'firstMessage',
+    label: '🎁 User\'s first message of the day receives a bonus of 8 Volts.',
+    goal: 1,
+  },
+  {
+    key: 'roboChatMessages',
+    label: '💬 Send up to 16 messages in <a href="https://discord.com/channels/1014872741846974514/1015078531526574141" target="_blank" rel="noopener noreferrer">#robo-chat</a> to get charged up 1 Volt per message.',
+    goal: 16,
+  },
+  {
+    key: 'announcementReaction',
+    label: '🤖 React to a new message in <a href="https://discord.com/channels/1014872741846974514/1015076041934520330" target="_blank" rel="noopener noreferrer">#announcements</a> once per day to receive 8 Volts.',
+    goal: 1,
+  },
+  {
+    key: 'rpsWins',
+    label: '🪨 Use <code>/rps</code> to play rock paper scissors. First 3 wins of the day get a bonus 8 Volts.',
+    goal: 3,
+  },
+];
+
+const otherAutoQuestDefinitions = [
+  {
+    key: 'weeklyDaoCallLastReceivedAt',
+    label: '🎙️ Join the weekly DAO call for at least 15 minutes to earn 40 Volts.',
+    type: 'last-received',
+  },
+  {
+    key: 'raffleBonus10Received',
+    label: '🎟️ Buy 10 Raffle tickets get 1 free.',
+    type: 'checkbox',
+  },
+  {
+    key: 'raffleBonus25Received',
+    label: '🎟️ Buy 25 Raffle tickets get 2 free.',
+    type: 'checkbox',
+  },
+  {
+    key: 'raffleBonus50Received',
+    label: '🎟️ Buy 50 Raffle tickets get 3 free.',
+    type: 'checkbox',
+  },
+];
+
+function renderDailyQuestProgress(progress = {}) {
+  const dailyTasksList = document.getElementById('dailyTasksList');
+  if (!dailyTasksList) return;
+
+  dailyTasksList.innerHTML = dailyQuestDefinitions.map((quest) => {
+    const current = Math.max(0, Number(progress?.[quest.key]?.current || 0));
+    const goal = Math.max(1, Number(progress?.[quest.key]?.goal || quest.goal));
+    const completed = current >= goal;
+    const statusLabel = goal === 1
+      ? (completed ? '1 / 1' : '0 / 1')
+      : `${Math.min(current, goal)} / ${goal}`;
+
+    return `
+      <li class="daily-quest-progress-row ${completed ? 'is-complete' : ''}">
+        <label class="daily-quest-progress-main">
+          <input type="checkbox" class="daily-quest-progress-check" ${completed ? 'checked' : ''} disabled />
+          <span class="daily-quest-progress-text">${quest.label}</span>
+        </label>
+        <span class="daily-quest-progress-count">${statusLabel}</span>
+      </li>
+    `;
+  }).join('');
+}
+
+function formatQuestRewardDate(timestampSeconds) {
+  const timestamp = Number(timestampSeconds || 0);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return 'Never';
+
+  return new Date(timestamp * 1000).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function renderOtherAutoQuestProgress(otherProgress = {}) {
+  const autoTasksList = document.getElementById('autoTasksList');
+  if (!autoTasksList) return;
+
+  autoTasksList.innerHTML = otherAutoQuestDefinitions.map((quest) => {
+    if (quest.type === 'last-received') {
+      const lastReceived = formatQuestRewardDate(otherProgress?.[quest.key]);
+      return `
+        <li class="daily-quest-progress-row">
+          <div class="daily-quest-progress-main">
+            <span class="daily-quest-progress-text">${quest.label}</span>
+          </div>
+          <span class="other-quest-last-received">Last received: ${lastReceived}</span>
+        </li>
+      `;
+    }
+
+    const completed = Boolean(otherProgress?.[quest.key]);
+    return `
+      <li class="daily-quest-progress-row ${completed ? 'is-complete' : ''}">
+        <label class="daily-quest-progress-main">
+          <input type="checkbox" class="daily-quest-progress-check" ${completed ? 'checked' : ''} disabled />
+          <span class="daily-quest-progress-text">${quest.label}</span>
+        </label>
+      </li>
+    `;
+  }).join('');
+}
+
+async function loadDailyQuestProgress() {
+  renderDailyQuestProgress({});
+  renderOtherAutoQuestProgress({});
+
+  const token = localStorage.getItem('token');
+  if (!token) return;
+
+  try {
+    const response = await fetch('/api/auto-quests/progress', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const progress = await response.json();
+    if (!response.ok) {
+      throw new Error(progress.message || 'Failed to load quest progress.');
+    }
+    renderDailyQuestProgress(progress);
+    renderOtherAutoQuestProgress(progress?.otherAutoQuests || {});
+  } catch (error) {
+    console.error('Error loading auto quest progress:', error);
+  }
+}
+
 // Starts (or restarts) the countdown timer.
 let countdownInterval;
 function startCountdownTimer() {
   updateCountdown();
+  loadDailyQuestProgress();
   if (countdownInterval) clearInterval(countdownInterval);
   countdownInterval = setInterval(updateCountdown, 1000);
 }

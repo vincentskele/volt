@@ -2296,6 +2296,87 @@ app.get('/api/volt-balance', authenticateToken, async (req, res) => {
   }
 });
 
+const USER_MESSAGE_COUNTS_PATH = path.join(__dirname, '..', 'userMessageCounts.json');
+const RPS_WIN_TRACKER_PATH = path.join(__dirname, '..', 'rpsWinTracker.json');
+
+function getCurrentESTDateString() {
+  const now = new Date();
+  const estTime = new Date(now.getTime() - (5 * 60 * 60 * 1000));
+  return estTime.toISOString().split('T')[0];
+}
+
+function readTrackerEntry(filePath, userId) {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const rows = raw ? JSON.parse(raw) : [];
+    const trackerMap = new Map(Array.isArray(rows) ? rows : []);
+    return trackerMap.get(userId) || null;
+  } catch (error) {
+    console.error(`❌ Failed reading tracker file ${filePath}:`, error);
+    return null;
+  }
+}
+
+app.get('/api/auto-quests/progress', authenticateToken, async (req, res) => {
+  try {
+    const userId = String(req.user?.userId || '').trim();
+    if (!userId) {
+      return res.status(400).json({ message: 'No user found for this session.' });
+    }
+
+    const today = getCurrentESTDateString();
+    const messageData = readTrackerEntry(USER_MESSAGE_COUNTS_PATH, userId);
+    const rpsData = readTrackerEntry(RPS_WIN_TRACKER_PATH, userId);
+    const otherQuestData = await dbGet(
+      `SELECT
+         COALESCE(MAX(rtp.bonus_10_given), 0) AS raffleBonus10,
+         COALESCE(MAX(rtp.bonus_25_given), 0) AS raffleBonus25,
+         COALESCE(MAX(rtp.bonus_50_given), 0) AS raffleBonus50,
+         e.last_dao_call_reward_at AS lastDaoCallRewardAt
+       FROM economy e
+       LEFT JOIN raffle_ticket_purchases rtp ON rtp.user_id = e.userID
+       WHERE e.userID = ?
+       GROUP BY e.userID`,
+      [userId]
+    );
+
+    const messageRewardLimit = Number.parseInt(process.env.MESSAGE_REWARD_LIMIT, 10) || 16;
+    const dailyRpsGoal = 3;
+    const messageCount = messageData?.date === today ? Number(messageData.count || 0) : 0;
+    const rpsWins = rpsData?.date === today ? Number(rpsData.wins || 0) : 0;
+
+    return res.json({
+      firstMessage: {
+        current: messageData?.date === today && messageData?.firstMessageBonusGiven ? 1 : 0,
+        goal: 1,
+      },
+      roboChatMessages: {
+        current: Math.max(0, Math.min(messageCount, messageRewardLimit)),
+        goal: messageRewardLimit,
+      },
+      announcementReaction: {
+        current: messageData?.date === today && messageData?.reacted ? 1 : 0,
+        goal: 1,
+      },
+      rpsWins: {
+        current: Math.max(0, Math.min(rpsWins, dailyRpsGoal)),
+        goal: dailyRpsGoal,
+      },
+      otherAutoQuests: {
+        weeklyDaoCallLastReceivedAt: otherQuestData?.lastDaoCallRewardAt || null,
+        raffleBonus10Received: Boolean(otherQuestData?.raffleBonus10),
+        raffleBonus25Received: Boolean(otherQuestData?.raffleBonus25),
+        raffleBonus50Received: Boolean(otherQuestData?.raffleBonus50),
+      },
+      date: today,
+    });
+  } catch (error) {
+    console.error('❌ Error loading auto quest progress:', error);
+    return res.status(500).json({ message: 'Failed to load auto quest progress.' });
+  }
+});
+
 app.put('/api/profile', authenticateToken, async (req, res) => {
   try {
     const userId = req.user?.userId;

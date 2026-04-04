@@ -43,6 +43,7 @@ const {
   getGiveawayEntries,
   deleteGiveaway,
   updateWallet,
+  updateDaoCallRewardTimestamp,
   getActiveRaffles,
   getPrizeShopItemByName,
   addItemToInventory,
@@ -994,7 +995,7 @@ client.on('voiceStateUpdate', (oldState, newState) => {
   }
 });
 
-setInterval(() => {
+setInterval(async () => {
   const now = new Date();
   const { inWindow, windowStart, windowEnd } = getWindowBounds(now);
 
@@ -1039,7 +1040,8 @@ setInterval(() => {
     const totalMinutes = session.totalMinutes + activeMinutes;
 
     if (!session.rewardedThisWindow && totalMinutes >= requiredMinutes) {
-      updateWallet(userId, rewardAmount);
+      await updateWallet(userId, rewardAmount);
+      await updateDaoCallRewardTimestamp(userId);
       session.rewardedThisWindow = true;
       voicePresenceMap.set(userId, session);
 
