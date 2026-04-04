@@ -4060,6 +4060,10 @@ let currentProfileRoutePath = null;
 let currentInventoryRoutePath = null;
 let solarianMosaicImageObserver = null;
 const solarianImageLoadCache = new Map();
+const solarianImagePreloadQueue = [];
+const solarianImagePreloadQueuedUrls = new Set();
+const SOLARIAN_IMAGE_PRELOAD_CONCURRENCY = 4;
+let solarianImagePreloadActiveCount = 0;
 let currentProfileDetails = {
   aboutMe: '',
   specialties: '',
@@ -4136,6 +4140,55 @@ function applySolarianImageSource(imgEl, imageUrl, loadingClassName = null) {
   imgEl.src = imageUrl;
 }
 
+function pumpSolarianImagePreloadQueue() {
+  while (
+    solarianImagePreloadActiveCount < SOLARIAN_IMAGE_PRELOAD_CONCURRENCY &&
+    solarianImagePreloadQueue.length
+  ) {
+    const imageUrl = solarianImagePreloadQueue.shift();
+    if (!imageUrl || solarianImageLoadCache.get(imageUrl)) {
+      solarianImagePreloadQueuedUrls.delete(imageUrl);
+      continue;
+    }
+
+    solarianImagePreloadActiveCount += 1;
+    const preloadImage = new Image();
+
+    const finishPreload = () => {
+      solarianImagePreloadActiveCount = Math.max(0, solarianImagePreloadActiveCount - 1);
+      solarianImagePreloadQueuedUrls.delete(imageUrl);
+      pumpSolarianImagePreloadQueue();
+    };
+
+    preloadImage.addEventListener('load', () => {
+      solarianImageLoadCache.set(imageUrl, true);
+      finishPreload();
+    }, { once: true });
+    preloadImage.addEventListener('error', finishPreload, { once: true });
+    preloadImage.src = imageUrl;
+  }
+}
+
+function queueSolarianImagePreloads(tokens) {
+  if (!Array.isArray(tokens) || !tokens.length) return;
+
+  tokens.forEach((token) => {
+    const imageUrl = token?.metadata?.image;
+    if (
+      !imageUrl ||
+      solarianImageLoadCache.get(imageUrl) ||
+      solarianImagePreloadQueuedUrls.has(imageUrl)
+    ) {
+      return;
+    }
+
+    solarianImagePreloadQueuedUrls.add(imageUrl);
+    solarianImagePreloadQueue.push(imageUrl);
+  });
+
+  pumpSolarianImagePreloadQueue();
+}
+
 function setInventoryHeader(userName, showProfileButton, userId) {
   const title = document.getElementById('inventoryTitle');
   const profileButton = document.getElementById('inventoryProfileButton');
@@ -4182,6 +4235,7 @@ function renderUserHoldings(holder) {
 
   const tokens = Array.isArray(holder?.tokens) ? holder.tokens : [];
   currentUserTokens = tokens;
+  queueSolarianImagePreloads(tokens);
   if (viewButton) {
     viewButton.textContent = `VIEW ALL ${tokens.length} SOLARIAN${tokens.length === 1 ? '' : 'S'}`;
     viewButton.disabled = tokens.length === 0;
