@@ -4059,6 +4059,7 @@ let currentProfileUsername = null;
 let currentProfileRoutePath = null;
 let currentInventoryRoutePath = null;
 let solarianMosaicImageObserver = null;
+const solarianImageLoadCache = new Map();
 let currentProfileDetails = {
   aboutMe: '',
   specialties: '',
@@ -4104,6 +4105,36 @@ const PROFILE_COUNTRY_COORDS = {
   Australia: { lat: -25.3, lng: 133.8 },
   'New Zealand': { lat: -40.9, lng: 174.9 },
 };
+
+function applySolarianImageSource(imgEl, imageUrl, loadingClassName = null) {
+  if (!imgEl || !imageUrl) return;
+
+  const markLoaded = () => {
+    solarianImageLoadCache.set(imageUrl, true);
+    if (loadingClassName) {
+      imgEl.classList.remove(loadingClassName, 'is-error');
+    }
+  };
+
+  if (solarianImageLoadCache.get(imageUrl)) {
+    imgEl.src = imageUrl;
+    markLoaded();
+    return;
+  }
+
+  if (loadingClassName) {
+    imgEl.classList.add(loadingClassName);
+  }
+
+  imgEl.addEventListener('load', markLoaded, { once: true });
+  imgEl.addEventListener('error', () => {
+    if (loadingClassName) {
+      imgEl.classList.remove(loadingClassName);
+      imgEl.classList.add('is-error');
+    }
+  }, { once: true });
+  imgEl.src = imageUrl;
+}
 
 function setInventoryHeader(userName, showProfileButton, userId) {
   const title = document.getElementById('inventoryTitle');
@@ -4215,7 +4246,7 @@ function renderUserHoldings(holder) {
       image.className = 'holding-image';
       image.alt = 'Solarian';
       if (token?.metadata?.image) {
-        image.src = token.metadata.image;
+        applySolarianImageSource(image, token.metadata.image);
       }
       if (token?.mint) {
         image.style.cursor = 'pointer';
@@ -4320,7 +4351,7 @@ function renderSolarianMosaic(tokens) {
     const sourceUrl = img.dataset.src;
     if (!sourceUrl || img.dataset.loaded === '1') return;
     img.dataset.loaded = '1';
-    img.src = sourceUrl;
+    applySolarianImageSource(img, sourceUrl, 'is-loading');
   };
 
   if ('IntersectionObserver' in window) {
@@ -4343,18 +4374,12 @@ function renderSolarianMosaic(tokens) {
     img.alt = 'Solarian';
     img.loading = 'lazy';
     img.decoding = 'async';
-    img.className = 'solarian-mosaic-image is-loading';
-    img.addEventListener('load', () => {
-      img.classList.remove('is-loading', 'is-error');
-    });
-    img.addEventListener('error', () => {
-      img.classList.remove('is-loading');
-      img.classList.add('is-error');
-      img.removeAttribute('src');
-      img.alt = 'Image failed to load';
-    });
+    img.className = 'solarian-mosaic-image';
 
-    if (solarianMosaicImageObserver) {
+    if (solarianImageLoadCache.get(token.metadata.image)) {
+      loadMosaicImage(img);
+    } else if (solarianMosaicImageObserver) {
+      img.classList.add('is-loading');
       solarianMosaicImageObserver.observe(img);
     } else {
       loadMosaicImage(img);
