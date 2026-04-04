@@ -480,23 +480,15 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
        WHERE username IS NOT NULL AND username != ''
        ORDER BY LOWER(username) ASC`
     );
-    const users = await Promise.all(
-      (rows || []).map(async (row) => {
-        let userTag = null;
-        try {
-          userTag = await resolveUsername(row.userID);
-        } catch (tagErr) {
-          console.error(`Failed to resolve user tag for ${row.userID}:`, tagErr);
-        }
-        const holderInfo = holderMap.get(String(row.userID)) || {};
-        return {
-          ...row,
-          userTag,
-          walletAddress: holderInfo.walletAddress || null,
-          twitterHandle: holderInfo.twitterHandle || null,
-        };
-      })
-    );
+    const users = (rows || []).map((row) => {
+      const holderInfo = holderMap.get(String(row.userID)) || {};
+      return {
+        ...row,
+        userTag: row.username,
+        walletAddress: holderInfo.walletAddress || null,
+        twitterHandle: holderInfo.twitterHandle || null,
+      };
+    });
     return res.json(users);
   } catch (err) {
     console.error('Error in /api/admin/users:', err);
