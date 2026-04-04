@@ -2871,7 +2871,9 @@ function startAdminPolling() {
 let chatPollingIntervalId = null;
 let chatPresenceIntervalId = null;
 let chatLoading = false;
-async function loadChatMessages() {
+const CHAT_AUTO_SCROLL_THRESHOLD = 24;
+
+async function loadChatMessages({ forceScrollToBottom = false } = {}) {
   const token = localStorage.getItem('token');
   const chatMessages = document.getElementById('chatMessages');
   if (!token || !chatMessages) return;
@@ -2879,6 +2881,11 @@ async function loadChatMessages() {
   try {
     if (chatLoading) return;
     chatLoading = true;
+    const distanceFromBottom =
+      chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
+    const shouldStickToBottom =
+      forceScrollToBottom || distanceFromBottom <= CHAT_AUTO_SCROLL_THRESHOLD;
+
     const response = await fetch('/api/chat/messages', {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -2910,7 +2917,9 @@ async function loadChatMessages() {
       chatMessages.appendChild(row);
     });
 
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    if (shouldStickToBottom) {
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
   } catch (error) {
     console.error('❌ Failed to load chat messages:', error);
   } finally {
@@ -2943,7 +2952,7 @@ async function sendChatMessage() {
     }
 
     chatInput.value = '';
-    loadChatMessages();
+    loadChatMessages({ forceScrollToBottom: true });
   } catch (error) {
     console.error('❌ Failed to send chat message:', error);
     showConfirmationPopup('❌ Failed to send message.');
@@ -3383,7 +3392,7 @@ async function syncSectionFromHash() {
     fetchVoltBalance();
     fetchQuestStatus();
   } else if (sectionId === 'chatSection') {
-    loadChatMessages();
+    loadChatMessages({ forceScrollToBottom: true });
     startChatPolling();
     pingChatPresence();
     loadChatPresence();
