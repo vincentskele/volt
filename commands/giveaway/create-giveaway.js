@@ -4,10 +4,10 @@ const fs = require('fs');
 const {
   saveGiveaway,
   updateWallet,
+  getPrizeShopItemByName,
   getShopItems,
   addItemToInventory,
   getGiveawayEntries,
-  getAnyShopItemByName,
 } = require('../../db'); 
 require('dotenv').config();
 
@@ -65,7 +65,7 @@ module.exports = {
 
     // Validate prize if it's not a number (must be a valid shop item)
     if (isNaN(prizeInput)) {
-      const shopItem = await getAnyShopItemByName(prizeInput);
+      const shopItem = await getPrizeShopItemByName(prizeInput);
       if (!shopItem) {
         return interaction.reply({
           content: `🚫 Invalid prize. "${prizeInput}" is not a valid shop item.`,
@@ -162,8 +162,7 @@ module.exports = {
               console.log(`[SUCCESS] Awarded ${prizeAmount}${POINTS_SYMBOL} to ${winnerId}`);
             }
           } else {
-            const shopItems = await getShopItems();
-            const shopItem = shopItems.find(item => item.name.toLowerCase() === prizeInput.toLowerCase());
+            const shopItem = await getPrizeShopItemByName(prizeInput);
             if (!shopItem || !shopItem.itemID) {
               console.error(`[ERROR] Shop item "${prizeInput}" not found or missing itemID.`);
               await interaction.channel.send(`Error: Shop item "**${prizeInput}**" not found. Prize distribution failed.`);

@@ -1311,26 +1311,52 @@ function getAllShopItems() {
 
 function getShopItemByName(name) {
   return new Promise((resolve, reject) => {
-    db.get(`SELECT * FROM items WHERE name = ? AND isAvailable = 1`, [name], (err, row) => {
+    db.get(
+      `SELECT * FROM items WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) AND isAvailable = 1`,
+      [name],
+      (err, row) => {
       if (err) {
         console.error(`Error looking up item "${name}":`, err);
         return reject('🚫 Unable to retrieve item information. Please try again.');
       }
       // Resolve with null if not found — callers must check for null
       resolve(row || null);
-    });
+      }
+    );
+  });
+}
+
+function getPrizeShopItemByName(name) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT * FROM items
+       WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))
+         AND (isAvailable = 1 OR COALESCE(isHidden, 0) = 1)`,
+      [name],
+      (err, row) => {
+        if (err) {
+          console.error(`Error looking up prize item "${name}":`, err);
+          return reject('🚫 Unable to retrieve prize item information. Please try again.');
+        }
+        resolve(row || null);
+      }
+    );
   });
 }
 
 function getAnyShopItemByName(name) {
   return new Promise((resolve, reject) => {
-    db.get(`SELECT * FROM items WHERE name = ?`, [name], (err, row) => {
+    db.get(
+      `SELECT * FROM items WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))`,
+      [name],
+      (err, row) => {
       if (err) {
         console.error(`Error looking up item "${name}":`, err);
         return reject('🚫 Unable to retrieve item information. Please try again.');
       }
       resolve(row || null);
-    });
+      }
+    );
   });
 }
 
@@ -2557,7 +2583,7 @@ async function concludeRaffle(raffle) {
         console.log(`💰 User ${ticket.user_id} won ${prizeAmount} coins`);
       }
     } else {
-      const shopItem = await db.getShopItemByName(raffle.prize);
+      const shopItem = await db.getPrizeShopItemByName(raffle.prize);
       if (!shopItem) {
         console.error(`⚠️ Shop item "${raffle.prize}" not found.`);
       } else {
@@ -3106,6 +3132,7 @@ module.exports = {
   getShopItems,
   getAllShopItems,
   getShopItemByName,
+  getPrizeShopItemByName,
   getAnyShopItemByName,
   addShopItem,
   removeShopItem,

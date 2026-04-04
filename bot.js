@@ -44,7 +44,7 @@ const {
   deleteGiveaway,
   updateWallet,
   getActiveRaffles,
-  getShopItemByName,
+  getPrizeShopItemByName,
   addItemToInventory,
   getGiveawayByMessageId,
   addGiveawayEntry,
@@ -387,7 +387,7 @@ async function concludeGiveaway(giveaway) {
         }
         await updateWallet(winnerId, prizeAmount);
       } else {
-        const shopItem = await getShopItemByName(giveaway.prize);
+        const shopItem = await getPrizeShopItemByName(giveaway.prize);
         if (!shopItem || !shopItem.itemID) {
           console.error(`❌ Shop item "${giveaway.prize}" not found or missing itemID.`);
           if (channel) {
