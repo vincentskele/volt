@@ -1246,6 +1246,74 @@ code {
   margin-top: 4px;
 }
 
+.user-profile-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.user-profile-detail-card {
+  padding: 14px;
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  background: var(--bg-dark);
+  box-shadow: 1px 1px 0 var(--black);
+}
+
+.user-profile-detail-label {
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+}
+
+.user-profile-detail-value {
+  color: var(--text-primary);
+  font-size: 0.7rem;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.edit-profile-modal-box {
+  width: min(520px, 92vw);
+  max-width: min(520px, 92vw);
+  text-align: left;
+}
+
+.edit-profile-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.edit-profile-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text-secondary);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+}
+
+.edit-profile-control {
+  width: 100%;
+  padding: 10px;
+  background: var(--bg-dark);
+  border: 2px solid var(--accent);
+  color: var(--text-primary);
+  font-family: 'Press Start 2P', sans-serif;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  text-transform: none;
+  box-shadow: 1px 1px 0 var(--black);
+}
+
+.edit-profile-textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
 .inventory-header {
   display: flex;
   align-items: center;

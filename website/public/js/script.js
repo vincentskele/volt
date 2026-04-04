@@ -3457,6 +3457,240 @@ function safeText(value, fallback = 'Unknown') {
   return String(value);
 }
 
+async function parseResponsePayload(response) {
+  const responseText = await response.text();
+  if (!responseText) return {};
+
+  try {
+    return JSON.parse(responseText);
+  } catch (error) {
+    return {
+      message: responseText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() ||
+        `Unexpected ${response.status} response from server.`,
+    };
+  }
+}
+
+function getProfileDetailValue(source, keys, fallback = 'Not provided yet.') {
+  for (const key of keys) {
+    const value = source?.[key];
+    if (Array.isArray(value)) {
+      const joinedValue = value
+        .map((entry) => safeText(entry, '').trim())
+        .filter(Boolean)
+        .join(', ');
+      if (joinedValue) return joinedValue;
+      continue;
+    }
+
+    const normalizedValue = safeText(value, '').trim();
+    if (normalizedValue) return normalizedValue;
+  }
+  return fallback;
+}
+
+function renderUserProfileDetails(holder) {
+  const aboutMeEl = document.getElementById('userProfileAboutMe');
+  const specialtiesEl = document.getElementById('userProfileSpecialties');
+  const locationEl = document.getElementById('userProfileLocation');
+  const aboutMe = getProfileDetailValue(
+    holder,
+    ['aboutMe', 'about', 'about_me', 'bio', 'description'],
+    ''
+  );
+  const specialties = getProfileDetailValue(
+    holder,
+    ['specialties', 'specialty', 'skills', 'interests'],
+    ''
+  );
+  const location = getProfileDetailValue(
+    holder,
+    ['location', 'city', 'country', 'region'],
+    ''
+  );
+
+  currentProfileDetails = { aboutMe, specialties, location };
+
+  if (aboutMeEl) {
+    aboutMeEl.textContent = aboutMe || 'Not provided yet.';
+  }
+
+  if (specialtiesEl) {
+    specialtiesEl.textContent = specialties || 'Not provided yet.';
+  }
+
+  if (locationEl) {
+    locationEl.textContent = location || 'Not provided yet.';
+  }
+}
+
+function syncEditProfileButtonVisibility() {
+  const editButton = document.getElementById('editUserProfileButton');
+  if (!editButton) return;
+
+  const localUserId = localStorage.getItem('discordUserID');
+  const canEdit = Boolean(localUserId && currentProfileUserId && currentProfileUserId === localUserId);
+  editButton.style.display = canEdit ? 'inline-flex' : 'none';
+}
+
+function getProfileCountryOptions() {
+  if (profileCountryOptionsCache) return profileCountryOptionsCache;
+
+  const fallbackCountries = [
+    'United States',
+    'Canada',
+    'United Kingdom',
+    'Australia',
+    'Germany',
+    'France',
+    'Spain',
+    'Italy',
+    'Netherlands',
+    'Brazil',
+    'Mexico',
+    'Japan',
+    'South Korea',
+    'India',
+    'Singapore',
+  ];
+
+  try {
+    if (typeof Intl?.supportedValuesOf === 'function' && typeof Intl?.DisplayNames === 'function') {
+      const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
+      const countries = Intl.supportedValuesOf('region')
+        .filter((regionCode) => /^[A-Z]{2}$/.test(regionCode))
+        .map((regionCode) => regionNames.of(regionCode))
+        .filter(Boolean)
+        .sort((left, right) => left.localeCompare(right));
+      if (countries.length) {
+        profileCountryOptionsCache = [...new Set(countries)];
+        return profileCountryOptionsCache;
+      }
+    }
+  } catch (error) {
+    console.warn('Falling back to static country list:', error);
+  }
+
+  profileCountryOptionsCache = fallbackCountries;
+  return profileCountryOptionsCache;
+}
+
+function closeEditProfileModal() {
+  const modal = document.getElementById('editProfileModal');
+  if (modal) modal.remove();
+}
+
+async function submitProfileUpdate(event) {
+  event.preventDefault();
+
+  const token = localStorage.getItem('token');
+  if (!token) {
+    alert('You must be logged in to update your profile.');
+    return;
+  }
+
+  const form = event.currentTarget;
+  const submitButton = document.getElementById('submitProfileUpdateButton');
+  const payload = {
+    aboutMe: form.querySelector('[name="aboutMe"]')?.value || '',
+    specialties: form.querySelector('[name="specialties"]')?.value || '',
+    location: form.querySelector('[name="location"]')?.value || '',
+  };
+
+  if (submitButton) submitButton.disabled = true;
+
+  try {
+    const response = await fetch('/api/profile', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const result = await parseResponsePayload(response);
+
+    if (!response.ok) {
+      throw new Error(result.message || 'Failed to update profile.');
+    }
+
+    renderUserProfileDetails(result.profile || payload);
+    closeEditProfileModal();
+    showConfirmationPopup('✅ Profile updated successfully!');
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    showConfirmationPopup(`❌ ${error.message || 'Failed to update profile.'}`);
+  } finally {
+    if (submitButton) submitButton.disabled = false;
+  }
+}
+
+function openEditProfileModal() {
+  closeEditProfileModal();
+
+  const modalOverlay = document.createElement('div');
+  modalOverlay.className = 'modal-overlay';
+  modalOverlay.id = 'editProfileModal';
+
+  const modalBox = document.createElement('div');
+  modalBox.className = 'modal-box edit-profile-modal-box';
+
+  const countryOptions = getProfileCountryOptions()
+    .map((country) => {
+      const selected = country === currentProfileDetails.location ? 'selected' : '';
+      return `<option value="${escapeHtml(country)}" ${selected}>${escapeHtml(country)}</option>`;
+    })
+    .join('');
+
+  modalBox.innerHTML = `
+    <h2>Edit Profile</h2>
+    <form id="editProfileForm" class="edit-profile-form">
+      <div>
+        <label class="edit-profile-label" for="editProfileAboutMe">About Me</label>
+        <textarea
+          id="editProfileAboutMe"
+          name="aboutMe"
+          class="edit-profile-control edit-profile-textarea"
+          maxlength="500"
+          placeholder="Share a short intro..."
+        >${escapeHtml(currentProfileDetails.aboutMe)}</textarea>
+      </div>
+      <div>
+        <label class="edit-profile-label" for="editProfileSpecialties">Specialties</label>
+        <input
+          id="editProfileSpecialties"
+          name="specialties"
+          class="edit-profile-control"
+          type="text"
+          maxlength="250"
+          value="${escapeHtml(currentProfileDetails.specialties)}"
+          placeholder="Builder, artist, trader..."
+        />
+      </div>
+      <div>
+        <label class="edit-profile-label" for="editProfileLocation">Country</label>
+        <select id="editProfileLocation" name="location" class="edit-profile-control">
+          <option value="">Select Country</option>
+          ${countryOptions}
+        </select>
+      </div>
+      <div class="modal-buttons">
+        <button type="submit" id="submitProfileUpdateButton" class="confirm-button">Save Profile</button>
+        <button type="button" id="cancelProfileEditButton" class="cancel-button">Cancel</button>
+      </div>
+    </form>
+  `;
+
+  modalOverlay.appendChild(modalBox);
+  document.body.appendChild(modalOverlay);
+
+  document.getElementById('cancelProfileEditButton')?.addEventListener('click', closeEditProfileModal);
+  document.getElementById('editProfileForm')?.addEventListener('submit', submitProfileUpdate);
+  modalOverlay.addEventListener('click', (event) => {
+    if (event.target === modalOverlay) closeEditProfileModal();
+  });
+}
+
 async function fetchDiscordUserMeta(userId) {
   if (!userId) return null;
   try {
@@ -3500,6 +3734,12 @@ let currentProfileUserId = null;
 let currentProfileUsername = null;
 let currentProfileRoutePath = null;
 let currentInventoryRoutePath = null;
+let currentProfileDetails = {
+  aboutMe: '',
+  specialties: '',
+  location: '',
+};
+let profileCountryOptionsCache = null;
 
 function setInventoryHeader(userName, showProfileButton, userId) {
   const title = document.getElementById('inventoryTitle');
@@ -3772,6 +4012,8 @@ async function loadUserHoldingsFromUrl(fetchUrl, fallbackUserId = null, routePat
   currentProfileUserId = fallbackUserId || null;
   currentProfileUsername = null;
   currentProfileRoutePath = routePath || (fallbackUserId ? encodeURIComponent(fallbackUserId) : null);
+  renderUserProfileDetails(null);
+  syncEditProfileButtonVisibility();
 
   grid.innerHTML = '<div class="empty-state">Loading holdings...</div>';
 
@@ -3779,6 +4021,7 @@ async function loadUserHoldingsFromUrl(fetchUrl, fallbackUserId = null, routePat
     grid.innerHTML = '<div class="empty-state">No profile identifier found.</div>';
     if (profileTitle) profileTitle.textContent = '👤 User Profile';
     hydrateUserAvatar(null, profileAvatar, profileTag);
+    syncEditProfileButtonVisibility();
     return;
   }
 
@@ -3793,6 +4036,8 @@ async function loadUserHoldingsFromUrl(fetchUrl, fallbackUserId = null, routePat
       grid.innerHTML = '<div class="empty-state">No verified holder profile found.</div>';
       if (profileTitle) profileTitle.textContent = 'User Profile';
       hydrateUserAvatar(fallbackUserId, profileAvatar, profileTag);
+      renderUserProfileDetails(null);
+      syncEditProfileButtonVisibility();
       return;
     }
 
@@ -3815,6 +4060,8 @@ async function loadUserHoldingsFromUrl(fetchUrl, fallbackUserId = null, routePat
       profileTitle.textContent = `${nameLabel}'s Profile`;
     }
     hydrateUserAvatar(resolvedUserId, profileAvatar, profileTag);
+    renderUserProfileDetails(holder);
+    syncEditProfileButtonVisibility();
 
     renderUserHoldings(holder);
   } catch (error) {
@@ -3822,6 +4069,8 @@ async function loadUserHoldingsFromUrl(fetchUrl, fallbackUserId = null, routePat
     grid.innerHTML = '<div class="empty-state">Could not load holdings data.</div>';
     if (profileTitle) profileTitle.textContent = 'User Profile';
     hydrateUserAvatar(fallbackUserId, profileAvatar, profileTag);
+    renderUserProfileDetails(null);
+    syncEditProfileButtonVisibility();
   }
 }
 
@@ -3931,6 +4180,11 @@ if (viewProfileInventoryButton) {
       fetchUserInventory(targetUserId);
     }
   });
+}
+
+const editUserProfileButton = document.getElementById('editUserProfileButton');
+if (editUserProfileButton) {
+  editUserProfileButton.addEventListener('click', openEditProfileModal);
 }
 
 

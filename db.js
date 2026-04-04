@@ -25,6 +25,9 @@ function initializeDatabase() {
         userID TEXT PRIMARY KEY,
         username TEXT UNIQUE,
         password TEXT,
+        profile_about_me TEXT,
+        profile_specialties TEXT,
+        profile_location TEXT,
         wallet INTEGER DEFAULT 0,
         bank INTEGER DEFAULT 0
       )
@@ -40,6 +43,9 @@ function initializeDatabase() {
       } else {
         const hasUsername = columns.some(col => col.name === "username");
         const hasPassword = columns.some(col => col.name === "password");
+        const hasProfileAboutMe = columns.some(col => col.name === "profile_about_me");
+        const hasProfileSpecialties = columns.some(col => col.name === "profile_specialties");
+        const hasProfileLocation = columns.some(col => col.name === "profile_location");
 
         if (!hasUsername) {
           db.all("PRAGMA table_info(economy)", (err, columns) => {
@@ -67,6 +73,30 @@ function initializeDatabase() {
           db.run("ALTER TABLE economy ADD COLUMN password TEXT", (alterErr) => {
             if (alterErr) console.error("❌ Error adding 'password' column:", alterErr);
             else console.log("✅ 'password' column added successfully.");
+          });
+        }
+
+        if (!hasProfileAboutMe) {
+          console.log("➕ Adding missing 'profile_about_me' column...");
+          db.run("ALTER TABLE economy ADD COLUMN profile_about_me TEXT", (alterErr) => {
+            if (alterErr) console.error("❌ Error adding 'profile_about_me' column:", alterErr);
+            else console.log("✅ 'profile_about_me' column added successfully.");
+          });
+        }
+
+        if (!hasProfileSpecialties) {
+          console.log("➕ Adding missing 'profile_specialties' column...");
+          db.run("ALTER TABLE economy ADD COLUMN profile_specialties TEXT", (alterErr) => {
+            if (alterErr) console.error("❌ Error adding 'profile_specialties' column:", alterErr);
+            else console.log("✅ 'profile_specialties' column added successfully.");
+          });
+        }
+
+        if (!hasProfileLocation) {
+          console.log("➕ Adding missing 'profile_location' column...");
+          db.run("ALTER TABLE economy ADD COLUMN profile_location TEXT", (alterErr) => {
+            if (alterErr) console.error("❌ Error adding 'profile_location' column:", alterErr);
+            else console.log("✅ 'profile_location' column added successfully.");
           });
         }
       }

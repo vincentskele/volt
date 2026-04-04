@@ -399,7 +399,49 @@ async function findHolderByUsername(username) {
   );
   if (!userRow?.userID) return null;
 
-  return findHolderByDiscordId(userRow.userID);
+  return findHolderByDiscordId(userRow.userID) || { discordId: userRow.userID, tokens: [] };
+}
+
+async function getEconomyProfileDetails(discordId) {
+  const normalizedDiscordId = String(discordId || '').trim();
+  if (!normalizedDiscordId) return null;
+
+  try {
+    return await dbGet(
+      `SELECT profile_about_me AS aboutMe,
+              profile_specialties AS specialties,
+              profile_location AS location
+       FROM economy
+       WHERE userID = ?`,
+      [normalizedDiscordId]
+    );
+  } catch (error) {
+    console.error(`Error loading profile details for ${normalizedDiscordId}:`, error);
+    return null;
+  }
+}
+
+async function mergeHolderWithProfileDetails(holder, fallbackDiscordId = null) {
+  const discordId = String(holder?.discordId || fallbackDiscordId || '').trim();
+  if (!discordId) return holder || null;
+
+  const profileDetails = await getEconomyProfileDetails(discordId);
+  if (!holder && !profileDetails) return null;
+
+  return {
+    ...(holder || { discordId, tokens: [] }),
+    aboutMe: profileDetails?.aboutMe || holder?.aboutMe || holder?.about || holder?.about_me || holder?.bio || holder?.description || null,
+    specialties: profileDetails?.specialties || holder?.specialties || holder?.specialty || holder?.skills || holder?.interests || null,
+    location: profileDetails?.location || holder?.location || holder?.city || holder?.country || holder?.region || null,
+  };
+}
+
+function normalizeProfileDetailInput(value, maxLength) {
+  const normalizedValue = String(value || '').trim().replace(/\s+/g, ' ');
+  if (normalizedValue.length > maxLength) {
+    throw new Error(`Profile field exceeds ${maxLength} characters.`);
+  }
+  return normalizedValue;
 }
 
 
@@ -1740,29 +1782,29 @@ app.get('/api/resolveChannel/:channelId', async (req, res) => {
  * GET /api/holder/:discordId
  * Return a single holder profile from Robo-Check holders.json.
  */
-app.get('/api/holder/wallet/:walletAddress', (req, res) => {
+app.get('/api/holder/wallet/:walletAddress', async (req, res) => {
   const { walletAddress } = req.params;
-  res.json(findHolderByWalletAddress(walletAddress));
+  res.json(await mergeHolderWithProfileDetails(findHolderByWalletAddress(walletAddress)));
 });
 
-app.get('/api/holder/twitter/:twitterHandle', (req, res) => {
+app.get('/api/holder/twitter/:twitterHandle', async (req, res) => {
   const { twitterHandle } = req.params;
-  res.json(findHolderByTwitterHandle(twitterHandle));
+  res.json(await mergeHolderWithProfileDetails(findHolderByTwitterHandle(twitterHandle)));
 });
 
 app.get('/api/holder/username/:username', async (req, res) => {
   try {
     const { username } = req.params;
-    res.json(await findHolderByUsername(username));
+    res.json(await mergeHolderWithProfileDetails(await findHolderByUsername(username)));
   } catch (error) {
     console.error('Error in /api/holder/username route:', error);
     res.status(500).json({ message: 'Failed to load holder profile.' });
   }
 });
 
-app.get('/api/holder/:discordId', (req, res) => {
+app.get('/api/holder/:discordId', async (req, res) => {
   const { discordId } = req.params;
-  res.json(findHolderByDiscordId(discordId));
+  res.json(await mergeHolderWithProfileDetails(findHolderByDiscordId(discordId), discordId));
 });
 
 /**
@@ -2251,6 +2293,41 @@ app.get('/api/volt-balance', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error("❌ Error fetching Volt balance:", error);
     res.status(500).json({ message: "Internal server error." });
+  }
+});
+
+app.put('/api/profile', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(400).json({ message: 'No user found for this session.' });
+    }
+
+    const aboutMe = normalizeProfileDetailInput(req.body?.aboutMe, 500);
+    const specialties = normalizeProfileDetailInput(req.body?.specialties, 250);
+    const location = normalizeProfileDetailInput(req.body?.location, 100);
+
+    await dbRun(
+      `UPDATE economy
+       SET profile_about_me = ?,
+           profile_specialties = ?,
+           profile_location = ?
+       WHERE userID = ?`,
+      [aboutMe || null, specialties || null, location || null, userId]
+    );
+
+    return res.json({
+      message: 'Profile updated successfully.',
+      profile: {
+        discordId: userId,
+        aboutMe: aboutMe || null,
+        specialties: specialties || null,
+        location: location || null,
+      },
+    });
+  } catch (error) {
+    console.error('❌ Error updating profile:', error);
+    return res.status(400).json({ message: error.message || 'Failed to update profile.' });
   }
 });
 
