@@ -1389,14 +1389,51 @@ async function loadAdminUsers() {
       usersList.innerHTML = '<div class="admin-item">No users found.</div>';
       return;
     }
+
+    usersList.dataset.rawHolderList = buildAdminHolderRawList(users);
+
     users.forEach((user) => {
       const item = document.createElement('div');
-      item.className = 'admin-item';
+      item.className = 'admin-item admin-user-item';
       item.style.cursor = 'pointer';
-      item.textContent = user.userTag || user.username || user.userID;
+
+      const profileName = user.userTag || user.username || user.userID;
+      const twitterText = user.twitterHandle ? `@${user.twitterHandle}` : 'No linked Twitter';
+      const walletText = user.walletAddress || 'No linked wallet';
+
+      item.innerHTML = `
+        <div class="admin-user-row">
+          <div class="admin-user-details">
+            <div class="admin-user-name">${escapeHtml(profileName)}</div>
+            <div class="admin-user-meta"><strong>Twitter:</strong> ${escapeHtml(twitterText)}</div>
+            <div class="admin-user-wallet"><strong>Wallet:</strong> <span class="wallet-address-preserve-case">${escapeHtml(walletText)}</span></div>
+          </div>
+          <div class="admin-user-actions"></div>
+        </div>
+      `;
+
+      const actions = item.querySelector('.admin-user-actions');
+      if (actions && user.walletAddress) {
+        const copyButton = document.createElement('button');
+        copyButton.type = 'button';
+        copyButton.className = 'admin-copy-wallet-button';
+        copyButton.textContent = 'Copy Wallet';
+        copyButton.addEventListener('click', async (event) => {
+          event.stopPropagation();
+          try {
+            await navigator.clipboard.writeText(user.walletAddress);
+            showConfirmationPopup(`✅ Copied wallet for ${profileName}`);
+          } catch (error) {
+            console.error('❌ Failed to copy wallet address:', error);
+            showConfirmationPopup('❌ Failed to copy wallet address.');
+          }
+        });
+        actions.appendChild(copyButton);
+      }
+
       item.addEventListener('click', () => {
         currentProfileUserId = user.userID;
-        currentProfileUsername = user.userTag || user.username || user.userID;
+        currentProfileUsername = profileName;
         fetchUserInventory(user.userID);
         showSection('inventorySection');
       });
@@ -1406,6 +1443,74 @@ async function loadAdminUsers() {
     console.error('❌ Failed to load users:', error);
     usersList.innerHTML = '<div class="admin-item">Failed to load users.</div>';
   }
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[char]));
+}
+
+function buildAdminHolderRawList(users) {
+  const lines = ['holder_name\twallet_address\ttwitter_account'];
+  (users || [])
+    .filter((user) => user?.walletAddress)
+    .forEach((user) => {
+      const holderName = user.userTag || user.username || user.twitterHandle || user.userID || 'Unknown';
+      const twitterAccount = user.twitterHandle ? `@${user.twitterHandle}` : '';
+      lines.push(`${holderName}\t${user.walletAddress}\t${twitterAccount}`);
+    });
+  return lines.join('\n');
+}
+
+function showAdminHolderRawModal(rawText) {
+  const existing = document.getElementById('adminHolderRawModal');
+  if (existing) existing.remove();
+
+  const modalOverlay = document.createElement('div');
+  modalOverlay.className = 'modal-overlay';
+  modalOverlay.id = 'adminHolderRawModal';
+
+  const modalBox = document.createElement('div');
+  modalBox.className = 'modal-box admin-holder-raw-modal';
+  modalBox.innerHTML = `
+    <h2>Raw Holder List</h2>
+    <textarea id="adminHolderRawText" class="admin-holder-raw-text" readonly></textarea>
+    <div class="modal-buttons">
+      <button class="confirm-button" id="adminHolderRawCopy">Copy Text</button>
+      <button class="cancel-button" id="adminHolderRawClose">Close</button>
+    </div>
+  `;
+
+  modalOverlay.appendChild(modalBox);
+  document.body.appendChild(modalOverlay);
+
+  const textArea = document.getElementById('adminHolderRawText');
+  if (textArea) textArea.value = rawText || 'holder_name\twallet_address\ttwitter_account';
+
+  document.getElementById('adminHolderRawClose').addEventListener('click', () => modalOverlay.remove());
+  document.getElementById('adminHolderRawCopy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(textArea?.value || '');
+      showConfirmationPopup('✅ Copied raw holder list.');
+    } catch (error) {
+      console.error('❌ Failed to copy raw holder list:', error);
+      showConfirmationPopup('❌ Failed to copy raw holder list.');
+    }
+  });
+}
+
+const adminShowHolderRawButton = document.getElementById('adminShowHolderRaw');
+if (adminShowHolderRawButton) {
+  adminShowHolderRawButton.addEventListener('click', () => {
+    const usersList = document.getElementById('adminUserList');
+    const rawText = usersList?.dataset?.rawHolderList || 'holder_name\twallet_address\ttwitter_account';
+    showAdminHolderRawModal(rawText);
+  });
 }
 
 function buildEditModal(title, fields, onSubmit) {

@@ -266,6 +266,19 @@ function readRoboCheckHolders() {
   }
 }
 
+function buildRoboCheckHolderMap() {
+  const holderMap = new Map();
+  readRoboCheckHolders().forEach((holder) => {
+    const discordId = String(holder?.discordId || '').trim();
+    if (!discordId) return;
+    holderMap.set(discordId, {
+      walletAddress: holder?.walletAddress || null,
+      twitterHandle: holder?.twitterHandle || null,
+    });
+  });
+  return holderMap;
+}
+
 
 
 /**
@@ -460,6 +473,7 @@ app.get('/api/admin/redemptions', authenticateToken, requireAdmin, async (req, r
  */
 app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    const holderMap = buildRoboCheckHolderMap();
     const rows = await dbAll(
       `SELECT userID, username
        FROM economy
@@ -474,7 +488,13 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
         } catch (tagErr) {
           console.error(`Failed to resolve user tag for ${row.userID}:`, tagErr);
         }
-        return { ...row, userTag };
+        const holderInfo = holderMap.get(String(row.userID)) || {};
+        return {
+          ...row,
+          userTag,
+          walletAddress: holderInfo.walletAddress || null,
+          twitterHandle: holderInfo.twitterHandle || null,
+        };
       })
     );
     return res.json(users);

@@ -658,6 +658,76 @@ code {
   font-size: 0.6rem;
 }
 
+.admin-user-item {
+  cursor: pointer;
+}
+
+.admin-user-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+
+.admin-user-details {
+  min-width: 0;
+  text-align: left;
+}
+
+.admin-user-name {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.admin-user-meta,
+.admin-user-wallet {
+  color: var(--text-secondary);
+  font-size: 0.62rem;
+  line-height: 1.35;
+  word-break: break-all;
+}
+
+.admin-user-actions {
+  flex-shrink: 0;
+}
+
+.admin-copy-wallet-button {
+  border: none;
+  border-radius: 5px;
+  background-color: var(--accent);
+  color: var(--btn-text);
+  font-family: 'Press Start 2P', sans-serif;
+  font-size: 0.5rem;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.admin-copy-wallet-button:hover {
+  background-color: var(--accent-hover);
+}
+
+.admin-holder-raw-modal {
+  max-width: 780px;
+  width: min(90vw, 780px);
+}
+
+.admin-holder-raw-text {
+  width: 100%;
+  min-height: 340px;
+  margin: 10px 0 0;
+  padding: 10px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--bg-content);
+  color: var(--text-primary);
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.7rem;
+  resize: vertical;
+  white-space: pre;
+  overflow: auto;
+}
+
 /* --------------------------------------------------
    CHAT
 -------------------------------------------------- */
