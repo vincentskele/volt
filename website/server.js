@@ -1730,7 +1730,7 @@ app.get('/api/jobs', async (req, res) => {
  * GET /api/resolveUser/:userId
  * Resolve a user ID to a username.
  */
-app.get('/api/resolveUser/:userId', async (req, res) => {
+app.get('/api/resolveUser/:userId', authenticateToken, async (req, res) => {
   const { userId } = req.params;
   try {
     const username = await resolveUsername(userId); // Your database or API logic here
@@ -1745,7 +1745,7 @@ app.get('/api/resolveUser/:userId', async (req, res) => {
  * GET /api/discord-user/:userId
  * Return Discord profile info, including avatar URL.
  */
-app.get('/api/discord-user/:userId', async (req, res) => {
+app.get('/api/discord-user/:userId', authenticateToken, async (req, res) => {
   const { userId } = req.params;
   if (!userId) {
     return res.status(400).json({ message: 'User ID is required.' });
@@ -1782,17 +1782,17 @@ app.get('/api/resolveChannel/:channelId', async (req, res) => {
  * GET /api/holder/:discordId
  * Return a single holder profile from Robo-Check holders.json.
  */
-app.get('/api/holder/wallet/:walletAddress', async (req, res) => {
+app.get('/api/holder/wallet/:walletAddress', authenticateToken, async (req, res) => {
   const { walletAddress } = req.params;
   res.json(await mergeHolderWithProfileDetails(findHolderByWalletAddress(walletAddress)));
 });
 
-app.get('/api/holder/twitter/:twitterHandle', async (req, res) => {
+app.get('/api/holder/twitter/:twitterHandle', authenticateToken, async (req, res) => {
   const { twitterHandle } = req.params;
   res.json(await mergeHolderWithProfileDetails(findHolderByTwitterHandle(twitterHandle)));
 });
 
-app.get('/api/holder/username/:username', async (req, res) => {
+app.get('/api/holder/username/:username', authenticateToken, async (req, res) => {
   try {
     const { username } = req.params;
     res.json(await mergeHolderWithProfileDetails(await findHolderByUsername(username)));
@@ -1802,7 +1802,7 @@ app.get('/api/holder/username/:username', async (req, res) => {
   }
 });
 
-app.get('/api/holder/:discordId', async (req, res) => {
+app.get('/api/holder/:discordId', authenticateToken, async (req, res) => {
   const { discordId } = req.params;
   res.json(await mergeHolderWithProfileDetails(findHolderByDiscordId(discordId), discordId));
 });
@@ -2350,8 +2350,8 @@ app.get('/api/inventory', authenticateToken, (req, res) => {
   );
 });
 
-// Public endpoint for user inventory (no authentication)
-app.get('/api/public-inventory/:userId', (req, res) => {
+// Authenticated endpoint for viewing another user's inventory.
+app.get('/api/public-inventory/:userId', authenticateToken, (req, res) => {
   const userId = req.params.userId;
 
   db.all(

@@ -35,8 +35,24 @@
   );
   const ADMIN_ROUTE_SECTION = 'adminPage';
   const DEFAULT_ADMIN_PANEL = 'adminSubmissionsPanel';
+  const AUTH_REQUIRED_SECTIONS = new Set(['userProfileSection', 'inventorySection']);
   let cachedAdminStatus = null;
   let adminStatusPromise = null;
+
+  function getAuthToken() {
+    return localStorage.getItem('token') || '';
+  }
+
+  function isLoggedIn() {
+    return Boolean(getAuthToken());
+  }
+
+  function getAuthHeaders(extraHeaders = {}) {
+    const token = getAuthToken();
+    return token
+      ? { ...extraHeaders, Authorization: `Bearer ${token}` }
+      : { ...extraHeaders };
+  }
 
   function routeToPathname(sectionId, routePath = null) {
     if (sectionId === 'userProfileSection' && routePath) {
@@ -133,7 +149,10 @@
 
   // Show one section, hide all others
   function showSection(sectionId, options = {}) {
-    const safeSectionId = document.getElementById(sectionId) ? sectionId : 'landingPage';
+    let safeSectionId = document.getElementById(sectionId) ? sectionId : 'landingPage';
+    if (AUTH_REQUIRED_SECTIONS.has(safeSectionId) && !isLoggedIn()) {
+      safeSectionId = 'landingPage';
+    }
     sections.forEach((section) => {
       section.style.display = 'none';
     });
@@ -325,7 +344,9 @@ async function fetchUserInventory(userID, routePath = null) {
       setInventoryHeader(selfName, false, localUserId);
     }
 
-    const response = await fetch(`/api/public-inventory/${userID}`);
+    const response = await fetch(`/api/public-inventory/${userID}`, {
+      headers: getAuthHeaders(),
+    });
     if (!response.ok) {
       throw new Error(`Failed to fetch inventory for user ${userID}`);
     }
@@ -391,7 +412,9 @@ async function fetchUserInventoryByProfileRoute(routePath) {
 
 async function fetchUserInventoryByHolderRoute(fetchUrl, routePath, fallbackLabel) {
   try {
-    const holderRes = await fetch(fetchUrl);
+    const holderRes = await fetch(fetchUrl, {
+      headers: getAuthHeaders(),
+    });
     if (!holderRes.ok) throw new Error(`Failed to fetch holder route: ${fetchUrl}`);
     const holder = await holderRes.json();
     if (!holder?.discordId) {
@@ -733,7 +756,9 @@ const jobListContent = document.getElementById('jobListContent');
 
 async function resolveUsername(userId) {
   try {
-    const res = await fetch(`/api/resolveUser/${userId}`);
+    const res = await fetch(`/api/resolveUser/${userId}`, {
+      headers: getAuthHeaders(),
+    });
     if (!res.ok) throw new Error(`Failed to fetch username for ${userId}`);
     const data = await res.json();
     return data.username || `UnknownUser (${userId})`;
@@ -3318,6 +3343,15 @@ document.addEventListener('DOMContentLoaded', () => {
 initAdminToggles();
 
 async function syncSectionFromHash() {
+  if (!isLoggedIn()) {
+    const pathRoute = getPathRouteState();
+    const hashSection = HASH_TO_SECTION[window.location.hash.replace(/^#/, '').trim().split('/')[0] || ''];
+    if (pathRoute || AUTH_REQUIRED_SECTIONS.has(hashSection)) {
+      showSection('landingPage');
+      return;
+    }
+  }
+
   const rawHash = window.location.hash.replace(/^#/, '').trim();
   if (!rawHash) {
     const pathRoute = getPathRouteState();
@@ -3694,7 +3728,9 @@ function openEditProfileModal() {
 async function fetchDiscordUserMeta(userId) {
   if (!userId) return null;
   try {
-    const res = await fetch(`/api/discord-user/${userId}`);
+    const res = await fetch(`/api/discord-user/${userId}`, {
+      headers: getAuthHeaders(),
+    });
     if (!res.ok) {
       throw new Error(`Failed to fetch Discord user meta: ${res.statusText}`);
     }
@@ -4026,7 +4062,9 @@ async function loadUserHoldingsFromUrl(fetchUrl, fallbackUserId = null, routePat
   }
 
   try {
-    const response = await fetch(fetchUrl);
+    const response = await fetch(fetchUrl, {
+      headers: getAuthHeaders(),
+    });
     if (!response.ok) {
       throw new Error(`Failed to fetch holder data: ${response.statusText}`);
     }
@@ -5038,7 +5076,9 @@ function showRedeemModal(itemName) {
   }
   const discordUserId = localStorage.getItem('discordUserID');
   if (discordUserId && walletInput) {
-    fetch(`/api/holder/${discordUserId}`)
+    fetch(`/api/holder/${discordUserId}`, {
+      headers: getAuthHeaders(),
+    })
       .then((response) => (response.ok ? response.json() : null))
       .then((holder) => {
         if (holder?.walletAddress && !walletInput.value) {
