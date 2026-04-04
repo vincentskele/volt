@@ -4174,6 +4174,12 @@ function pumpSolarianImagePreloadQueue() {
 function queueSolarianImagePreloads(tokens) {
   if (!Array.isArray(tokens) || !tokens.length) return;
 
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1024;
+  const isSmallScreen = viewportWidth <= 700;
+  if (isSmallScreen && tokens.length > 20) {
+    return;
+  }
+
   tokens.forEach((token) => {
     const imageUrl = token?.metadata?.image;
     if (
@@ -4232,8 +4238,8 @@ function maybeAppendSolarianMosaicBatch(mosaicGrid, force = false) {
     const img = document.createElement('img');
     img.dataset.src = token.metadata.image;
     img.alt = 'Solarian';
-    img.loading = 'lazy';
-    img.decoding = 'async';
+    img.loading = 'eager';
+    img.decoding = 'auto';
     img.className = 'solarian-mosaic-image';
 
     loadMosaicImage(img);
