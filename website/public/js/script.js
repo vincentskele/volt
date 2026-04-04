@@ -1500,6 +1500,7 @@ function initAdminToggles() {
 async function loadAdminUsers() {
   const token = localStorage.getItem('token');
   const usersList = document.getElementById('adminUserList');
+  const searchInput = document.getElementById('adminUserSearch');
   if (!token || !usersList) return;
   usersList.innerHTML = '';
   try {
@@ -1521,6 +1522,16 @@ async function loadAdminUsers() {
       const profileName = user.userTag || user.username || user.userID;
       const twitterText = user.twitterHandle ? `@${user.twitterHandle}` : 'No linked Twitter';
       const walletText = user.walletAddress || 'No linked wallet';
+      item.dataset.searchIndex = [
+        profileName,
+        user.username,
+        user.userID,
+        user.twitterHandle,
+        user.walletAddress,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
 
       item.innerHTML = `
         <div class="admin-user-row">
@@ -1560,9 +1571,40 @@ async function loadAdminUsers() {
       });
       usersList.appendChild(item);
     });
+
+    applyAdminUserSearchFilter(searchInput?.value || '');
   } catch (error) {
     console.error('❌ Failed to load users:', error);
     usersList.innerHTML = '<div class="admin-item">Failed to load users.</div>';
+  }
+}
+
+function applyAdminUserSearchFilter(query) {
+  const usersList = document.getElementById('adminUserList');
+  if (!usersList) return;
+
+  const normalizedQuery = String(query || '').trim().toLowerCase();
+  const userItems = usersList.querySelectorAll('.admin-user-item');
+  let visibleCount = 0;
+
+  userItems.forEach((item) => {
+    const isMatch = !normalizedQuery || (item.dataset.searchIndex || '').includes(normalizedQuery);
+    item.style.display = isMatch ? 'block' : 'none';
+    if (isMatch) visibleCount += 1;
+  });
+
+  let emptyState = document.getElementById('adminUserSearchEmpty');
+  if (!visibleCount && userItems.length) {
+    if (!emptyState) {
+      emptyState = document.createElement('div');
+      emptyState.id = 'adminUserSearchEmpty';
+      emptyState.className = 'admin-item';
+      emptyState.textContent = 'No users match that search.';
+      usersList.appendChild(emptyState);
+    }
+    emptyState.style.display = 'block';
+  } else if (emptyState) {
+    emptyState.style.display = 'none';
   }
 }
 
@@ -1631,6 +1673,13 @@ if (adminShowHolderRawButton) {
     const usersList = document.getElementById('adminUserList');
     const rawText = usersList?.dataset?.rawHolderList || 'holder_name\twallet_address\ttwitter_account';
     showAdminHolderRawModal(rawText);
+  });
+}
+
+const adminUserSearchInput = document.getElementById('adminUserSearch');
+if (adminUserSearchInput) {
+  adminUserSearchInput.addEventListener('input', (event) => {
+    applyAdminUserSearchFilter(event.target.value);
   });
 }
 
