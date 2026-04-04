@@ -1777,6 +1777,10 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+app.get(/^\/(?:inventory\/.+|wallet\/.+|twitter\/.+|username\/.+|[^/]+)$/, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 

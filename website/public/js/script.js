@@ -38,10 +38,68 @@
   let cachedAdminStatus = null;
   let adminStatusPromise = null;
 
+  function routeToPathname(sectionId, routePath = null) {
+    if (sectionId === 'userProfileSection' && routePath) {
+      if (routePath.startsWith('username/')) {
+        return `/${routePath.slice('username/'.length)}`;
+      }
+      return `/${routePath}`;
+    }
+    if (sectionId === 'inventorySection') {
+      if (!routePath) return '/inventory';
+      if (routePath.startsWith('username/')) {
+        return `/inventory/${routePath.slice('username/'.length)}`;
+      }
+      return `/inventory/${routePath}`;
+    }
+    return '/';
+  }
+
+  function normalizeProfileRouteParts(routeParts) {
+    const cleanParts = (routeParts || []).filter(Boolean);
+    if (!cleanParts.length) return [];
+    if (['wallet', 'twitter', 'username'].includes(cleanParts[0])) {
+      return cleanParts;
+    }
+    if (cleanParts.length === 1 && /^\d{15,25}$/.test(cleanParts[0])) {
+      return cleanParts;
+    }
+    return ['username', ...cleanParts];
+  }
+
+  function getPathRouteState() {
+    const pathParts = window.location.pathname
+      .split('/')
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    if (!pathParts.length) return null;
+    if (pathParts[0] === 'inventory') {
+      return {
+        sectionId: 'inventorySection',
+        routeParts: normalizeProfileRouteParts(pathParts.slice(1)),
+      };
+    }
+
+    return {
+      sectionId: 'userProfileSection',
+      routeParts: normalizeProfileRouteParts(pathParts),
+    };
+  }
+
   function setSectionHash(sectionId, adminPanelId = null, profileRoutePath = null) {
     if (sectionId === 'landingPage') {
-      if (window.location.hash) {
-        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      if (window.location.pathname !== '/' || window.location.hash) {
+        window.history.replaceState(null, '', `/${window.location.search}`);
+      }
+      return;
+    }
+
+    if (sectionId === 'userProfileSection' || sectionId === 'inventorySection') {
+      const nextPath = routeToPathname(sectionId, profileRoutePath);
+      const nextUrl = `${nextPath}${window.location.search}`;
+      if (window.location.pathname !== nextPath || window.location.hash) {
+        window.history.replaceState(null, '', nextUrl);
       }
       return;
     }
@@ -53,8 +111,9 @@
     } else if (sectionId === 'userProfileSection' && profileRoutePath) {
       nextHash = `#${routeName}/${profileRoutePath}`;
     }
-    if (window.location.hash !== nextHash) {
-      window.history.replaceState(null, '', nextHash);
+    const nextUrl = `/${window.location.search}${nextHash}`;
+    if (window.location.pathname !== '/' || window.location.hash !== nextHash) {
+      window.history.replaceState(null, '', nextUrl);
     }
   }
 
@@ -93,6 +152,8 @@
         ? options.profileRoutePath ||
           currentProfileRoutePath ||
           encodeURIComponent(options.profileUserId || currentProfileUserId || localStorage.getItem('discordUserID') || '')
+        : safeSectionId === 'inventorySection'
+          ? options.inventoryRoutePath || currentInventoryRoutePath || ''
         : null;
       setSectionHash(safeSectionId, activeAdminPanel, profileRoutePath);
     }
@@ -250,9 +311,12 @@ if (showLeaderboardButton) {
  * Assumes there is an API endpoint at `/api/public-inventory/<userID>` that returns an array of items.
  * @param {string} userID - The ID of the user whose inventory should be shown.
  */
-async function fetchUserInventory(userID) {
+async function fetchUserInventory(userID, routePath = null) {
   try {
     const localUserId = localStorage.getItem('discordUserID');
+    currentInventoryRoutePath = routePath || (userID ? encodeURIComponent(userID) : null);
+    currentProfileUserId = userID || null;
+    if (routePath) currentProfileRoutePath = routePath;
     const nameLabel = currentProfileUsername || userID;
     if (userID && localUserId && userID !== localUserId) {
       setInventoryHeader(nameLabel, true, userID);
@@ -284,11 +348,96 @@ async function fetchUserInventory(userID) {
         inventoryItems.appendChild(itemContainer);
       });
     }
-    showSection('inventorySection');
+    showSection('inventorySection', { inventoryRoutePath: currentInventoryRoutePath });
   } catch (error) {
     console.error('Error fetching user inventory:', error);
     alert('Failed to load user inventory.');
   }
+}
+
+async function fetchUserInventoryByProfileRoute(routePath) {
+  const cleanRoutePath = String(routePath || '').trim();
+  if (!cleanRoutePath) {
+    fetchInventory();
+    showSection('inventorySection', { inventoryRoutePath: '' });
+    return;
+  }
+
+  if (!cleanRoutePath.includes('/')) {
+    if (/^\d{15,25}$/.test(cleanRoutePath)) {
+      fetchUserInventory(cleanRoutePath, encodeURIComponent(cleanRoutePath));
+      return;
+    }
+    fetchUserInventoryByUsername(cleanRoutePath);
+    return;
+  }
+
+  const [routeType, ...routeTail] = cleanRoutePath.split('/');
+  const routeValue = decodeURIComponent(routeTail.join('/'));
+
+  if (routeType === 'wallet' && routeValue) {
+    fetchUserInventoryByWallet(routeValue);
+  } else if (routeType === 'twitter' && routeValue) {
+    fetchUserInventoryByTwitter(routeValue);
+  } else if (routeType === 'username' && routeValue) {
+    fetchUserInventoryByUsername(routeValue);
+  } else if (routeType) {
+    fetchUserInventory(decodeURIComponent(cleanRoutePath), cleanRoutePath);
+  } else {
+    fetchInventory();
+    showSection('inventorySection', { inventoryRoutePath: '' });
+  }
+}
+
+async function fetchUserInventoryByHolderRoute(fetchUrl, routePath, fallbackLabel) {
+  try {
+    const holderRes = await fetch(fetchUrl);
+    if (!holderRes.ok) throw new Error(`Failed to fetch holder route: ${fetchUrl}`);
+    const holder = await holderRes.json();
+    if (!holder?.discordId) {
+      showSection('inventorySection', { inventoryRoutePath: routePath });
+      const inventoryItems = document.getElementById('inventoryItems');
+      if (inventoryItems) {
+        inventoryItems.innerHTML = `<p class="no-items text-body">No inventory found for ${escapeHtml(fallbackLabel)}.</p>`;
+      }
+      return;
+    }
+    currentProfileUsername = fallbackLabel || holder.twitterHandle || holder.walletAddress || holder.discordId;
+    fetchUserInventory(String(holder.discordId), routePath);
+  } catch (error) {
+    console.error('Error fetching user inventory by route:', error);
+    alert('Failed to load user inventory.');
+  }
+}
+
+async function fetchUserInventoryByUsername(username) {
+  const normalizedUsername = String(username || '').trim();
+  if (!normalizedUsername) return;
+  return fetchUserInventoryByHolderRoute(
+    `/api/holder/username/${encodeURIComponent(normalizedUsername)}`,
+    `username/${encodeURIComponent(normalizedUsername)}`,
+    normalizedUsername
+  );
+}
+
+async function fetchUserInventoryByWallet(walletAddress) {
+  const normalizedWallet = String(walletAddress || '').trim();
+  if (!normalizedWallet) return;
+  return fetchUserInventoryByHolderRoute(
+    `/api/holder/wallet/${encodeURIComponent(normalizedWallet)}`,
+    `wallet/${encodeURIComponent(normalizedWallet)}`,
+    normalizedWallet
+  );
+}
+
+async function fetchUserInventoryByTwitter(twitterHandle) {
+  const normalizedHandle = String(twitterHandle || '').trim().replace(/^@+/, '');
+  if (!normalizedHandle) return;
+  return fetchUserInventoryByHolderRoute(
+    `/api/holder/twitter/${encodeURIComponent(normalizedHandle)}`,
+    `twitter/${encodeURIComponent(normalizedHandle)}`,
+    `@${normalizedHandle}`
+  );
 }
 
 
@@ -497,9 +646,13 @@ async function fetchInventory() {
   }
 
   try {
+    currentInventoryRoutePath = '';
     const selfName = localStorage.getItem('username');
     currentProfileUserId = localStorage.getItem('discordUserID') || null;
     currentProfileUsername = selfName || currentProfileUserId;
+    currentProfileRoutePath = selfName
+      ? `username/${encodeURIComponent(selfName)}`
+      : (currentProfileUserId ? encodeURIComponent(currentProfileUserId) : null);
     setInventoryHeader(selfName, true, currentProfileUserId);
     const response = await fetch('/api/inventory', {
       method: 'GET',
@@ -3037,8 +3190,14 @@ function showPostLoginButtons() {
 
   userProfileButton.addEventListener('click', () => {
     const localUserId = localStorage.getItem('discordUserID');
+    const localUsername = localStorage.getItem('username');
     if (typeof showSection === 'function') {
-      showSection('userProfileSection', { profileUserId: localUserId });
+      showSection('userProfileSection', {
+        profileUserId: localUserId,
+        profileRoutePath: localUsername
+          ? `username/${encodeURIComponent(localUsername)}`
+          : (localUserId ? encodeURIComponent(localUserId) : null),
+      });
     }
     fetchUserHoldings();
     fetchVoltBalance();
@@ -3141,6 +3300,27 @@ initAdminToggles();
 async function syncSectionFromHash() {
   const rawHash = window.location.hash.replace(/^#/, '').trim();
   if (!rawHash) {
+    const pathRoute = getPathRouteState();
+    if (pathRoute) {
+      showSection(pathRoute.sectionId, {
+        updateHash: false,
+        profileRoutePath: pathRoute.sectionId === 'userProfileSection' && pathRoute.routeParts.length
+          ? pathRoute.routeParts.join('/')
+          : null,
+        inventoryRoutePath: pathRoute.sectionId === 'inventorySection' && pathRoute.routeParts.length
+          ? pathRoute.routeParts.join('/')
+          : '',
+      });
+
+      if (pathRoute.sectionId === 'userProfileSection') {
+        await fetchUserHoldingsByProfileRoute(pathRoute.routeParts.join('/'));
+        fetchVoltBalance();
+        fetchQuestStatus();
+      } else if (pathRoute.sectionId === 'inventorySection') {
+        await fetchUserInventoryByProfileRoute(pathRoute.routeParts.join('/'));
+      }
+      return;
+    }
     showSection('landingPage');
     return;
   }
@@ -3186,19 +3366,9 @@ async function syncSectionFromHash() {
   } else if (sectionId === 'robotOilSection') {
     showRobotOilMarket();
   } else if (sectionId === 'inventorySection') {
-    fetchInventory();
+    fetchUserInventoryByProfileRoute(routeParts.join('/'));
   } else if (sectionId === 'userProfileSection') {
-    if (routeParts[0] === 'wallet' && routeParts[1]) {
-      fetchUserHoldingsByWallet(decodeURIComponent(routeParts.slice(1).join('/')));
-    } else if (routeParts[0] === 'twitter' && routeParts[1]) {
-      fetchUserHoldingsByTwitter(decodeURIComponent(routeParts.slice(1).join('/')));
-    } else if (routeParts[0] === 'username' && routeParts[1]) {
-      fetchUserHoldingsByUsername(decodeURIComponent(routeParts.slice(1).join('/')));
-    } else if (routeArg) {
-      fetchUserHoldingsFor(decodeURIComponent(routeArg));
-    } else {
-      fetchUserHoldings();
-    }
+    fetchUserHoldingsByProfileRoute(routeParts.join('/'));
     fetchVoltBalance();
     fetchQuestStatus();
   } else if (sectionId === 'chatSection') {
@@ -3309,6 +3479,7 @@ let currentUserTokens = [];
 let currentProfileUserId = null;
 let currentProfileUsername = null;
 let currentProfileRoutePath = null;
+let currentInventoryRoutePath = null;
 
 function setInventoryHeader(userName, showProfileButton, userId) {
   const title = document.getElementById('inventoryTitle');
@@ -3681,8 +3852,40 @@ async function fetchUserHoldingsByUsername(username) {
   );
 }
 
+async function fetchUserHoldingsByProfileRoute(routePath) {
+  const cleanRoutePath = String(routePath || '').trim();
+  if (!cleanRoutePath) {
+    return fetchUserHoldings();
+  }
+
+  if (!cleanRoutePath.includes('/')) {
+    if (/^\d{15,25}$/.test(cleanRoutePath)) {
+      return fetchUserHoldingsFor(decodeURIComponent(cleanRoutePath));
+    }
+    return fetchUserHoldingsByUsername(decodeURIComponent(cleanRoutePath));
+  }
+
+  const [routeType, ...routeTail] = cleanRoutePath.split('/');
+  const routeValue = decodeURIComponent(routeTail.join('/'));
+
+  if (routeType === 'wallet' && routeValue) {
+    return fetchUserHoldingsByWallet(routeValue);
+  }
+  if (routeType === 'twitter' && routeValue) {
+    return fetchUserHoldingsByTwitter(routeValue);
+  }
+  if (routeType === 'username' && routeValue) {
+    return fetchUserHoldingsByUsername(routeValue);
+  }
+  return fetchUserHoldingsFor(decodeURIComponent(cleanRoutePath));
+}
+
 async function fetchUserHoldings() {
   const discordUserId = localStorage.getItem('discordUserID');
+  const username = localStorage.getItem('username');
+  if (username) {
+    return fetchUserHoldingsByUsername(username);
+  }
   return fetchUserHoldingsFor(discordUserId);
 }
 
@@ -4668,9 +4871,13 @@ async function fetchInventory() {
   }
 
   try {
+    currentInventoryRoutePath = '';
     const selfName = localStorage.getItem('username');
     currentProfileUserId = localStorage.getItem('discordUserID') || null;
     currentProfileUsername = selfName || currentProfileUserId;
+    currentProfileRoutePath = selfName
+      ? `username/${encodeURIComponent(selfName)}`
+      : (currentProfileUserId ? encodeURIComponent(currentProfileUserId) : null);
     setInventoryHeader(selfName, true, currentProfileUserId);
     const response = await fetch('/api/inventory', {
       method: 'GET',
