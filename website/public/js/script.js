@@ -4058,6 +4058,7 @@ let currentProfileUserId = null;
 let currentProfileUsername = null;
 let currentProfileRoutePath = null;
 let currentInventoryRoutePath = null;
+let solarianMosaicImageObserver = null;
 let currentProfileDetails = {
   aboutMe: '',
   specialties: '',
@@ -4282,6 +4283,11 @@ function renderSolarianMosaic(tokens) {
   const mosaicGrid = document.getElementById('solarianMosaicGrid');
   if (!mosaicGrid) return;
 
+  if (solarianMosaicImageObserver) {
+    solarianMosaicImageObserver.disconnect();
+    solarianMosaicImageObserver = null;
+  }
+
   mosaicGrid.innerHTML = '';
   mosaicGrid.classList.remove(
     'mosaic-count-1',
@@ -4307,13 +4313,57 @@ function renderSolarianMosaic(tokens) {
     mosaicGrid.classList.add('mosaic-count-20');
   }
 
-  tokens.forEach((token) => {
+  const tokenList = Array.isArray(tokens) ? tokens : [];
+  const fragment = document.createDocumentFragment();
+
+  const loadMosaicImage = (img) => {
+    const sourceUrl = img.dataset.src;
+    if (!sourceUrl || img.dataset.loaded === '1') return;
+    img.dataset.loaded = '1';
+    img.src = sourceUrl;
+  };
+
+  if ('IntersectionObserver' in window) {
+    solarianMosaicImageObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        loadMosaicImage(entry.target);
+        solarianMosaicImageObserver.unobserve(entry.target);
+      });
+    }, {
+      root: mosaicGrid,
+      rootMargin: '220px',
+    });
+  }
+
+  tokenList.forEach((token) => {
     if (!token?.metadata?.image) return;
     const img = document.createElement('img');
-    img.src = token.metadata.image;
+    img.dataset.src = token.metadata.image;
     img.alt = 'Solarian';
-    mosaicGrid.appendChild(img);
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.className = 'solarian-mosaic-image is-loading';
+    img.addEventListener('load', () => {
+      img.classList.remove('is-loading', 'is-error');
+    });
+    img.addEventListener('error', () => {
+      img.classList.remove('is-loading');
+      img.classList.add('is-error');
+      img.removeAttribute('src');
+      img.alt = 'Image failed to load';
+    });
+
+    if (solarianMosaicImageObserver) {
+      solarianMosaicImageObserver.observe(img);
+    } else {
+      loadMosaicImage(img);
+    }
+
+    fragment.appendChild(img);
   });
+
+  mosaicGrid.appendChild(fragment);
 
   requestAnimationFrame(() => {
     applySolarianMosaicLayout(mosaicGrid, count);
