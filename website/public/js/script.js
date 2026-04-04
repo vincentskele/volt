@@ -4288,8 +4288,7 @@ function renderSolarianMosaic(tokens) {
     'mosaic-count-2',
     'mosaic-count-3',
     'mosaic-count-10',
-    'mosaic-count-20',
-    'mosaic-fit-contain'
+    'mosaic-count-20'
   );
   mosaicGrid.style.removeProperty('grid-template-columns');
   mosaicGrid.style.removeProperty('grid-template-rows');
@@ -4306,10 +4305,6 @@ function renderSolarianMosaic(tokens) {
     mosaicGrid.classList.add('mosaic-count-10');
   } else if (count <= 20) {
     mosaicGrid.classList.add('mosaic-count-20');
-  }
-
-  if (count > 1 && count <= 3) {
-    mosaicGrid.classList.add('mosaic-fit-contain');
   }
 
   tokens.forEach((token) => {
