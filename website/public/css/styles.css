@@ -1384,6 +1384,140 @@ code {
   box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
 }
 
+.member-map-shell {
+  width: 100%;
+  margin-top: 16px;
+}
+
+.member-map-canvas {
+  position: relative;
+  width: 100%;
+  height: clamp(420px, 65vh, 720px);
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  background: #0d4c6a;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.member-map-canvas .leaflet-container {
+  background: #0d4c6a;
+}
+
+.member-map-pin {
+  width: 38px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: filter 0.2s ease;
+}
+
+.member-map-pin:hover,
+.leaflet-marker-icon.member-map-pin:hover {
+  filter: drop-shadow(0 0 10px rgba(255, 204, 0, 0.9));
+  outline: none;
+}
+
+.member-map-pin-avatar {
+  display: block;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: var(--bg-dark);
+  object-fit: cover;
+  box-shadow: 0 0 10px rgba(255, 204, 0, 0.35);
+}
+
+.member-map-pin:hover .member-map-pin-avatar,
+.member-map-pin:focus-visible .member-map-pin-avatar {
+  border-color: #fff3b0;
+  box-shadow:
+    0 0 0 3px rgba(255, 204, 0, 0.35),
+    0 0 14px rgba(255, 204, 0, 0.9);
+}
+
+.member-map-pin:hover .member-map-pin-stem,
+.member-map-pin:focus-visible .member-map-pin-stem {
+  background: #fff3b0;
+}
+
+.member-map-pin-stem {
+  display: block;
+  width: 4px;
+  height: 16px;
+  margin: 0 auto;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.member-map-card {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  left: 16px;
+  max-width: 320px;
+  padding: 14px;
+  border-radius: 10px;
+  border: 2px solid var(--accent);
+  background: rgba(15, 23, 42, 0.94);
+  color: var(--text-primary);
+  text-align: left;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45);
+  z-index: 1000;
+}
+
+.member-map-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.member-map-card-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  object-fit: cover;
+}
+
+.member-map-card-name {
+  margin: 0 0 4px;
+  font-size: 0.8rem;
+}
+
+.member-map-card-location {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+}
+
+.member-map-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.member-map-canvas .leaflet-control-zoom a {
+  width: 30px;
+  height: 30px;
+  line-height: 30px;
+  background: var(--accent);
+  color: var(--black);
+  border: 1px solid var(--black);
+  box-shadow: none;
+}
+
+.member-map-canvas .leaflet-control-zoom a:hover {
+  background: #ff9334;
+  transform: none;
+}
+
+.member-map-canvas .leaflet-control-attribution {
+  font-family: Arial, sans-serif;
+  font-size: 0.65rem;
+}
+
 .holdings-section-list {
   display: flex;
   align-items: flex-start;

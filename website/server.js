@@ -2331,6 +2331,27 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
   }
 });
 
+app.get('/api/profile-map', authenticateToken, async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT userID, username, profile_location AS location
+       FROM economy
+       WHERE profile_location IS NOT NULL
+         AND TRIM(profile_location) != ''
+       ORDER BY LOWER(username) ASC`
+    );
+
+    return res.json((rows || []).map((row) => ({
+      userID: row.userID,
+      username: row.username || row.userID,
+      location: row.location,
+    })));
+  } catch (error) {
+    console.error('❌ Error loading profile map data:', error);
+    return res.status(500).json({ message: 'Failed to load profile map data.' });
+  }
+});
+
 app.get('/api/inventory', authenticateToken, (req, res) => {
   const userId = req.user.userId; // Get user ID from JWT
 

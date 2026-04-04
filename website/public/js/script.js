@@ -13,6 +13,7 @@
     adminList: 'admin-list',
     consoleSection: 'logs',
     inventorySection: 'inventory',
+    mapSection: 'map',
     userProfileSection: 'profile',
     chatSection: 'chat',
     adminPage: 'admin',
@@ -35,7 +36,7 @@
   );
   const ADMIN_ROUTE_SECTION = 'adminPage';
   const DEFAULT_ADMIN_PANEL = 'adminSubmissionsPanel';
-  const AUTH_REQUIRED_SECTIONS = new Set(['userProfileSection', 'inventorySection']);
+  const AUTH_REQUIRED_SECTIONS = new Set(['userProfileSection', 'inventorySection', 'mapSection']);
   let cachedAdminStatus = null;
   let adminStatusPromise = null;
 
@@ -3270,6 +3271,23 @@ function showPostLoginButtons() {
     }
   });
 
+  // ========== MAP BUTTON ==========
+  const mapButton = document.createElement('button');
+  mapButton.textContent = 'MAP';
+  mapButton.className = 'btn text-sm font-bold';
+  mapButton.style.height = '24px';
+  mapButton.style.width = '110px';
+  mapButton.style.lineHeight = '24px';
+  mapButton.style.padding = '0 12px';
+  mapButton.style.textAlign = 'center';
+
+  mapButton.addEventListener('click', () => {
+    if (typeof showSection === 'function') {
+      showSection('mapSection');
+    }
+    loadMemberMap();
+  });
+
   // ========== LOGOUT BUTTON ==========
   const logoutButton = document.createElement('button');
   logoutButton.textContent = 'LOGOUT';
@@ -3290,6 +3308,7 @@ function showPostLoginButtons() {
   // Add both buttons to the container
   userActionContainer.appendChild(inventoryButton);
   userActionContainer.appendChild(userProfileButton);
+  userActionContainer.appendChild(mapButton);
   userActionContainer.appendChild(chatButton);
   userActionContainer.appendChild(logoutButton);
   addAdminButton(userActionContainer, logoutButton);
@@ -3421,6 +3440,8 @@ async function syncSectionFromHash() {
     showRobotOilMarket();
   } else if (sectionId === 'inventorySection') {
     fetchUserInventoryByProfileRoute(routeParts.join('/'));
+  } else if (sectionId === 'mapSection') {
+    loadMemberMap();
   } else if (sectionId === 'userProfileSection') {
     fetchUserHoldingsByProfileRoute(routeParts.join('/'));
     fetchVoltBalance();
@@ -3725,6 +3746,189 @@ function openEditProfileModal() {
   });
 }
 
+function getCountryMapPosition(countryName) {
+  const normalizedCountry = safeText(countryName, '').trim();
+  return PROFILE_COUNTRY_COORDS[normalizedCountry] || null;
+}
+
+async function getCountryLatLngLookup() {
+  if (profileCountryLatLngCache) return profileCountryLatLngCache;
+
+  profileCountryLatLngCache = { ...PROFILE_COUNTRY_COORDS };
+
+  try {
+    const response = await fetch('https://restcountries.com/v3.1/all?fields=name,latlng');
+    if (!response.ok) {
+      throw new Error(`Failed to load country coordinates: ${response.statusText}`);
+    }
+
+    const countries = await response.json();
+    (countries || []).forEach((country) => {
+      const latlng = Array.isArray(country?.latlng) ? country.latlng : null;
+      const lat = Number(latlng?.[0]);
+      const lng = Number(latlng?.[1]);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+      if (country?.name?.common) {
+        profileCountryLatLngCache[country.name.common] = { lat, lng };
+      }
+      if (country?.name?.official) {
+        profileCountryLatLngCache[country.name.official] = { lat, lng };
+      }
+    });
+  } catch (error) {
+    console.warn('Using fallback member map country coordinates:', error);
+  }
+
+  return profileCountryLatLngCache;
+}
+
+function closeMemberMapCard() {
+  document.getElementById('memberMapCard')?.remove();
+}
+
+function openMemberMapCard(user) {
+  const mapCanvas = document.getElementById('memberMapCanvas');
+  if (!mapCanvas || !user) return;
+
+  closeMemberMapCard();
+
+  const card = document.createElement('div');
+  card.id = 'memberMapCard';
+  card.className = 'member-map-card';
+  card.innerHTML = `
+    <div class="member-map-card-header">
+      <img class="member-map-card-avatar" alt="Discord avatar" />
+      <div>
+        <h3 class="member-map-card-name">${escapeHtml(user.username || user.userID || 'User')}</h3>
+        <div class="member-map-card-location">${escapeHtml(user.location || 'Unknown')}</div>
+      </div>
+    </div>
+    <div class="member-map-card-actions">
+      <button type="button" id="memberMapViewProfileButton" class="btn text-sm font-bold">VIEW PROFILE</button>
+      <button type="button" id="memberMapCloseCardButton" class="btn text-sm font-bold">CLOSE</button>
+    </div>
+  `;
+
+  mapCanvas.appendChild(card);
+  hydrateUserAvatar(user.userID, card.querySelector('.member-map-card-avatar'));
+
+  document.getElementById('memberMapCloseCardButton')?.addEventListener('click', closeMemberMapCard);
+  document.getElementById('memberMapViewProfileButton')?.addEventListener('click', () => {
+    closeMemberMapCard();
+    if (typeof showSection === 'function') {
+      showSection('userProfileSection', {
+        profileUserId: user.userID,
+        profileRoutePath: user.username
+          ? `username/${encodeURIComponent(user.username)}`
+          : encodeURIComponent(user.userID),
+      });
+    }
+    fetchUserHoldingsFor(user.userID);
+    fetchVoltBalance();
+    fetchQuestStatus();
+  });
+}
+
+async function renderMemberMap(users) {
+  const mapCanvas = document.getElementById('memberMapCanvas');
+  const mapStatus = document.getElementById('memberMapStatus');
+  if (!mapCanvas) return;
+
+  if (typeof L === 'undefined') {
+    if (mapStatus) {
+      mapStatus.textContent = 'Interactive map library failed to load.';
+    }
+    return;
+  }
+
+  if (!memberMapInstance) {
+    memberMapInstance = L.map('memberMapCanvas', {
+      worldCopyJump: true,
+      minZoom: 2,
+      maxZoom: 8,
+      zoomControl: true,
+    }).setView([20, 0], 2);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(memberMapInstance);
+
+    memberMapMarkersLayer = L.layerGroup().addTo(memberMapInstance);
+    memberMapInstance.on('click', closeMemberMapCard);
+  }
+
+  memberMapInstance.invalidateSize();
+  memberMapMarkersLayer.clearLayers();
+  closeMemberMapCard();
+
+  const countryLookup = await getCountryLatLngLookup();
+
+  let renderedCount = 0;
+  (users || []).forEach((user, index) => {
+    const position = countryLookup[safeText(user.location, '').trim()] ||
+      getCountryMapPosition(user.location);
+    if (!position) return;
+
+    const offsetLat = ((index % 3) - 1) * 0.35;
+    const offsetLng = ((index % 4) - 1.5) * 0.45;
+    const marker = L.marker(
+      [position.lat + offsetLat, position.lng + offsetLng],
+      {
+        icon: L.divIcon({
+          className: 'member-map-pin',
+          iconSize: [38, 54],
+          iconAnchor: [19, 54],
+          html: `
+            <img class="member-map-pin-avatar" alt="${escapeHtml(user.username || 'User')}" />
+            <span class="member-map-pin-stem"></span>
+          `,
+        }),
+      }
+    );
+    marker.on('click', () => openMemberMapCard(user));
+    marker.addTo(memberMapMarkersLayer);
+    const pinEl = marker.getElement();
+    if (pinEl) {
+      hydrateUserAvatar(user.userID, pinEl.querySelector('.member-map-pin-avatar'));
+    } else {
+      marker.once('add', () => {
+        hydrateUserAvatar(user.userID, marker.getElement()?.querySelector('.member-map-pin-avatar'));
+      });
+    }
+    renderedCount += 1;
+  });
+
+  if (mapStatus) {
+    mapStatus.textContent = renderedCount
+      ? `Showing ${renderedCount} mapped member${renderedCount === 1 ? '' : 's'}.`
+      : 'No members have added a supported country yet.';
+  }
+}
+
+async function loadMemberMap() {
+  const mapStatus = document.getElementById('memberMapStatus');
+  if (mapStatus) mapStatus.textContent = 'Loading map pins...';
+
+  try {
+    const response = await fetch('/api/profile-map', {
+      headers: getAuthHeaders(),
+    });
+    const users = await parseResponsePayload(response);
+    if (!response.ok) {
+      throw new Error(users.message || 'Failed to load map users.');
+    }
+    currentMapUsers = Array.isArray(users) ? users : [];
+    await renderMemberMap(currentMapUsers);
+  } catch (error) {
+    console.error('Error loading member map:', error);
+    if (mapStatus) {
+      mapStatus.textContent = 'Could not load member map.';
+    }
+  }
+}
+
 async function fetchDiscordUserMeta(userId) {
   if (!userId) return null;
   try {
@@ -3776,6 +3980,45 @@ let currentProfileDetails = {
   location: '',
 };
 let profileCountryOptionsCache = null;
+let currentMapUsers = [];
+let memberMapInstance = null;
+let memberMapMarkersLayer = null;
+let profileCountryLatLngCache = null;
+
+const PROFILE_COUNTRY_COORDS = {
+  'United States': { lat: 39.8, lng: -98.6 },
+  Canada: { lat: 56.1, lng: -106.3 },
+  Mexico: { lat: 23.6, lng: -102.6 },
+  Brazil: { lat: -14.2, lng: -51.9 },
+  Argentina: { lat: -38.4, lng: -63.6 },
+  'United Kingdom': { lat: 55.4, lng: -3.4 },
+  Ireland: { lat: 53.4, lng: -8.2 },
+  France: { lat: 46.2, lng: 2.2 },
+  Spain: { lat: 40.5, lng: -3.7 },
+  Portugal: { lat: 39.4, lng: -8.2 },
+  Germany: { lat: 51.2, lng: 10.5 },
+  Netherlands: { lat: 52.1, lng: 5.3 },
+  Italy: { lat: 41.9, lng: 12.6 },
+  Sweden: { lat: 60.1, lng: 18.6 },
+  Norway: { lat: 60.5, lng: 8.5 },
+  Poland: { lat: 51.9, lng: 19.1 },
+  Ukraine: { lat: 48.4, lng: 31.2 },
+  Turkey: { lat: 39.0, lng: 35.2 },
+  Egypt: { lat: 26.8, lng: 30.8 },
+  Nigeria: { lat: 9.1, lng: 8.7 },
+  'South Africa': { lat: -30.6, lng: 22.9 },
+  India: { lat: 20.6, lng: 78.9 },
+  China: { lat: 35.9, lng: 104.2 },
+  Japan: { lat: 36.2, lng: 138.3 },
+  'South Korea': { lat: 36.5, lng: 127.8 },
+  Philippines: { lat: 12.9, lng: 121.8 },
+  Indonesia: { lat: -0.8, lng: 113.9 },
+  Singapore: { lat: 1.35, lng: 103.82 },
+  Thailand: { lat: 15.8, lng: 100.9 },
+  Vietnam: { lat: 14.1, lng: 108.3 },
+  Australia: { lat: -25.3, lng: 133.8 },
+  'New Zealand': { lat: -40.9, lng: 174.9 },
+};
 
 function setInventoryHeader(userName, showProfileButton, userId) {
   const title = document.getElementById('inventoryTitle');

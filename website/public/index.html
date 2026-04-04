@@ -15,9 +15,14 @@
   <meta name="twitter:title" content="Volt Dashboard" />
   <meta name="twitter:description" content="Earn and spend Volts through quests, giveaways, raffles, and the RoboDAO shop." />
   <meta name="twitter:image" content="https://volt.solarians.world/logo.gif" />
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
   <link rel="stylesheet" href="/css/styles.css">
   <link rel="icon" href="/favicon.png" type="image/png">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
   
 
@@ -504,6 +509,19 @@
   <ul id="inventoryItems" class="inventory-list">
     <!-- Dynamically populated by script.js -->
   </ul>
+
+  <button class="back-button">Home</button>
+</div>
+
+<!-- User Map Section -->
+<div id="mapSection" class="content" style="display: none;">
+  <h2>🗺️ Member Map</h2>
+  <p>Explore Solarians around the world. Click a profile pin to open their profile.</p>
+
+  <div class="member-map-shell">
+    <div id="memberMapCanvas" class="member-map-canvas"></div>
+  </div>
+  <div id="memberMapStatus" class="profile-status">Loading map pins...</div>
 
   <button class="back-button">Home</button>
 </div>
