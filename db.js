@@ -440,6 +440,22 @@ db.run(`
       else console.log('✅ Raffle ticket purchase tracking table is ready.');
     });
 
+    // DAO Call Attendance History
+    db.run(`
+      CREATE TABLE IF NOT EXISTS dao_call_attendance (
+        attendance_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userID TEXT NOT NULL,
+        meeting_started_at INTEGER NOT NULL,
+        rewarded_at INTEGER NOT NULL,
+        minutes_attended INTEGER NOT NULL,
+        reward_amount INTEGER NOT NULL,
+        UNIQUE(userID, meeting_started_at)
+      )
+    `, (err) => {
+      if (err) console.error('❌ Error creating dao_call_attendance table:', err);
+      else console.log('✅ DAO call attendance table is ready.');
+    });
+
     console.log('✅ Database initialization complete.');
   });
 }
@@ -547,6 +563,53 @@ async function updateDaoCallRewardTimestamp(userID, rewardTimestamp = Math.floor
       function (err) {
         if (err) return reject('Failed to update DAO call reward timestamp.');
         resolve({ changes: this.changes });
+      }
+    );
+  });
+}
+
+async function recordDaoCallAttendance({
+  userID,
+  meetingStartedAt,
+  rewardedAt = Math.floor(Date.now() / 1000),
+  minutesAttended,
+  rewardAmount,
+}) {
+  await initUserEconomy(userID);
+  return new Promise((resolve, reject) => {
+    db.run(
+      `INSERT INTO dao_call_attendance (
+         userID,
+         meeting_started_at,
+         rewarded_at,
+         minutes_attended,
+         reward_amount
+       )
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(userID, meeting_started_at) DO UPDATE SET
+         rewarded_at = excluded.rewarded_at,
+         minutes_attended = excluded.minutes_attended,
+         reward_amount = excluded.reward_amount`,
+      [userID, meetingStartedAt, rewardedAt, minutesAttended, rewardAmount],
+      function (err) {
+        if (err) return reject('Failed to record DAO call attendance.');
+        resolve({ changes: this.changes });
+      }
+    );
+  });
+}
+
+function getDaoCallAttendanceCountForYear(userID, year) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT COUNT(*) AS meetingsJoined
+       FROM dao_call_attendance
+       WHERE userID = ?
+         AND strftime('%Y', rewarded_at, 'unixepoch') = ?`,
+      [userID, String(year)],
+      (err, row) => {
+        if (err) return reject('Failed to retrieve DAO call attendance count.');
+        resolve(row?.meetingsJoined || 0);
       }
     );
   });
@@ -3177,6 +3240,8 @@ module.exports = {
   getBalances,
   updateWallet,
   updateDaoCallRewardTimestamp,
+  recordDaoCallAttendance,
+  getDaoCallAttendanceCountForYear,
   transferFromWallet,
   robUser,
   withdraw,

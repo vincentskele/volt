@@ -44,6 +44,7 @@ const {
   deleteGiveaway,
   updateWallet,
   updateDaoCallRewardTimestamp,
+  recordDaoCallAttendance,
   getActiveRaffles,
   getPrizeShopItemByName,
   addItemToInventory,
@@ -1040,8 +1041,16 @@ setInterval(async () => {
     const totalMinutes = session.totalMinutes + activeMinutes;
 
     if (!session.rewardedThisWindow && totalMinutes >= requiredMinutes) {
+      const rewardedAt = Math.floor(Date.now() / 1000);
       await updateWallet(userId, rewardAmount);
-      await updateDaoCallRewardTimestamp(userId);
+      await updateDaoCallRewardTimestamp(userId, rewardedAt);
+      await recordDaoCallAttendance({
+        userID: userId,
+        meetingStartedAt: Math.floor(windowStart / 1000),
+        rewardedAt,
+        minutesAttended: totalMinutes,
+        rewardAmount,
+      });
       session.rewardedThisWindow = true;
       voicePresenceMap.set(userId, session);
 

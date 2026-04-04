@@ -27,6 +27,7 @@
     adminJoblistPanel: 'quest-list',
     adminShopItemsPanel: 'shop-items',
     adminRedemptionsPanel: 'item-redemptions',
+    adminCallAttendancePanel: 'call-attendance',
   };
   const HASH_TO_SECTION = Object.fromEntries(
     Object.entries(SECTION_HASHES).map(([sectionId, hashName]) => [hashName, sectionId])
@@ -213,6 +214,7 @@
     if (targetId === 'adminJoblistPanel') loadAdminJoblist();
     if (targetId === 'adminRedemptionsPanel') loadAdminRedemptions();
     if (targetId === 'adminShopItemsPanel') loadAdminShopItems();
+    if (targetId === 'adminCallAttendancePanel') loadAdminCallAttendance();
   }
 
   async function openAdminSection(targetPanelId = DEFAULT_ADMIN_PANEL, options = {}) {
@@ -2597,6 +2599,87 @@ async function loadAdminRedemptions() {
   }
 }
 
+async function loadAdminCallAttendance() {
+  const token = localStorage.getItem('token');
+  const list = document.getElementById('adminCallAttendanceList');
+  if (!token || !list) return;
+
+  list.innerHTML = '';
+
+  try {
+    const res = await fetch('/api/admin/call-attendance', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const rows = await res.json();
+
+    if (!res.ok) {
+      throw new Error(rows?.message || 'Failed to load call attendance.');
+    }
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      list.innerHTML = '<div class="admin-item">No call attendance records found.</div>';
+      return;
+    }
+
+    const callsByStart = rows.reduce((acc, row) => {
+      const callKey = String(row.meeting_started_at || 'unknown');
+      if (!acc[callKey]) {
+        acc[callKey] = {
+          meeting_started_at: row.meeting_started_at,
+          attendees: [],
+        };
+      }
+      acc[callKey].attendees.push(row);
+      return acc;
+    }, {});
+
+    Object.values(callsByStart)
+      .sort((left, right) => Number(right.meeting_started_at || 0) - Number(left.meeting_started_at || 0))
+      .forEach((callGroup) => {
+        const item = document.createElement('details');
+        item.className = 'admin-item';
+
+        const meetingStarted = callGroup.meeting_started_at
+          ? new Date(callGroup.meeting_started_at * 1000).toLocaleString()
+          : 'Unknown call date';
+
+        const summary = document.createElement('summary');
+        summary.textContent = `${meetingStarted} | ${callGroup.attendees.length} attendee${callGroup.attendees.length === 1 ? '' : 's'}`;
+        item.appendChild(summary);
+
+        const attendeesWrap = document.createElement('div');
+        attendeesWrap.style.marginTop = '10px';
+        attendeesWrap.style.display = 'grid';
+        attendeesWrap.style.gap = '8px';
+
+        callGroup.attendees.forEach((row) => {
+          const who = row.username
+            ? `${row.username} (${row.userID})`
+            : row.userID;
+          const rewardedAt = row.rewarded_at
+            ? new Date(row.rewarded_at * 1000).toLocaleString()
+            : 'Unknown';
+
+          const attendeeItem = document.createElement('div');
+          attendeeItem.className = 'admin-item';
+          attendeeItem.innerHTML = `
+            <div><strong>User:</strong> ${escapeHtml(who)}</div>
+            <div><strong>Rewarded At:</strong> ${escapeHtml(rewardedAt)}</div>
+            <div><strong>Minutes Attended:</strong> ${escapeHtml(row.minutes_attended ?? 'N/A')}</div>
+            <div><strong>Reward Amount:</strong> ${escapeHtml(row.reward_amount ?? 'N/A')}</div>
+          `;
+          attendeesWrap.appendChild(attendeeItem);
+        });
+
+        item.appendChild(attendeesWrap);
+        list.appendChild(item);
+      });
+  } catch (error) {
+    console.error('❌ Failed to load call attendance:', error);
+    list.innerHTML = '<div class="admin-item">Failed to load call attendance.</div>';
+  }
+}
+
 function buildShopItemModal({ title, item, confirmMessage, requireDoubleConfirm, onSubmit }) {
   const existing = document.getElementById('adminEditModal');
   if (existing) existing.remove();
@@ -2891,6 +2974,7 @@ function startAdminPolling() {
     if (document.getElementById('adminJoblistPanel')?.style.display === 'block') loadAdminJoblist();
     if (document.getElementById('adminRedemptionsPanel')?.style.display === 'block') loadAdminRedemptions();
     if (document.getElementById('adminShopItemsPanel')?.style.display === 'block') loadAdminShopItems();
+    if (document.getElementById('adminCallAttendancePanel')?.style.display === 'block') loadAdminCallAttendance();
   }, 15000);
 }
 

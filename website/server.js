@@ -633,6 +633,32 @@ app.get('/api/admin/redemptions', authenticateToken, requireAdmin, async (req, r
 });
 
 /**
+ * GET /api/admin/call-attendance
+ * Returns DAO call attendance records (admin only).
+ */
+app.get('/api/admin/call-attendance', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT d.attendance_id,
+              d.userID,
+              e.username,
+              d.meeting_started_at,
+              d.rewarded_at,
+              d.minutes_attended,
+              d.reward_amount
+       FROM dao_call_attendance d
+       LEFT JOIN economy e ON e.userID = d.userID
+       ORDER BY d.rewarded_at DESC, d.attendance_id DESC
+       LIMIT 500`
+    );
+    return res.json(rows || []);
+  } catch (err) {
+    console.error('Error in /api/admin/call-attendance:', err);
+    return res.status(500).json({ message: 'Failed to load call attendance.' });
+  }
+});
+
+/**
  * GET /api/admin/users
  * Returns all users (admin only).
  */
