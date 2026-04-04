@@ -1,16 +1,146 @@
   document.addEventListener('DOMContentLoaded', () => {
   const sections = document.querySelectorAll('.content');
   const SERVER_ID = '1014872741846974514'; // Hardcoded Discord server ID
+  const SECTION_HASHES = {
+    landingPage: 'home',
+    giveawayList: 'giveaways',
+    rafflesSection: 'raffles',
+    shop: 'shop',
+    dailyTasksPage: 'auto-quests',
+    jobList: 'quests',
+    robotOilSection: 'robot-oil',
+    leaderboard: 'leaderboard',
+    adminList: 'admin-list',
+    consoleSection: 'logs',
+    inventorySection: 'inventory',
+    userProfileSection: 'profile',
+    chatSection: 'chat',
+    adminPage: 'admin',
+  };
+  const ADMIN_PANEL_HASHES = {
+    adminSubmissionsPanel: 'quest-submissions',
+    adminUserPanel: 'users',
+    adminTitleGiveawaysPanel: 'title-giveaways',
+    adminGiveawaysPanel: 'giveaways',
+    adminRafflesPanel: 'raffles',
+    adminJoblistPanel: 'quest-list',
+    adminShopItemsPanel: 'shop-items',
+    adminRedemptionsPanel: 'item-redemptions',
+  };
+  const HASH_TO_SECTION = Object.fromEntries(
+    Object.entries(SECTION_HASHES).map(([sectionId, hashName]) => [hashName, sectionId])
+  );
+  const HASH_TO_ADMIN_PANEL = Object.fromEntries(
+    Object.entries(ADMIN_PANEL_HASHES).map(([panelId, hashName]) => [hashName, panelId])
+  );
+  const ADMIN_ROUTE_SECTION = 'adminPage';
+  const DEFAULT_ADMIN_PANEL = 'adminSubmissionsPanel';
+  let cachedAdminStatus = null;
+  let adminStatusPromise = null;
+
+  function setSectionHash(sectionId, adminPanelId = null) {
+    const routeName = SECTION_HASHES[sectionId] || SECTION_HASHES.landingPage;
+    let nextHash = `#${routeName}`;
+    if (sectionId === ADMIN_ROUTE_SECTION && adminPanelId && ADMIN_PANEL_HASHES[adminPanelId]) {
+      nextHash = `#${routeName}/${ADMIN_PANEL_HASHES[adminPanelId]}`;
+    }
+    if (window.location.hash !== nextHash) {
+      window.history.replaceState(null, '', nextHash);
+    }
+  }
+
+  function hideAdminPanels() {
+    document.querySelectorAll('.admin-panel').forEach((panel) => {
+      panel.style.display = 'none';
+    });
+    document.querySelectorAll('.admin-toggle').forEach((button) => {
+      button.style.display = 'inline-block';
+    });
+  }
+
+  function getActiveAdminPanelId() {
+    return Array.from(document.querySelectorAll('.admin-panel'))
+      .find((panel) => panel.style.display === 'block')?.id || DEFAULT_ADMIN_PANEL;
+  }
 
   // Show one section, hide all others
-  function showSection(sectionId) {
+  function showSection(sectionId, options = {}) {
+    const safeSectionId = document.getElementById(sectionId) ? sectionId : 'landingPage';
     sections.forEach((section) => {
       section.style.display = 'none';
     });
-    const sectionToShow = document.getElementById(sectionId);
+    const sectionToShow = document.getElementById(safeSectionId);
     if (sectionToShow) {
       sectionToShow.style.display = 'block';
     }
+    if (safeSectionId !== ADMIN_ROUTE_SECTION) {
+      hideAdminPanels();
+    }
+    if (options.updateHash !== false) {
+      const activeAdminPanel = safeSectionId === ADMIN_ROUTE_SECTION
+        ? options.adminPanelId || getActiveAdminPanelId()
+        : null;
+      setSectionHash(safeSectionId, activeAdminPanel);
+    }
+  }
+
+  async function checkCurrentUserIsAdmin() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      cachedAdminStatus = false;
+      return false;
+    }
+    if (cachedAdminStatus !== null) return cachedAdminStatus;
+    if (!adminStatusPromise) {
+      adminStatusPromise = fetch('/api/admin/check', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((response) => response.ok ? response.json() : { isAdmin: false })
+        .then((data) => Boolean(data?.isAdmin))
+        .catch((error) => {
+          console.error('❌ Failed to check admin status:', error);
+          return false;
+        })
+        .finally(() => {
+          adminStatusPromise = null;
+        });
+    }
+    cachedAdminStatus = await adminStatusPromise;
+    return cachedAdminStatus;
+  }
+
+  function loadAdminPanelData(targetId) {
+    if (targetId === 'adminSubmissionsPanel') loadAdminPage();
+    if (targetId === 'adminUserPanel') loadAdminUsers();
+    if (targetId === 'adminTitleGiveawaysPanel') loadAdminTitleGiveaways();
+    if (targetId === 'adminGiveawaysPanel') loadAdminGiveaways();
+    if (targetId === 'adminRafflesPanel') loadAdminRaffles();
+    if (targetId === 'adminJoblistPanel') loadAdminJoblist();
+    if (targetId === 'adminRedemptionsPanel') loadAdminRedemptions();
+    if (targetId === 'adminShopItemsPanel') loadAdminShopItems();
+  }
+
+  async function openAdminSection(targetPanelId = DEFAULT_ADMIN_PANEL, options = {}) {
+    const isAdmin = await checkCurrentUserIsAdmin();
+    if (!isAdmin) {
+      showSection('landingPage');
+      return false;
+    }
+
+    const panelId = document.getElementById(targetPanelId) ? targetPanelId : DEFAULT_ADMIN_PANEL;
+    showSection(ADMIN_ROUTE_SECTION, { updateHash: false });
+    hideAdminPanels();
+
+    const panel = document.getElementById(panelId);
+    const toggleButton = document.querySelector(`.admin-toggle[data-target="${panelId}"]`);
+    if (panel) panel.style.display = 'block';
+    if (toggleButton) toggleButton.style.display = 'none';
+    loadAdminPanelData(panelId);
+
+    if (options.updateHash !== false) {
+      setSectionHash(ADMIN_ROUTE_SECTION, panelId);
+    }
+    return true;
   }
 
   // Format data depending on the endpoint type
@@ -1080,6 +1210,7 @@ if (loginButton) {
         // ✅ Store JWT token & user ID in localStorage
         localStorage.setItem("token", data.token);
         localStorage.setItem("discordUserID", data.userId); // Store user ID
+        cachedAdminStatus = null;
 
         console.log(`✅ Stored Discord User ID: ${data.userId}`);
 
@@ -1346,32 +1477,15 @@ async function adminActionRequest(url, options) {
 
 function initAdminToggles() {
   document.querySelectorAll('.admin-toggle').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const targetId = btn.getAttribute('data-target');
-      const panel = document.getElementById(targetId);
-      if (!panel) return;
-      const isOpen = panel.style.display === 'block';
-
-      // Hide all panels and show all buttons first
-      document.querySelectorAll('.admin-panel').forEach((p) => {
-        p.style.display = 'none';
-      });
-      document.querySelectorAll('.admin-toggle').forEach((b) => {
-        b.style.display = 'inline-block';
-      });
-
-      if (!isOpen) {
-        panel.style.display = 'block';
-        btn.style.display = 'none';
-        if (targetId === 'adminSubmissionsPanel') loadAdminPage();
-        if (targetId === 'adminUserPanel') loadAdminUsers();
-        if (targetId === 'adminTitleGiveawaysPanel') loadAdminTitleGiveaways();
-        if (targetId === 'adminGiveawaysPanel') loadAdminGiveaways();
-        if (targetId === 'adminRafflesPanel') loadAdminRaffles();
-        if (targetId === 'adminJoblistPanel') loadAdminJoblist();
-        if (targetId === 'adminRedemptionsPanel') loadAdminRedemptions();
-        if (targetId === 'adminShopItemsPanel') loadAdminShopItems();
+      if (!targetId) return;
+      const activePanel = getActiveAdminPanelId();
+      if (activePanel === targetId && document.getElementById(targetId)?.style.display === 'block') {
+        await openAdminSection(DEFAULT_ADMIN_PANEL);
+        return;
       }
+      await openAdminSection(targetId);
     });
   });
 }
@@ -2759,17 +2873,9 @@ async function fetchQuestStatus() {
 }
 
 async function addAdminButton(userActionContainer, logoutButton) {
-  const token = localStorage.getItem('token');
-  if (!token) return;
-
   try {
-    const response = await fetch('/api/admin/check', {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) return;
-
-    const data = await response.json();
-    if (!data?.isAdmin) return;
+    const isAdmin = await checkCurrentUserIsAdmin();
+    if (!isAdmin) return;
 
     const adminButton = document.createElement('button');
     adminButton.textContent = 'ADMIN';
@@ -2780,12 +2886,9 @@ async function addAdminButton(userActionContainer, logoutButton) {
     adminButton.style.padding = '0 12px';
     adminButton.style.textAlign = 'center';
 
-    adminButton.addEventListener('click', () => {
-      loadAdminPage();
+    adminButton.addEventListener('click', async () => {
       startAdminPolling();
-      if (typeof showSection === 'function') {
-        showSection('adminPage');
-      }
+      await openAdminSection(DEFAULT_ADMIN_PANEL);
     });
 
     if (logoutButton && userActionContainer.contains(logoutButton)) {
@@ -2970,6 +3073,66 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 initAdminToggles();
+
+async function syncSectionFromHash() {
+  const rawHash = window.location.hash.replace(/^#/, '').trim();
+  if (!rawHash) {
+    showSection('landingPage');
+    return;
+  }
+  const [sectionHash, adminPanelHash] = rawHash.split('/');
+  const normalizedHash = sectionHash || SECTION_HASHES.landingPage;
+  const sectionId = HASH_TO_SECTION[normalizedHash];
+
+  if (!sectionId) {
+    showSection('landingPage');
+    return;
+  }
+
+  if (sectionId === ADMIN_ROUTE_SECTION) {
+    const panelId = HASH_TO_ADMIN_PANEL[adminPanelHash] || DEFAULT_ADMIN_PANEL;
+    const opened = await openAdminSection(panelId, { updateHash: false });
+    if (opened) startAdminPolling();
+    return;
+  }
+
+  showSection(sectionId, { updateHash: false });
+
+  if (sectionId === 'leaderboard') {
+    showLeaderboardButton?.click();
+  } else if (sectionId === 'adminList') {
+    showAdminListButton?.click();
+  } else if (sectionId === 'shop') {
+    showShopButton?.click();
+  } else if (sectionId === 'jobList') {
+    fetchJobs();
+  } else if (sectionId === 'giveawayList') {
+    fetchGiveaways();
+  } else if (sectionId === 'dailyTasksPage') {
+    startCountdownTimer();
+  } else if (sectionId === 'consoleSection') {
+    fetchAndDisplayConsoleLogs();
+    startConsoleUpdates();
+  } else if (sectionId === 'robotOilSection') {
+    showRobotOilMarket();
+  } else if (sectionId === 'inventorySection') {
+    fetchInventory();
+  } else if (sectionId === 'userProfileSection') {
+    fetchUserHoldings();
+    fetchVoltBalance();
+    fetchQuestStatus();
+  } else if (sectionId === 'chatSection') {
+    loadChatMessages();
+    startChatPolling();
+    pingChatPresence();
+    loadChatPresence();
+    startChatPresencePolling();
+  }
+}
+
+window.addEventListener('hashchange', () => {
+  syncSectionFromHash();
+});
 
 async function fetchVoltBalance() {
   try {
@@ -3427,34 +3590,30 @@ if (viewProfileInventoryButton) {
 // Raffles
 //========================
 (function () {
-  // Utility: Show only the specified section
-  const sections = ["landingPage", "rafflesSection"];
-  function showSection(sectionId) {
-    sections.forEach((id) => {
-      document.getElementById(id).style.display = id === sectionId ? "block" : "none";
-    });
-  }
-
   const showRafflesButton = document.getElementById("showRafflesButton");
   const rafflesSection = document.getElementById("rafflesSection");
   const rafflesList = document.getElementById("rafflesList");
-  const rafflesBackButton = rafflesSection.querySelector(".back-button");
+  const rafflesBackButton = rafflesSection?.querySelector(".back-button");
 
   // Prevent multiple API calls
   let isRaffleListLoading = false;
 
   // Ensure only one event listener exists
-  showRafflesButton.removeEventListener("click", handleShowRaffles);
-  showRafflesButton.addEventListener("click", handleShowRaffles);
+  if (showRafflesButton) {
+    showRafflesButton.removeEventListener("click", handleShowRaffles);
+    showRafflesButton.addEventListener("click", handleShowRaffles);
+  }
 
   async function handleShowRaffles() {
     showSection("rafflesSection");
     await populateRaffleList();
   }
 
-  rafflesBackButton.addEventListener("click", () => {
-    showSection("landingPage");
-  });
+  if (rafflesBackButton) {
+    rafflesBackButton.addEventListener("click", () => {
+      showSection("landingPage");
+    });
+  }
 
   async function populateRaffleList() {
     if (isRaffleListLoading) return;
@@ -4471,4 +4630,6 @@ async function fetchInventory() {
     if (!solarianMosaic || solarianMosaic.classList.contains('mosaic-hidden')) return;
     renderSolarianMosaic(currentUserTokens);
   });
+
+  syncSectionFromHash();
 });
