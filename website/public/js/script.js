@@ -4236,14 +4236,7 @@ function maybeAppendSolarianMosaicBatch(mosaicGrid, force = false) {
     img.decoding = 'async';
     img.className = 'solarian-mosaic-image';
 
-    if (solarianImageLoadCache.get(token.metadata.image)) {
-      loadMosaicImage(img);
-    } else if (solarianMosaicImageObserver) {
-      img.classList.add('is-loading');
-      solarianMosaicImageObserver.observe(img);
-    } else {
-      loadMosaicImage(img);
-    }
+    loadMosaicImage(img);
 
     fragment.appendChild(img);
   });
@@ -4470,6 +4463,7 @@ function renderSolarianMosaic(tokens) {
   mosaicGrid.style.removeProperty('grid-template-rows');
   mosaicGrid.style.removeProperty('grid-auto-rows');
   mosaicGrid.removeEventListener('scroll', handleSolarianMosaicScroll);
+  mosaicGrid.scrollTop = 0;
 
   const count = Array.isArray(tokens) ? tokens.length : 0;
   currentSolarianMosaicTokens = Array.isArray(tokens)
@@ -4488,22 +4482,12 @@ function renderSolarianMosaic(tokens) {
     mosaicGrid.classList.add('mosaic-count-20');
   }
 
-  if ('IntersectionObserver' in window) {
-    solarianMosaicImageObserver = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (!entry.isIntersecting) return;
-        loadMosaicImage(entry.target);
-        solarianMosaicImageObserver.unobserve(entry.target);
-      });
-    }, {
-      root: mosaicGrid,
-      rootMargin: '220px',
-    });
-  }
-
   maybeAppendSolarianMosaicBatch(mosaicGrid, true);
   requestAnimationFrame(() => {
     fillSolarianMosaicViewport(mosaicGrid);
+    requestAnimationFrame(() => {
+      fillSolarianMosaicViewport(mosaicGrid);
+    });
   });
   if (currentSolarianMosaicTokens.length > currentSolarianMosaicRenderedCount) {
     mosaicGrid.addEventListener('scroll', handleSolarianMosaicScroll);
