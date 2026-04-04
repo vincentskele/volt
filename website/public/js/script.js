@@ -1680,13 +1680,17 @@ async function loadAdminUsers() {
       item.style.cursor = 'pointer';
 
       const profileName = user.userTag || user.username || user.userID;
-      const twitterText = user.twitterHandle ? `@${user.twitterHandle}` : 'No linked Twitter';
+      const xHandle = String(user.twitterHandle || '').trim().replace(/^@+/, '');
+      const xProfileUrl = xHandle ? `https://x.com/${encodeURIComponent(xHandle)}` : '';
+      const xMetaHtml = xHandle
+        ? `<a href="${xProfileUrl}" target="_blank" rel="noopener noreferrer" class="admin-user-x-link">@${escapeHtml(xHandle)}</a>`
+        : escapeHtml('No linked X');
       const walletText = user.walletAddress || 'No linked wallet';
       item.dataset.searchIndex = [
         profileName,
         user.username,
         user.userID,
-        user.twitterHandle,
+        xHandle,
         user.walletAddress,
       ]
         .filter(Boolean)
@@ -1697,12 +1701,19 @@ async function loadAdminUsers() {
         <div class="admin-user-row">
           <div class="admin-user-details">
             <div class="admin-user-name">${escapeHtml(profileName)}</div>
-            <div class="admin-user-meta"><strong>Twitter:</strong> ${escapeHtml(twitterText)}</div>
+            <div class="admin-user-meta"><strong>X:</strong> ${xMetaHtml}</div>
             <div class="admin-user-wallet"><strong>Wallet:</strong> <span class="wallet-address-preserve-case">${escapeHtml(walletText)}</span></div>
           </div>
           <div class="admin-user-actions"></div>
         </div>
       `;
+
+      const xLink = item.querySelector('.admin-user-x-link');
+      if (xLink) {
+        xLink.addEventListener('click', (event) => {
+          event.stopPropagation();
+        });
+      }
 
       const actions = item.querySelector('.admin-user-actions');
       if (actions && user.walletAddress) {

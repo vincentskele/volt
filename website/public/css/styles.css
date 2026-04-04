@@ -688,6 +688,15 @@ code {
   word-break: break-all;
 }
 
+.admin-user-x-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.admin-user-x-link:hover {
+  color: var(--accent-hover);
+}
+
 .admin-user-actions {
   flex-shrink: 0;
 }
