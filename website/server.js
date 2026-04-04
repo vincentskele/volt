@@ -279,6 +279,49 @@ function buildRoboCheckHolderMap() {
   return holderMap;
 }
 
+function normalizeWalletAddress(walletAddress) {
+  return String(walletAddress || '').trim().toLowerCase();
+}
+
+function normalizeTwitterHandle(twitterHandle) {
+  return String(twitterHandle || '').trim().replace(/^@+/, '').toLowerCase();
+}
+
+function findHolderByDiscordId(discordId) {
+  const normalizedDiscordId = String(discordId || '').trim();
+  if (!normalizedDiscordId) return null;
+  return readRoboCheckHolders().find((entry) => String(entry?.discordId || '').trim() === normalizedDiscordId) || null;
+}
+
+function findHolderByWalletAddress(walletAddress) {
+  const normalizedWallet = normalizeWalletAddress(walletAddress);
+  if (!normalizedWallet) return null;
+  return readRoboCheckHolders().find(
+    (entry) => normalizeWalletAddress(entry?.walletAddress) === normalizedWallet
+  ) || null;
+}
+
+function findHolderByTwitterHandle(twitterHandle) {
+  const normalizedHandle = normalizeTwitterHandle(twitterHandle);
+  if (!normalizedHandle) return null;
+  return readRoboCheckHolders().find(
+    (entry) => normalizeTwitterHandle(entry?.twitterHandle) === normalizedHandle
+  ) || null;
+}
+
+async function findHolderByUsername(username) {
+  const normalizedUsername = String(username || '').trim().toLowerCase();
+  if (!normalizedUsername) return null;
+
+  const userRow = await dbGet(
+    `SELECT userID FROM economy WHERE LOWER(username) = ? ORDER BY userID ASC LIMIT 1`,
+    [normalizedUsername]
+  );
+  if (!userRow?.userID) return null;
+
+  return findHolderByDiscordId(userRow.userID);
+}
+
 
 
 /**
@@ -1617,11 +1660,29 @@ app.get('/api/resolveChannel/:channelId', async (req, res) => {
  * GET /api/holder/:discordId
  * Return a single holder profile from Robo-Check holders.json.
  */
+app.get('/api/holder/wallet/:walletAddress', (req, res) => {
+  const { walletAddress } = req.params;
+  res.json(findHolderByWalletAddress(walletAddress));
+});
+
+app.get('/api/holder/twitter/:twitterHandle', (req, res) => {
+  const { twitterHandle } = req.params;
+  res.json(findHolderByTwitterHandle(twitterHandle));
+});
+
+app.get('/api/holder/username/:username', async (req, res) => {
+  try {
+    const { username } = req.params;
+    res.json(await findHolderByUsername(username));
+  } catch (error) {
+    console.error('Error in /api/holder/username route:', error);
+    res.status(500).json({ message: 'Failed to load holder profile.' });
+  }
+});
+
 app.get('/api/holder/:discordId', (req, res) => {
   const { discordId } = req.params;
-  const holders = readRoboCheckHolders();
-  const holder = holders.find((entry) => String(entry.discordId) === String(discordId));
-  res.json(holder || null);
+  res.json(findHolderByDiscordId(discordId));
 });
 
 /**

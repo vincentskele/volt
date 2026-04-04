@@ -38,7 +38,7 @@
   let cachedAdminStatus = null;
   let adminStatusPromise = null;
 
-  function setSectionHash(sectionId, adminPanelId = null) {
+  function setSectionHash(sectionId, adminPanelId = null, profileRoutePath = null) {
     if (sectionId === 'landingPage') {
       if (window.location.hash) {
         window.history.replaceState(null, '', window.location.pathname + window.location.search);
@@ -50,6 +50,8 @@
     let nextHash = `#${routeName}`;
     if (sectionId === ADMIN_ROUTE_SECTION && adminPanelId && ADMIN_PANEL_HASHES[adminPanelId]) {
       nextHash = `#${routeName}/${ADMIN_PANEL_HASHES[adminPanelId]}`;
+    } else if (sectionId === 'userProfileSection' && profileRoutePath) {
+      nextHash = `#${routeName}/${profileRoutePath}`;
     }
     if (window.location.hash !== nextHash) {
       window.history.replaceState(null, '', nextHash);
@@ -87,7 +89,12 @@
       const activeAdminPanel = safeSectionId === ADMIN_ROUTE_SECTION
         ? options.adminPanelId || getActiveAdminPanelId()
         : null;
-      setSectionHash(safeSectionId, activeAdminPanel);
+      const profileRoutePath = safeSectionId === 'userProfileSection'
+        ? options.profileRoutePath ||
+          currentProfileRoutePath ||
+          encodeURIComponent(options.profileUserId || currentProfileUserId || localStorage.getItem('discordUserID') || '')
+        : null;
+      setSectionHash(safeSectionId, activeAdminPanel, profileRoutePath);
     }
   }
 
@@ -214,7 +221,7 @@ if (showLeaderboardButton) {
           item.addEventListener('click', () => {
             fetchUserHoldingsFor(entry.userID);
             if (typeof showSection === 'function') {
-              showSection('userProfileSection');
+              showSection('userProfileSection', { profileUserId: entry.userID });
             }
           });
 
@@ -2727,7 +2734,7 @@ async function loadChatMessages() {
       name.addEventListener('click', () => {
         fetchUserHoldingsFor(msg.userID);
         if (typeof showSection === 'function') {
-          showSection('userProfileSection');
+          showSection('userProfileSection', { profileUserId: msg.userID });
         }
       });
 
@@ -3029,8 +3036,9 @@ function showPostLoginButtons() {
   userProfileButton.style.textAlign = 'center';
 
   userProfileButton.addEventListener('click', () => {
+    const localUserId = localStorage.getItem('discordUserID');
     if (typeof showSection === 'function') {
-      showSection('userProfileSection');
+      showSection('userProfileSection', { profileUserId: localUserId });
     }
     fetchUserHoldings();
     fetchVoltBalance();
@@ -3136,7 +3144,8 @@ async function syncSectionFromHash() {
     showSection('landingPage');
     return;
   }
-  const [sectionHash, adminPanelHash] = rawHash.split('/');
+  const [sectionHash, ...routeParts] = rawHash.split('/');
+  const routeArg = routeParts[0] || '';
   const normalizedHash = sectionHash || SECTION_HASHES.landingPage;
   const sectionId = HASH_TO_SECTION[normalizedHash];
 
@@ -3146,13 +3155,18 @@ async function syncSectionFromHash() {
   }
 
   if (sectionId === ADMIN_ROUTE_SECTION) {
-    const panelId = HASH_TO_ADMIN_PANEL[adminPanelHash] || DEFAULT_ADMIN_PANEL;
+    const panelId = HASH_TO_ADMIN_PANEL[routeArg] || DEFAULT_ADMIN_PANEL;
     const opened = await openAdminSection(panelId, { updateHash: false });
     if (opened) startAdminPolling();
     return;
   }
 
-  showSection(sectionId, { updateHash: false });
+  showSection(sectionId, {
+    updateHash: false,
+    profileRoutePath: sectionId === 'userProfileSection' && routeParts.length
+      ? routeParts.join('/')
+      : null,
+  });
 
   if (sectionId === 'leaderboard') {
     showLeaderboardButton?.click();
@@ -3174,7 +3188,17 @@ async function syncSectionFromHash() {
   } else if (sectionId === 'inventorySection') {
     fetchInventory();
   } else if (sectionId === 'userProfileSection') {
-    fetchUserHoldings();
+    if (routeParts[0] === 'wallet' && routeParts[1]) {
+      fetchUserHoldingsByWallet(decodeURIComponent(routeParts.slice(1).join('/')));
+    } else if (routeParts[0] === 'twitter' && routeParts[1]) {
+      fetchUserHoldingsByTwitter(decodeURIComponent(routeParts.slice(1).join('/')));
+    } else if (routeParts[0] === 'username' && routeParts[1]) {
+      fetchUserHoldingsByUsername(decodeURIComponent(routeParts.slice(1).join('/')));
+    } else if (routeArg) {
+      fetchUserHoldingsFor(decodeURIComponent(routeArg));
+    } else {
+      fetchUserHoldings();
+    }
     fetchVoltBalance();
     fetchQuestStatus();
   } else if (sectionId === 'chatSection') {
@@ -3284,6 +3308,7 @@ async function hydrateUserAvatar(userId, imgEl, tagEl) {
 let currentUserTokens = [];
 let currentProfileUserId = null;
 let currentProfileUsername = null;
+let currentProfileRoutePath = null;
 
 function setInventoryHeader(userName, showProfileButton, userId) {
   const title = document.getElementById('inventoryTitle');
@@ -3306,7 +3331,7 @@ if (inventoryProfileButton) {
     }
     fetchUserHoldingsFor(currentProfileUserId);
     if (typeof showSection === 'function') {
-      showSection('userProfileSection');
+      showSection('userProfileSection', { profileUserId: currentProfileUserId });
     }
   });
 }
@@ -3546,40 +3571,28 @@ function applySolarianMosaicLayout(mosaicGrid, count) {
   mosaicGrid.style.removeProperty('grid-auto-rows');
 }
 
-async function fetchUserHoldingsFor(userId) {
+async function loadUserHoldingsFromUrl(fetchUrl, fallbackUserId = null, routePath = null) {
   const grid = document.getElementById('userHoldingsGrid');
   const profileTitle = document.getElementById('userProfileTitle');
   const profileAvatar = document.getElementById('userProfileAvatar');
   const profileTag = document.getElementById('userProfileTag');
   if (!grid) return;
 
-  currentProfileUserId = userId || null;
+  currentProfileUserId = fallbackUserId || null;
   currentProfileUsername = null;
+  currentProfileRoutePath = routePath || (fallbackUserId ? encodeURIComponent(fallbackUserId) : null);
 
   grid.innerHTML = '<div class="empty-state">Loading holdings...</div>';
 
-  if (!userId) {
-    grid.innerHTML = '<div class="empty-state">No Discord ID found for this profile.</div>';
+  if (!fetchUrl) {
+    grid.innerHTML = '<div class="empty-state">No profile identifier found.</div>';
     if (profileTitle) profileTitle.textContent = '👤 User Profile';
     hydrateUserAvatar(null, profileAvatar, profileTag);
     return;
   }
 
   try {
-    let username = null;
-    if (userId === localStorage.getItem('discordUserID')) {
-      username = localStorage.getItem('username');
-    } else {
-      username = await resolveUsername(userId);
-    }
-    currentProfileUsername = username || userId;
-    if (profileTitle) {
-      const nameLabel = username || userId;
-      profileTitle.textContent = `${nameLabel}'s Profile`;
-    }
-    hydrateUserAvatar(userId, profileAvatar, profileTag);
-
-    const response = await fetch(`/api/holder/${userId}`);
+    const response = await fetch(fetchUrl);
     if (!response.ok) {
       throw new Error(`Failed to fetch holder data: ${response.statusText}`);
     }
@@ -3587,16 +3600,85 @@ async function fetchUserHoldingsFor(userId) {
     const holder = await response.json();
     if (!holder) {
       grid.innerHTML = '<div class="empty-state">No verified holder profile found.</div>';
+      if (profileTitle) profileTitle.textContent = 'User Profile';
+      hydrateUserAvatar(fallbackUserId, profileAvatar, profileTag);
       return;
     }
+
+    const resolvedUserId = holder.discordId ? String(holder.discordId) : fallbackUserId;
+    let username = holder.twitterHandle || holder.walletAddress || resolvedUserId;
+    if (resolvedUserId) {
+      if (resolvedUserId === localStorage.getItem('discordUserID')) {
+        username = localStorage.getItem('username') || username;
+      } else {
+        username = await resolveUsername(resolvedUserId);
+      }
+    }
+
+    currentProfileUserId = resolvedUserId || null;
+    currentProfileUsername = username || resolvedUserId || null;
+    currentProfileRoutePath = routePath || (resolvedUserId ? encodeURIComponent(resolvedUserId) : null);
+
+    if (profileTitle) {
+      const nameLabel = username || resolvedUserId || 'User';
+      profileTitle.textContent = `${nameLabel}'s Profile`;
+    }
+    hydrateUserAvatar(resolvedUserId, profileAvatar, profileTag);
 
     renderUserHoldings(holder);
   } catch (error) {
     console.error('Error loading holdings:', error);
     grid.innerHTML = '<div class="empty-state">Could not load holdings data.</div>';
     if (profileTitle) profileTitle.textContent = 'User Profile';
-    hydrateUserAvatar(userId, profileAvatar, profileTag);
+    hydrateUserAvatar(fallbackUserId, profileAvatar, profileTag);
   }
+}
+
+async function fetchUserHoldingsFor(userId) {
+  if (!userId) {
+    return loadUserHoldingsFromUrl(null, null, null);
+  }
+  return loadUserHoldingsFromUrl(
+    `/api/holder/${encodeURIComponent(userId)}`,
+    String(userId),
+    encodeURIComponent(userId)
+  );
+}
+
+async function fetchUserHoldingsByWallet(walletAddress) {
+  const normalizedWallet = String(walletAddress || '').trim();
+  if (!normalizedWallet) {
+    return loadUserHoldingsFromUrl(null, null, null);
+  }
+  return loadUserHoldingsFromUrl(
+    `/api/holder/wallet/${encodeURIComponent(normalizedWallet)}`,
+    null,
+    `wallet/${encodeURIComponent(normalizedWallet)}`
+  );
+}
+
+async function fetchUserHoldingsByTwitter(twitterHandle) {
+  const normalizedHandle = String(twitterHandle || '').trim().replace(/^@+/, '');
+  if (!normalizedHandle) {
+    return loadUserHoldingsFromUrl(null, null, null);
+  }
+  return loadUserHoldingsFromUrl(
+    `/api/holder/twitter/${encodeURIComponent(normalizedHandle)}`,
+    null,
+    `twitter/${encodeURIComponent(normalizedHandle)}`
+  );
+}
+
+async function fetchUserHoldingsByUsername(username) {
+  const normalizedUsername = String(username || '').trim();
+  if (!normalizedUsername) {
+    return loadUserHoldingsFromUrl(null, null, null);
+  }
+  return loadUserHoldingsFromUrl(
+    `/api/holder/username/${encodeURIComponent(normalizedUsername)}`,
+    null,
+    `username/${encodeURIComponent(normalizedUsername)}`
+  );
 }
 
 async function fetchUserHoldings() {
