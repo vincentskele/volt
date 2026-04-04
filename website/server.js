@@ -287,6 +287,80 @@ function normalizeTwitterHandle(twitterHandle) {
   return String(twitterHandle || '').trim().replace(/^@+/, '').toLowerCase();
 }
 
+function normalizeProfileLookupValue(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^@+/, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function getEditDistance(left, right, maxDistance = 3) {
+  const a = String(left || '');
+  const b = String(right || '');
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  if (Math.abs(a.length - b.length) > maxDistance) return maxDistance + 1;
+
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i];
+    let rowMin = current[0];
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      current[j] = Math.min(
+        previous[j] + 1,
+        current[j - 1] + 1,
+        previous[j - 1] + cost
+      );
+      rowMin = Math.min(rowMin, current[j]);
+    }
+    if (rowMin > maxDistance) return maxDistance + 1;
+    previous = current;
+  }
+  return previous[b.length];
+}
+
+function scoreProfileLookupCandidate(query, candidate) {
+  const normalizedQuery = normalizeProfileLookupValue(query);
+  const normalizedCandidate = normalizeProfileLookupValue(candidate);
+  if (!normalizedQuery || !normalizedCandidate) return null;
+
+  if (normalizedCandidate === normalizedQuery) return 0;
+  if (normalizedCandidate.startsWith(normalizedQuery)) return 1;
+  if (normalizedCandidate.includes(normalizedQuery)) return 2;
+  if (normalizedQuery.includes(normalizedCandidate)) return 3;
+
+  const distance = getEditDistance(normalizedQuery, normalizedCandidate, 2);
+  if (distance <= 2) return 10 + distance;
+
+  return null;
+}
+
+function findBestProfileLookupMatch(query, entries, getCandidateValue) {
+  let bestEntry = null;
+  let bestScore = null;
+  let tied = false;
+
+  (entries || []).forEach((entry) => {
+    const score = scoreProfileLookupCandidate(query, getCandidateValue(entry));
+    if (score === null) return;
+    if (bestScore === null || score < bestScore) {
+      bestEntry = entry;
+      bestScore = score;
+      tied = false;
+      return;
+    }
+    if (score === bestScore) {
+      tied = true;
+    }
+  });
+
+  if (!bestEntry || tied) return null;
+  return bestEntry;
+}
+
 function findHolderByDiscordId(discordId) {
   const normalizedDiscordId = String(discordId || '').trim();
   if (!normalizedDiscordId) return null;
@@ -302,20 +376,26 @@ function findHolderByWalletAddress(walletAddress) {
 }
 
 function findHolderByTwitterHandle(twitterHandle) {
-  const normalizedHandle = normalizeTwitterHandle(twitterHandle);
+  const normalizedHandle = normalizeProfileLookupValue(twitterHandle);
   if (!normalizedHandle) return null;
-  return readRoboCheckHolders().find(
-    (entry) => normalizeTwitterHandle(entry?.twitterHandle) === normalizedHandle
-  ) || null;
+  return findBestProfileLookupMatch(
+    normalizedHandle,
+    readRoboCheckHolders(),
+    (entry) => entry?.twitterHandle
+  );
 }
 
 async function findHolderByUsername(username) {
-  const normalizedUsername = String(username || '').trim().toLowerCase();
+  const normalizedUsername = normalizeProfileLookupValue(username);
   if (!normalizedUsername) return null;
 
-  const userRow = await dbGet(
-    `SELECT userID FROM economy WHERE LOWER(username) = ? ORDER BY userID ASC LIMIT 1`,
-    [normalizedUsername]
+  const rows = await dbAll(
+    `SELECT userID, username FROM economy WHERE username IS NOT NULL AND username != ''`
+  );
+  const userRow = findBestProfileLookupMatch(
+    normalizedUsername,
+    rows,
+    (entry) => entry?.username
   );
   if (!userRow?.userID) return null;
 
