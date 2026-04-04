@@ -39,6 +39,13 @@
   let adminStatusPromise = null;
 
   function setSectionHash(sectionId, adminPanelId = null) {
+    if (sectionId === 'landingPage') {
+      if (window.location.hash) {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+      return;
+    }
+
     const routeName = SECTION_HASHES[sectionId] || SECTION_HASHES.landingPage;
     let nextHash = `#${routeName}`;
     if (sectionId === ADMIN_ROUTE_SECTION && adminPanelId && ADMIN_PANEL_HASHES[adminPanelId]) {
