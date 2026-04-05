@@ -166,7 +166,7 @@ module.exports = {
 
   async autocomplete(interaction) {
     const focusedValue = interaction.options.getFocused();
-    const shopItems = await db.getShopItems();
+    const shopItems = await db.getAllShopItems();
     const filtered = shopItems
       .map(item => ({ name: item.name, value: item.name }))
       .filter(choice => choice.name.toLowerCase().includes(focusedValue.toLowerCase()));

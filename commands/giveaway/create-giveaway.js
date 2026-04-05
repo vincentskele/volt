@@ -5,7 +5,7 @@ const {
   saveGiveaway,
   updateWallet,
   getPrizeShopItemByName,
-  getShopItems,
+  getAllShopItems,
   addItemToInventory,
   getGiveawayEntries,
 } = require('../../db'); 
@@ -195,7 +195,7 @@ module.exports = {
 
   async autocomplete(interaction) {
     const focusedValue = interaction.options.getFocused();
-    const shopItems = await getShopItems();
+    const shopItems = await getAllShopItems();
     const filtered = shopItems
       .map(item => ({ name: item.name, value: item.name }))
       .filter(choice => choice.name.toLowerCase().includes(String(focusedValue).toLowerCase()));

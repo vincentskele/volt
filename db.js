@@ -1447,8 +1447,7 @@ function getPrizeShopItemByName(name) {
   return new Promise((resolve, reject) => {
     db.get(
       `SELECT * FROM items
-       WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))
-         AND (isAvailable = 1 OR COALESCE(isHidden, 0) = 1)`,
+       WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))`,
       [name],
       (err, row) => {
         if (err) {

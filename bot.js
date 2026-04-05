@@ -542,7 +542,7 @@ async function concludeTitleGiveaway(titleGiveaway) {
         `Prize: **${prizeAmount}**`
       );
     } else {
-      const shopItem = await getShopItemByName(titleGiveaway.prize);
+      const shopItem = await getPrizeShopItemByName(titleGiveaway.prize);
       if (!shopItem) {
         if (channel) await channel.send(`⚠️ **${titleGiveaway.giveaway_name}** ended, but prize item "**${titleGiveaway.prize}**" no longer exists in the shop.`);
         return;

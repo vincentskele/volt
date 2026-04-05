@@ -2236,6 +2236,41 @@ async function loadAdminTitleGiveaways() {
   if (!token || !list) return;
   list.innerHTML = '';
 
+  const createRow = document.createElement('div');
+  createRow.className = 'admin-actions';
+  const createBtn = document.createElement('button');
+  createBtn.className = 'btn';
+  createBtn.textContent = 'Create Title Giveaway';
+  createRow.appendChild(createBtn);
+  list.appendChild(createRow);
+  createBtn.addEventListener('click', async () => {
+    const shopItems = await getAdminShopItems(token);
+    buildPrizeDurationModal({
+      title: 'Create Title Giveaway',
+      fields: [
+        { key: 'giveaway_name', label: 'Name', value: '' },
+        { key: 'prize', label: 'Prize (shop item or Volts)', value: '', type: 'prize', placeholder: 'Item name or Volt amount' },
+        { key: 'winners', label: 'Winners', value: 1 },
+        { key: 'repeat', label: 'Repeat (0/1)', value: 0 },
+      ],
+      durationValue: 1,
+      durationUnit: 'days',
+      shopItems,
+      onSubmit: async (data, unit) => {
+        const payload = {
+          ...data,
+          end_time: durationFromNow(data.end_time, unit),
+        };
+        const result = await adminActionRequest('/api/admin/title-giveaways/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        });
+        if (result.ok) loadAdminTitleGiveaways();
+      },
+    });
+  });
+
   try {
     const res = await fetch('/api/admin/title-giveaways', { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) throw new Error('Failed to load title giveaways.');
@@ -2268,25 +2303,31 @@ async function loadAdminTitleGiveaways() {
       actions.appendChild(cancelBtn);
       item.appendChild(actions);
 
-      editBtn.addEventListener('click', () => {
-        buildEditModal('Edit Title Giveaway', [
-          { key: 'giveaway_name', label: 'Name', value: g.giveaway_name },
-          { key: 'prize', label: 'Prize', value: g.prize },
-          { key: 'winners', label: 'Winners', value: g.winners },
-          { key: 'end_time', label: 'End Time (days)', value: msToDays(g.end_time - Date.now()) },
-          { key: 'repeat', label: 'Repeat (0/1)', value: g.repeat },
-          { key: 'is_completed', label: 'Completed (0/1)', value: g.is_completed },
-        ], async (data) => {
-          const payload = {
-            ...data,
-            end_time: daysFromNow(data.end_time),
-          };
-          const result = await adminActionRequest(`/api/admin/title-giveaways/${g.id}/update`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify(payload),
-          });
-          if (result.ok) loadAdminTitleGiveaways();
+      editBtn.addEventListener('click', async () => {
+        const shopItems = await getAdminShopItems(token);
+        buildPrizeDurationModal({
+          title: 'Edit Title Giveaway',
+          fields: [
+            { key: 'giveaway_name', label: 'Name', value: g.giveaway_name },
+            { key: 'prize', label: 'Prize (shop item or Volts)', value: g.prize, type: 'prize', placeholder: 'Item name or Volt amount' },
+            { key: 'winners', label: 'Winners', value: g.winners },
+            { key: 'repeat', label: 'Repeat (0/1)', value: g.repeat },
+          ],
+          durationValue: msToDays(g.end_time - Date.now()),
+          durationUnit: 'days',
+          shopItems,
+          onSubmit: async (data, unit) => {
+            const payload = {
+              ...data,
+              end_time: durationFromNow(data.end_time, unit),
+            };
+            const result = await adminActionRequest(`/api/admin/title-giveaways/${g.id}/update`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify(payload),
+            });
+            if (result.ok) loadAdminTitleGiveaways();
+          },
         });
       });
       cancelBtn.addEventListener('click', () => {
