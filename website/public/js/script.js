@@ -4066,6 +4066,8 @@ const SOLARIAN_IMAGE_PRELOAD_CONCURRENCY = 4;
 let solarianImagePreloadActiveCount = 0;
 let currentSolarianMosaicTokens = [];
 let currentSolarianMosaicRenderedCount = 0;
+const solarianMosaicLoadQueue = [];
+let solarianMosaicActiveLoadCount = 0;
 let currentProfileDetails = {
   aboutMe: '',
   specialties: '',
@@ -4205,6 +4207,54 @@ function getSolarianMosaicBatchSize(totalCount = 0) {
   return isSmallScreen ? 12 : 30;
 }
 
+function getSolarianMosaicLoadConcurrency() {
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1024;
+  return viewportWidth <= 700 ? 2 : 6;
+}
+
+function pumpSolarianMosaicLoadQueue() {
+  const maxConcurrentLoads = getSolarianMosaicLoadConcurrency();
+
+  while (solarianMosaicActiveLoadCount < maxConcurrentLoads && solarianMosaicLoadQueue.length) {
+    const img = solarianMosaicLoadQueue.shift();
+    const sourceUrl = img?.dataset?.src;
+    if (!img || !sourceUrl || img.dataset.loaded === '1') {
+      continue;
+    }
+
+    img.dataset.loaded = '1';
+    solarianMosaicActiveLoadCount += 1;
+
+    const finishLoad = () => {
+      solarianMosaicActiveLoadCount = Math.max(0, solarianMosaicActiveLoadCount - 1);
+      pumpSolarianMosaicLoadQueue();
+    };
+
+    if (solarianImageLoadCache.get(sourceUrl)) {
+      img.src = sourceUrl;
+      img.classList.remove('is-loading', 'is-error');
+      finishLoad();
+      continue;
+    }
+
+    img.classList.add('is-loading');
+    const preloadImage = new Image();
+    preloadImage.addEventListener('load', () => {
+      solarianImageLoadCache.set(sourceUrl, true);
+      img.src = sourceUrl;
+      img.classList.remove('is-loading', 'is-error');
+      finishLoad();
+    }, { once: true });
+    preloadImage.addEventListener('error', () => {
+      img.classList.remove('is-loading');
+      img.classList.add('is-error');
+      finishLoad();
+    }, { once: true });
+    preloadImage.decoding = 'async';
+    preloadImage.src = sourceUrl;
+  }
+}
+
 function maybeAppendSolarianMosaicBatch(mosaicGrid, force = false) {
   if (!mosaicGrid) return;
 
@@ -4238,17 +4288,15 @@ function maybeAppendSolarianMosaicBatch(mosaicGrid, force = false) {
     const img = document.createElement('img');
     img.dataset.src = token.metadata.image;
     img.alt = 'Solarian';
-    img.loading = 'eager';
-    img.decoding = 'auto';
     img.className = 'solarian-mosaic-image';
 
-    loadMosaicImage(img);
-
     fragment.appendChild(img);
+    solarianMosaicLoadQueue.push(img);
   });
 
   currentSolarianMosaicRenderedCount += nextTokens.length;
   mosaicGrid.appendChild(fragment);
+  pumpSolarianMosaicLoadQueue();
 
   requestAnimationFrame(() => {
     applySolarianMosaicLayout(mosaicGrid, currentSolarianMosaicRenderedCount);
@@ -4476,6 +4524,8 @@ function renderSolarianMosaic(tokens) {
     ? tokens.filter((token) => token?.metadata?.image)
     : [];
   currentSolarianMosaicRenderedCount = 0;
+  solarianMosaicLoadQueue.length = 0;
+  solarianMosaicActiveLoadCount = 0;
   if (count <= 1) {
     mosaicGrid.classList.add('mosaic-count-1');
   } else if (count <= 2) {
