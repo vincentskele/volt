@@ -2344,3 +2344,500 @@ footer p {
 footer p strong {
   color: var(--accent);
 }
+
+/* --------------------------------------------------
+   HOME PAGE POLISH
+-------------------------------------------------- */
+body {
+  padding: 92px 0 24px;
+}
+
+header {
+  width: min(94vw, 1220px);
+  margin: 18px 0 12px;
+  padding: 0;
+}
+
+header h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 4vw, 2.9rem);
+  line-height: 1.05;
+}
+
+#loginModal {
+  position: fixed;
+  inset: 0 0 auto 0;
+  display: flex;
+  justify-content: center;
+  padding: 12px 16px;
+  background: rgba(36, 42, 61, 0.92);
+  border-bottom: 1px solid rgba(242, 162, 75, 0.35);
+  backdrop-filter: blur(8px);
+  z-index: 50;
+}
+
+#loginModal > div {
+  width: min(1180px, 100%);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  background: rgba(80, 89, 122, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+}
+
+#loginForm {
+  flex: 1 1 760px;
+  display: grid;
+  grid-template-columns: auto minmax(180px, 1fr) auto minmax(180px, 1fr) auto auto;
+  align-items: center;
+  gap: 10px 14px;
+}
+
+#loginForm label {
+  font-size: 0.82rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+#loginForm input {
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  padding: 0 14px;
+  border: 2px solid rgba(0, 0, 0, 0.45);
+  border-radius: 8px;
+  font-family: 'Press Start 2P', sans-serif;
+  font-size: 0.72rem;
+  text-transform: none;
+  text-shadow: none;
+  color: var(--black);
+}
+
+#loginForm input::placeholder {
+  text-transform: none;
+}
+
+#loginForm button,
+#userButtons button,
+#landingPage .btn {
+  margin: 0;
+}
+
+#loginForm button {
+  min-height: 44px !important;
+  height: 44px !important;
+  padding: 0 16px !important;
+  border: 2px solid rgba(0, 0, 0, 0.22);
+  line-height: 1 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#voltMenuContainer {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  display: flex;
+  justify-content: center;
+  width: auto;
+  margin-left: 0;
+}
+
+#voltMenu {
+  width: min(100%, 280px);
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(20, 24, 37, 0.95);
+}
+
+.content {
+  width: 90%;
+}
+
+#landingPage {
+  width: min(92vw, 1220px);
+  max-width: 1220px;
+  padding: 30px 28px 34px;
+  border-radius: 22px;
+}
+
+.dashboard-nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px 20px;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto 34px;
+}
+
+#landingPage .btn {
+  width: 220px;
+  min-height: 64px;
+  padding: 14px 18px;
+  border: none;
+  background: var(--accent);
+  box-shadow: 0 6px 0 rgba(67, 73, 99, 0.95), 0 10px 16px rgba(0, 0, 0, 0.16);
+}
+
+#landingPage .btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 7px 0 rgba(67, 73, 99, 0.95), 0 12px 18px rgba(0, 0, 0, 0.18);
+}
+
+.quick-steps {
+  width: min(100%, 900px);
+  margin: 0 auto;
+  padding: 0;
+}
+
+.quick-steps h2 {
+  margin: 0 0 22px;
+  font-size: clamp(1.8rem, 3.8vw, 3rem) !important;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 10px;
+}
+
+.quick-steps-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 20px;
+}
+
+.quick-steps-list li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 16px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+  text-align: center;
+  font-size: clamp(0.78rem, 1.3vw, 0.98rem) !important;
+  line-height: 1.45;
+}
+
+.quick-steps-list li::before {
+  content: "•";
+  display: block;
+  text-align: center;
+  transform: translateY(0.02em);
+  font-size: 1.2rem;
+  line-height: 1;
+  text-shadow: none;
+  color: var(--text-primary);
+}
+
+.logged-in-header {
+  position: relative;
+  width: min(1180px, 100%);
+  min-height: 118px;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.logged-in-mode {
+  background: transparent !important;
+  border-bottom: 0 !important;
+  backdrop-filter: none !important;
+  padding: 0 16px !important;
+  pointer-events: none;
+}
+
+.logged-in-mode > .logged-in-header {
+  pointer-events: auto;
+}
+
+.logged-in-header #voltMenuContainer {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  justify-content: center;
+  width: auto;
+  margin: 0;
+}
+
+.logged-in-header #voltMenu {
+  width: auto;
+  min-width: 320px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.logged-in-header #questStatusValue {
+  margin-top: 6px;
+}
+
+@media (max-width: 960px) {
+  body {
+    padding-top: 168px;
+  }
+
+  #loginForm {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #loginForm label {
+    grid-column: span 2;
+  }
+
+  #loginForm button {
+    width: 100% !important;
+  }
+
+  #voltMenuContainer {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    flex: none;
+    justify-content: center;
+    margin-left: 0;
+  }
+
+  #landingPage {
+    padding: 26px 20px 30px;
+  }
+
+  .dashboard-nav {
+    gap: 12px 16px;
+  }
+
+  .logged-in-header {
+    min-height: 134px;
+  }
+
+  .logged-in-header #voltMenu {
+    min-width: 280px;
+  }
+}
+
+@media (max-width: 760px) {
+  body {
+    padding-top: 24px;
+  }
+
+  header {
+    width: min(calc(100% - 20px), 420px);
+    margin: 8px auto 12px;
+    padding: 0 8px;
+  }
+
+  #loginModal {
+    padding: 10px 12px;
+  }
+
+  #loginModal > div {
+    padding: 12px;
+    border-radius: 16px;
+  }
+
+  #loginForm {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  #loginForm label {
+    grid-column: auto;
+    margin-top: 2px;
+  }
+
+  #loginForm input,
+  #loginForm button {
+    width: 100%;
+  }
+
+  #landingPage {
+    width: calc(100% - 20px);
+    padding: 22px 12px 26px;
+    border-radius: 16px;
+  }
+
+  .dashboard-nav {
+    gap: 10px;
+    margin-bottom: 28px;
+  }
+
+  #landingPage .btn {
+    width: 100%;
+    max-width: 230px;
+    min-height: 56px;
+    padding: 12px 10px;
+    font-size: 0.74rem;
+  }
+
+  .quick-steps h2 {
+    margin-bottom: 20px;
+  }
+
+  .quick-steps-list {
+    gap: 14px;
+  }
+
+  .quick-steps-list li {
+    grid-template-columns: 14px minmax(0, 1fr);
+    column-gap: 10px;
+    width: 100%;
+    font-size: 0.68rem !important;
+    line-height: 1.5;
+  }
+
+  .quick-steps-list li::before {
+    font-size: 0.95rem;
+  }
+
+  .logged-in-header {
+    width: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .logged-in-mode {
+    position: static !important;
+    inset: auto !important;
+    justify-content: center !important;
+    padding: 8px 0 0 !important;
+    pointer-events: auto;
+  }
+
+  .logged-in-mode > .logged-in-header {
+    width: min(calc(100% - 20px), 320px);
+    margin: 0 auto;
+  }
+
+  .logged-in-header #userButtons {
+    position: static !important;
+    top: auto !important;
+    right: auto !important;
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 6px !important;
+    width: min(100%, 300px);
+    margin: 0 auto;
+  }
+
+  .logged-in-header .user-action-avatar {
+    align-self: center;
+  }
+
+  .logged-in-header #userButtons button {
+    width: auto !important;
+    min-width: 90px;
+    height: 22px !important;
+    line-height: 22px !important;
+    padding: 0 8px !important;
+  }
+
+  .logged-in-header #voltMenuContainer {
+    position: static;
+    top: auto;
+    left: auto;
+    right: auto;
+    transform: none;
+    width: 100%;
+    justify-content: center;
+    margin: 0 auto;
+  }
+
+  .logged-in-header #voltMenu {
+    min-width: 0;
+    width: min(100%, 300px);
+    text-align: center;
+  }
+}
+
+@media (min-width: 521px) and (max-width: 760px) {
+  .logged-in-mode > .logged-in-header {
+    width: min(calc(100% - 40px), 360px);
+  }
+
+  .logged-in-header #userButtons {
+    width: min(100%, 340px);
+  }
+
+  .logged-in-header #voltMenu {
+    width: min(100%, 340px);
+  }
+
+  header {
+    width: min(calc(100% - 40px), 520px);
+  }
+
+  header h1 {
+    text-align: center;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: nowrap;
+  }
+}
+
+@media (max-width: 480px) {
+  body {
+    padding-top: 24px;
+  }
+
+  .dashboard-nav {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  #landingPage .btn {
+    min-height: 54px;
+  }
+
+  header h1 {
+    font-size: clamp(1.55rem, 10vw, 2.3rem);
+  }
+}
+
+@media (max-width: 360px) {
+  .logged-in-mode > .logged-in-header {
+    width: min(calc(100% - 10px), 290px);
+  }
+
+  .logged-in-header #userButtons {
+    width: min(100%, 280px);
+    gap: 5px !important;
+  }
+
+  .logged-in-header #userButtons button {
+    min-width: 84px;
+    font-size: 0.62rem;
+  }
+
+  .logged-in-header #voltMenu {
+    width: min(100%, 280px);
+  }
+
+  #landingPage {
+    width: calc(100% - 10px);
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+}

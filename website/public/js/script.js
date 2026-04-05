@@ -3310,6 +3310,12 @@ function showPostLoginButtons() {
   if (passwordLabel) passwordLabel.style.display = 'none';
   if (loginButton) loginButton.style.display = 'none';
   if (discordLoginButton) discordLoginButton.style.display = 'none';
+  if (loginForm) loginForm.style.display = 'none';
+
+  const loginModal = document.getElementById('loginModal');
+  const loginModalCard = loginModal?.firstElementChild;
+  if (loginModal) loginModal.classList.add('logged-in-mode');
+  if (loginModalCard) loginModalCard.classList.add('logged-in-header');
 
   // Create a container for the two buttons, top-right corner
   const userActionContainer = document.createElement('div');
@@ -3320,7 +3326,7 @@ function showPostLoginButtons() {
   userActionContainer.style.display = 'flex';
   userActionContainer.style.flexDirection = 'column';
   userActionContainer.style.alignItems = 'flex-end';
-  userActionContainer.style.gap = '4px'; // Keep spacing between buttons
+  userActionContainer.style.gap = '4px';
 
   // ========== USER AVATAR ==========
   const userAvatar = document.createElement('img');
