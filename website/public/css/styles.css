@@ -2585,23 +2585,7 @@ header h1 {
   margin-top: 6px;
 }
 
-@media (max-width: 960px) {
-  body {
-    padding-top: 168px;
-  }
-
-  #loginForm {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  #loginForm label {
-    grid-column: span 2;
-  }
-
-  #loginForm button {
-    width: 100% !important;
-  }
-
+@media (max-width: 1100px) {
   #voltMenuContainer {
     position: absolute;
     top: 20px;
@@ -2630,24 +2614,9 @@ header h1 {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 820px) {
   body {
-    padding-top: 24px;
-  }
-
-  header {
-    width: min(calc(100% - 20px), 420px);
-    margin: 8px auto 12px;
-    padding: 0 8px;
-  }
-
-  #loginModal {
-    padding: 10px 12px;
-  }
-
-  #loginModal > div {
-    padding: 12px;
-    border-radius: 16px;
+    padding-top: 276px;
   }
 
   #loginForm {
@@ -2663,6 +2632,27 @@ header h1 {
   #loginForm input,
   #loginForm button {
     width: 100%;
+  }
+
+  #loginForm button {
+    justify-self: center;
+  }
+}
+
+@media (max-width: 760px) {
+  header {
+    width: min(calc(100% - 20px), 420px);
+    margin: 8px auto 12px;
+    padding: 0 8px;
+  }
+
+  #loginModal {
+    padding: 10px 12px;
+  }
+
+  #loginModal > div {
+    padding: 12px;
+    border-radius: 16px;
   }
 
   #landingPage {
@@ -2770,6 +2760,12 @@ header h1 {
   }
 }
 
+@media (max-width: 760px) {
+  body:has(.logged-in-mode) {
+    padding-top: 24px;
+  }
+}
+
 @media (min-width: 521px) and (max-width: 760px) {
   .logged-in-mode > .logged-in-header {
     width: min(calc(100% - 40px), 360px);
@@ -2797,9 +2793,23 @@ header h1 {
   }
 }
 
+@media (max-width: 900px) {
+  header h1 {
+    font-size: clamp(1.6rem, 6vw, 2.6rem);
+    text-align: center;
+  }
+}
+
+@media (max-width: 760px) {
+  header h1 {
+    display: block;
+    line-height: 1.15;
+  }
+}
+
 @media (max-width: 480px) {
   body {
-    padding-top: 24px;
+    padding-top: 292px;
   }
 
   .dashboard-nav {
@@ -2813,6 +2823,12 @@ header h1 {
 
   header h1 {
     font-size: clamp(1.55rem, 10vw, 2.3rem);
+  }
+}
+
+@media (max-width: 480px) {
+  body:has(.logged-in-mode) {
+    padding-top: 24px;
   }
 }
 
