@@ -3486,6 +3486,45 @@ document.addEventListener('DOMContentLoaded', () => {
 
 initAdminToggles();
 
+async function loadSectionDataForRoute(sectionId, routeParts = []) {
+  const routePath = routeParts.join('/');
+
+  if (sectionId === 'leaderboard') {
+    showLeaderboardButton?.click();
+  } else if (sectionId === 'adminList') {
+    showAdminListButton?.click();
+  } else if (sectionId === 'shop') {
+    showShopButton?.click();
+  } else if (sectionId === 'rafflesSection') {
+    showRafflesButton?.click();
+  } else if (sectionId === 'jobList') {
+    fetchJobs();
+  } else if (sectionId === 'giveawayList') {
+    fetchGiveaways();
+  } else if (sectionId === 'dailyTasksPage') {
+    startCountdownTimer();
+  } else if (sectionId === 'consoleSection') {
+    fetchAndDisplayConsoleLogs();
+    startConsoleUpdates();
+  } else if (sectionId === 'robotOilSection') {
+    showRobotOilMarket();
+  } else if (sectionId === 'inventorySection') {
+    await fetchUserInventoryByProfileRoute(routePath);
+  } else if (sectionId === 'mapSection') {
+    loadMemberMap();
+  } else if (sectionId === 'userProfileSection') {
+    await fetchUserHoldingsByProfileRoute(routePath);
+    fetchVoltBalance();
+    fetchQuestStatus();
+  } else if (sectionId === 'chatSection') {
+    loadChatMessages({ forceScrollToBottom: true });
+    startChatPolling();
+    pingChatPresence();
+    loadChatPresence();
+    startChatPresencePolling();
+  }
+}
+
 async function syncSectionFromHash() {
   if (!isLoggedIn()) {
     const pathRoute = getPathRouteState();
@@ -3510,13 +3549,7 @@ async function syncSectionFromHash() {
           : '',
       });
 
-      if (pathRoute.sectionId === 'userProfileSection') {
-        await fetchUserHoldingsByProfileRoute(pathRoute.routeParts.join('/'));
-        fetchVoltBalance();
-        fetchQuestStatus();
-      } else if (pathRoute.sectionId === 'inventorySection') {
-        await fetchUserInventoryByProfileRoute(pathRoute.routeParts.join('/'));
-      }
+      await loadSectionDataForRoute(pathRoute.sectionId, pathRoute.routeParts);
       return;
     }
     showSection('landingPage');
@@ -3546,38 +3579,7 @@ async function syncSectionFromHash() {
       : null,
   });
 
-  if (sectionId === 'leaderboard') {
-    showLeaderboardButton?.click();
-  } else if (sectionId === 'adminList') {
-    showAdminListButton?.click();
-  } else if (sectionId === 'shop') {
-    showShopButton?.click();
-  } else if (sectionId === 'jobList') {
-    fetchJobs();
-  } else if (sectionId === 'giveawayList') {
-    fetchGiveaways();
-  } else if (sectionId === 'dailyTasksPage') {
-    startCountdownTimer();
-  } else if (sectionId === 'consoleSection') {
-    fetchAndDisplayConsoleLogs();
-    startConsoleUpdates();
-  } else if (sectionId === 'robotOilSection') {
-    showRobotOilMarket();
-  } else if (sectionId === 'inventorySection') {
-    fetchUserInventoryByProfileRoute(routeParts.join('/'));
-  } else if (sectionId === 'mapSection') {
-    loadMemberMap();
-  } else if (sectionId === 'userProfileSection') {
-    fetchUserHoldingsByProfileRoute(routeParts.join('/'));
-    fetchVoltBalance();
-    fetchQuestStatus();
-  } else if (sectionId === 'chatSection') {
-    loadChatMessages({ forceScrollToBottom: true });
-    startChatPolling();
-    pingChatPresence();
-    loadChatPresence();
-    startChatPresencePolling();
-  }
+  await loadSectionDataForRoute(sectionId, routeParts);
 }
 
 window.addEventListener('hashchange', () => {
