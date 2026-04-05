@@ -1872,20 +1872,6 @@ code {
   align-items: stretch;
 }
 
-.solarian-mosaic-pager {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.solarian-mosaic-page-label {
-  flex: 1;
-  text-align: center;
-  font-size: 0.95rem;
-  color: var(--text-primary);
-}
-
 .solarian-mosaic-grid {
   flex: 1;
   display: grid;

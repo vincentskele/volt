@@ -4068,7 +4068,6 @@ let currentSolarianMosaicTokens = [];
 let currentSolarianMosaicRenderedCount = 0;
 const solarianMosaicLoadQueue = [];
 let solarianMosaicActiveLoadCount = 0;
-let currentSolarianMosaicPage = 0;
 let currentProfileDetails = {
   aboutMe: '',
   specialties: '',
@@ -4211,37 +4210,6 @@ function getSolarianMosaicBatchSize(totalCount = 0) {
 function getSolarianMosaicLoadConcurrency() {
   const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1024;
   return viewportWidth <= 700 ? 2 : 6;
-}
-
-function shouldUsePagedSolarianMosaic(totalCount = 0) {
-  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1024;
-  return viewportWidth <= 700 && totalCount > 20;
-}
-
-function getSolarianMosaicPageSize() {
-  return 12;
-}
-
-function updateSolarianMosaicPager(totalCount = 0) {
-  const pager = document.getElementById('solarianMosaicPager');
-  const prevButton = document.getElementById('solarianMosaicPrevButton');
-  const nextButton = document.getElementById('solarianMosaicNextButton');
-  const pageLabel = document.getElementById('solarianMosaicPageLabel');
-  if (!pager || !prevButton || !nextButton || !pageLabel) return;
-
-  if (!shouldUsePagedSolarianMosaic(totalCount)) {
-    pager.classList.add('hidden');
-    return;
-  }
-
-  const pageSize = getSolarianMosaicPageSize();
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const currentPage = Math.min(currentSolarianMosaicPage + 1, totalPages);
-
-  pager.classList.remove('hidden');
-  pageLabel.textContent = `Page ${currentPage} / ${totalPages}`;
-  prevButton.disabled = currentPage <= 1;
-  nextButton.disabled = currentPage >= totalPages;
 }
 
 function pumpSolarianMosaicLoadQueue() {
@@ -4555,16 +4523,6 @@ function renderSolarianMosaic(tokens) {
   currentSolarianMosaicTokens = Array.isArray(tokens)
     ? tokens.filter((token) => token?.metadata?.image)
     : [];
-  const filteredCount = currentSolarianMosaicTokens.length;
-  if (shouldUsePagedSolarianMosaic(filteredCount)) {
-    const pageSize = getSolarianMosaicPageSize();
-    const totalPages = Math.max(1, Math.ceil(filteredCount / pageSize));
-    currentSolarianMosaicPage = Math.min(currentSolarianMosaicPage, totalPages - 1);
-    const startIndex = currentSolarianMosaicPage * pageSize;
-    currentSolarianMosaicTokens = currentSolarianMosaicTokens.slice(startIndex, startIndex + pageSize);
-  } else {
-    currentSolarianMosaicPage = 0;
-  }
   currentSolarianMosaicRenderedCount = 0;
   solarianMosaicLoadQueue.length = 0;
   solarianMosaicActiveLoadCount = 0;
@@ -4580,21 +4538,14 @@ function renderSolarianMosaic(tokens) {
     mosaicGrid.classList.add('mosaic-count-20');
   }
 
-  updateSolarianMosaicPager(filteredCount);
-
   maybeAppendSolarianMosaicBatch(mosaicGrid, true);
   requestAnimationFrame(() => {
-    if (!shouldUsePagedSolarianMosaic(filteredCount)) {
+    fillSolarianMosaicViewport(mosaicGrid);
+    requestAnimationFrame(() => {
       fillSolarianMosaicViewport(mosaicGrid);
-      requestAnimationFrame(() => {
-        fillSolarianMosaicViewport(mosaicGrid);
-      });
-    }
+    });
   });
-  if (
-    !shouldUsePagedSolarianMosaic(filteredCount) &&
-    currentSolarianMosaicTokens.length > currentSolarianMosaicRenderedCount
-  ) {
+  if (currentSolarianMosaicTokens.length > currentSolarianMosaicRenderedCount) {
     mosaicGrid.addEventListener('scroll', handleSolarianMosaicScroll);
   }
 }
@@ -5999,12 +5950,9 @@ async function fetchInventory() {
 
   const viewSolariansButton = document.getElementById('viewSolariansButton');
   const closeSolariansButton = document.getElementById('closeSolariansButton');
-  const solarianMosaicPrevButton = document.getElementById('solarianMosaicPrevButton');
-  const solarianMosaicNextButton = document.getElementById('solarianMosaicNextButton');
   const solarianMosaic = document.getElementById('solarianMosaic');
   if (viewSolariansButton && solarianMosaic) {
     viewSolariansButton.addEventListener('click', () => {
-      currentSolarianMosaicPage = 0;
       solarianMosaic.classList.remove('mosaic-hidden');
       renderSolarianMosaic(currentUserTokens);
     });
@@ -6013,26 +5961,6 @@ async function fetchInventory() {
   if (closeSolariansButton && solarianMosaic) {
     closeSolariansButton.addEventListener('click', () => {
       solarianMosaic.classList.add('mosaic-hidden');
-    });
-  }
-
-  if (solarianMosaicPrevButton && solarianMosaic) {
-    solarianMosaicPrevButton.addEventListener('click', () => {
-      if (currentSolarianMosaicPage <= 0) return;
-      currentSolarianMosaicPage -= 1;
-      renderSolarianMosaic(currentUserTokens);
-    });
-  }
-
-  if (solarianMosaicNextButton && solarianMosaic) {
-    solarianMosaicNextButton.addEventListener('click', () => {
-      const totalCount = Array.isArray(currentUserTokens)
-        ? currentUserTokens.filter((token) => token?.metadata?.image).length
-        : 0;
-      const totalPages = Math.max(1, Math.ceil(totalCount / getSolarianMosaicPageSize()));
-      if (currentSolarianMosaicPage >= totalPages - 1) return;
-      currentSolarianMosaicPage += 1;
-      renderSolarianMosaic(currentUserTokens);
     });
   }
 
