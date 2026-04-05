@@ -235,10 +235,10 @@
 
   <!-- Action Buttons -->
   <div style="margin-top: 20px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;">
-    <button id="marketBuyButton" class="btn" style="background-color: #4CAF50;">Market Buy</button>
-    <button id="marketSellButton" class="btn" style="background-color: #EF4444;">Market Sell</button>
-    <button id="offerBuyButton" class="btn" style="background-color: #3B82F6;">Bid</button>
-    <button id="offerSaleButton" class="btn" style="background-color: #F59E0B;">List</button>
+    <button id="marketBuyButton" class="btn" style="background-color: #4CAF50;"><span class="btn-icon-content"><i class="fa-solid fa-cart-plus" aria-hidden="true"></i><span>Market Buy</span></span></button>
+    <button id="marketSellButton" class="btn" style="background-color: #EF4444;"><span class="btn-icon-content"><i class="fa-solid fa-hand-holding-dollar" aria-hidden="true"></i><span>Market Sell</span></span></button>
+    <button id="offerBuyButton" class="btn" style="background-color: #3B82F6;"><span class="btn-icon-content"><i class="fa-solid fa-gavel" aria-hidden="true"></i><span>Bid</span></span></button>
+    <button id="offerSaleButton" class="btn" style="background-color: #F59E0B;"><span class="btn-icon-content"><i class="fa-solid fa-tags" aria-hidden="true"></i><span>List</span></span></button>
   </div>
 
   <!-- Home Button -->
@@ -358,7 +358,7 @@
   </div>
   <div class="chat-input-row">
     <input id="chatInput" type="text" placeholder="Type a message..." maxlength="500" />
-    <button id="sendChatButton" class="btn">Send</button>
+    <button id="sendChatButton" class="btn"><span class="btn-icon-content"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i><span>Send</span></span></button>
   </div>
   <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
 </div>
@@ -406,8 +406,8 @@
     </p>
   </div>
 
-  <button id="quitJobButton" class="btn danger">Quit</button>
-  <button id="submitJobButton" class="btn success">Submit</button>
+  <button id="quitJobButton" class="btn danger"><span class="btn-icon-content"><i class="fa-solid fa-circle-xmark" aria-hidden="true"></i><span>Quit</span></span></button>
+  <button id="submitJobButton" class="btn success"><span class="btn-icon-content"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i><span>Submit</span></span></button>
 
   <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
 
@@ -439,8 +439,8 @@
 
     <!-- Buttons -->
     <div>
-      <button id="cancelSubmissionButton">Cancel</button>
-      <button id="sendSubmissionButton">Submit</button>
+      <button id="cancelSubmissionButton"><span class="btn-icon-content"><i class="fa-solid fa-ban" aria-hidden="true"></i><span>Cancel</span></span></button>
+      <button id="sendSubmissionButton"><span class="btn-icon-content"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i><span>Submit</span></span></button>
     </div>
   </div>
 </div>
@@ -513,7 +513,7 @@
         <div id="inventoryTag" class="profile-tag muted"></div>
       </div>
     </div>
-    <button id="inventoryProfileButton" class="btn text-sm font-bold" style="display: none;">USER PROFILE</button>
+    <button id="inventoryProfileButton" class="btn text-sm font-bold" style="display: none;"><span class="btn-icon-content"><i class="fa-solid fa-user" aria-hidden="true"></i><span>User Profile</span></span></button>
   </div>
   <p></p>
   <ul id="inventoryItems" class="inventory-list">
@@ -560,15 +560,15 @@
     </div>
   </div>
   <div class="profile-actions">
-    <button id="editUserProfileButton" class="btn text-sm font-bold" style="display: none;">EDIT PROFILE</button>
-    <button id="viewSolariansButton" class="btn text-sm font-bold">VIEW ALL 0 SOLARIANS</button>
-    <button id="viewProfileInventoryButton" class="btn text-sm font-bold">VIEW INVENTORY</button>
+    <button id="editUserProfileButton" class="btn text-sm font-bold" style="display: none;"><span class="btn-icon-content"><i class="fa-solid fa-user-pen" aria-hidden="true"></i><span>Edit Profile</span></span></button>
+    <button id="viewSolariansButton" class="btn text-sm font-bold"><span class="btn-icon-content"><i class="fa-solid fa-people-group" aria-hidden="true"></i><span>View All 0 Solarians</span></span></button>
+    <button id="viewProfileInventoryButton" class="btn text-sm font-bold"><span class="btn-icon-content"><i class="fa-solid fa-box-open" aria-hidden="true"></i><span>View Inventory</span></span></button>
   </div>
   <div id="userHoldingsGrid" class="holdings-section-list"></div>
 
   <div id="solarianMosaic" class="solarian-mosaic mosaic-hidden">
     <div class="solarian-mosaic-inner">
-      <button id="closeSolariansButton" class="btn text-sm font-bold">Close</button>
+      <button id="closeSolariansButton" class="btn text-sm font-bold"><span class="btn-icon-content"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span>Close</span></span></button>
       <div id="solarianMosaicGrid" class="solarian-mosaic-grid"></div>
     </div>
   </div>

@@ -3867,8 +3867,8 @@ function openEditProfileModal() {
         </select>
       </div>
       <div class="modal-buttons">
-        <button type="submit" id="submitProfileUpdateButton" class="confirm-button">Save Profile</button>
-        <button type="button" id="cancelProfileEditButton" class="cancel-button">Cancel</button>
+        <button type="submit" id="submitProfileUpdateButton" class="confirm-button">${buildButtonIconMarkup('fa-solid fa-floppy-disk', 'Save Profile')}</button>
+        <button type="button" id="cancelProfileEditButton" class="cancel-button">${buildButtonIconMarkup('fa-solid fa-ban', 'Cancel')}</button>
       </div>
     </form>
   `;
@@ -3942,8 +3942,8 @@ function openMemberMapCard(user) {
       </div>
     </div>
     <div class="member-map-card-actions">
-      <button type="button" id="memberMapViewProfileButton" class="btn text-sm font-bold">VIEW PROFILE</button>
-      <button type="button" id="memberMapCloseCardButton" class="btn text-sm font-bold">CLOSE</button>
+      <button type="button" id="memberMapViewProfileButton" class="btn text-sm font-bold">${buildButtonIconMarkup('fa-solid fa-address-card', 'View Profile')}</button>
+      <button type="button" id="memberMapCloseCardButton" class="btn text-sm font-bold">${buildButtonIconMarkup('fa-solid fa-xmark', 'Close')}</button>
     </div>
   `;
 
@@ -4422,7 +4422,10 @@ function renderUserHoldings(holder) {
   currentUserTokens = tokens;
   queueSolarianImagePreloads(tokens);
   if (viewButton) {
-    viewButton.textContent = `VIEW ALL ${tokens.length} SOLARIAN${tokens.length === 1 ? '' : 'S'}`;
+    viewButton.innerHTML = buildButtonIconMarkup(
+      'fa-solid fa-people-group',
+      `View All ${tokens.length} Solarian${tokens.length === 1 ? '' : 's'}`
+    );
     viewButton.disabled = tokens.length === 0;
   }
 
