@@ -114,6 +114,20 @@ header p {
 /* --------------------------------------------------
    BUTTONS
 -------------------------------------------------- */
+.btn-icon-content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  width: 100%;
+  white-space: nowrap;
+}
+
+.btn-icon-content i {
+  font-size: 0.95em;
+  line-height: 1;
+}
+
 button,
 .back-button {
   position: relative;

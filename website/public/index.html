@@ -19,6 +19,10 @@
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
   />
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.7.2/css/all.min.css"
+  />
   <link rel="stylesheet" href="/css/styles.css">
   <link rel="icon" href="/favicon.png" type="image/png">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -61,7 +65,7 @@
           width: auto !important;
         "
       >
-        LOGIN
+        <span class="btn-icon-content"><i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i><span>Login</span></span>
       </button>
       <button
         id="discordLoginButton"
@@ -76,7 +80,7 @@
           width: auto !important;
         "
       >
-        LOGIN WITH DISCORD
+        <span class="btn-icon-content"><i class="fa-brands fa-discord" aria-hidden="true"></i><span>Login With Discord</span></span>
       </button>
     </form>
 
@@ -124,6 +128,7 @@
 
   <header>
     <h1 
+      id="homeTitle"
       onclick="this.style.transform=`rotate(5deg) scale(1.1)`; 
                this.style.color=`#ffcc00`; 
                this.style.textShadow=`0px 0px 10px rgba(255, 204, 0, 0.8)`; 
@@ -131,7 +136,10 @@
                    this.style.color=''; 
                    this.style.textShadow=''; 
                }, 300); 
-               setTimeout(() => location.reload(), 600);"
+               setTimeout(() => { 
+                   window.history.replaceState(null, '', `/${window.location.search}`); 
+                   location.assign(`/${window.location.search}`); 
+               }, 600);"
     
       onmouseover="this.style.transform=`rotate(5deg) scale(1.1)`; 
                    this.style.color=`#ffcc00`; 
@@ -153,15 +161,15 @@
 <div id="landingPage" class="content">
    <div class="buttons dashboard-nav">
     
-    <button id="showGiveawayListButton" class="btn">Giveaway List</button>
-    <button id="showRafflesButton" class="btn">Raffles</button>
-    <button id="showShopButton" class="btn">Shop</button>
-    <button id="showDailyTasksButton" class="btn">Auto Quests</button>
-    <button id="showJobListButton" class="btn">Quests</button>
-    <button id="showRobotOilButton" class="btn">Robot Oil</button>
-    <button id="showLeaderboardButton" class="btn">Leaderboard</button>
-    <button id="showAdminListButton" class="btn">Admin List</button>
-    <button id="showConsoleButton" class="btn">Logs</button>
+    <button id="showGiveawayListButton" class="btn"><span class="btn-icon-content"><i class="fa-solid fa-gift" aria-hidden="true"></i><span>Giveaway List</span></span></button>
+    <button id="showRafflesButton" class="btn"><span class="btn-icon-content"><i class="fa-solid fa-ticket" aria-hidden="true"></i><span>Raffles</span></span></button>
+    <button id="showShopButton" class="btn"><span class="btn-icon-content"><i class="fa-solid fa-store" aria-hidden="true"></i><span>Shop</span></span></button>
+    <button id="showDailyTasksButton" class="btn"><span class="btn-icon-content"><i class="fa-solid fa-bolt" aria-hidden="true"></i><span>Auto Quests</span></span></button>
+    <button id="showJobListButton" class="btn"><span class="btn-icon-content"><i class="fa-solid fa-list-check" aria-hidden="true"></i><span>Quests</span></span></button>
+    <button id="showRobotOilButton" class="btn"><span class="btn-icon-content"><i class="fa-solid fa-oil-can" aria-hidden="true"></i><span>Robot Oil</span></span></button>
+    <button id="showLeaderboardButton" class="btn"><span class="btn-icon-content"><i class="fa-solid fa-trophy" aria-hidden="true"></i><span>Leaderboard</span></span></button>
+    <button id="showAdminListButton" class="btn"><span class="btn-icon-content"><i class="fa-solid fa-user-shield" aria-hidden="true"></i><span>Admin List</span></span></button>
+    <button id="showConsoleButton" class="btn"><span class="btn-icon-content"><i class="fa-solid fa-terminal" aria-hidden="true"></i><span>Logs</span></span></button>
 
   </div>
 
@@ -195,7 +203,7 @@
     <!-- Raffle items will be dynamically inserted here -->
   </ul>
 
-  <button class="back-button">Home</button>
+  <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
 </div>
 
 
@@ -234,7 +242,7 @@
   </div>
 
   <!-- Home Button -->
-  <button class="back-button" style="margin-top: 20px;">Home</button>
+  <button class="back-button" style="margin-top: 20px;"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
 </div>
 
 
@@ -247,7 +255,7 @@
     <h2>🏆 Leaderboard</h2>
     <ul id="leaderboardList" class=""></ul>
     <p>Click on a user to see their profile.</p>
-    <button class="back-button">Home</button>
+    <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
   </div>
 
 <!-- Admin List Section -->
@@ -257,22 +265,22 @@
     <!-- Dynamically generated admin items will be appended here -->
   </ul>
   
-  <button class="back-button">Home</button>
+  <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
 </div>
 
 <!-- Admin Dashboard Section (Admins Only) -->
 <div id="adminPage" class="content" style="display: none;">
   <h2>🛠️ Admin Dashboard</h2>
   <div class="admin-sections">
-    <button class="btn admin-toggle" data-target="adminSubmissionsPanel">Quest Submissions</button>
-    <button class="btn admin-toggle" data-target="adminUserPanel">User List</button>
-    <button class="btn admin-toggle" data-target="adminTitleGiveawaysPanel">Title Giveaways</button>
-    <button class="btn admin-toggle" data-target="adminGiveawaysPanel">Giveaways</button>
-    <button class="btn admin-toggle" data-target="adminRafflesPanel">Raffles</button>
-    <button class="btn admin-toggle" data-target="adminJoblistPanel">Quest List</button>
-    <button class="btn admin-toggle" data-target="adminShopItemsPanel">Shop Items</button>
-    <button class="btn admin-toggle" data-target="adminRedemptionsPanel">ITEM REDMPTION</button>
-    <button class="btn admin-toggle" data-target="adminCallAttendancePanel">Call Attendance</button>
+    <button class="btn admin-toggle" data-target="adminSubmissionsPanel"><span class="btn-icon-content"><i class="fa-solid fa-clipboard-check" aria-hidden="true"></i><span>Quest Submissions</span></span></button>
+    <button class="btn admin-toggle" data-target="adminUserPanel"><span class="btn-icon-content"><i class="fa-solid fa-users" aria-hidden="true"></i><span>User List</span></span></button>
+    <button class="btn admin-toggle" data-target="adminTitleGiveawaysPanel"><span class="btn-icon-content"><i class="fa-solid fa-award" aria-hidden="true"></i><span>Title Giveaways</span></span></button>
+    <button class="btn admin-toggle" data-target="adminGiveawaysPanel"><span class="btn-icon-content"><i class="fa-solid fa-gift" aria-hidden="true"></i><span>Giveaways</span></span></button>
+    <button class="btn admin-toggle" data-target="adminRafflesPanel"><span class="btn-icon-content"><i class="fa-solid fa-ticket" aria-hidden="true"></i><span>Raffles</span></span></button>
+    <button class="btn admin-toggle" data-target="adminJoblistPanel"><span class="btn-icon-content"><i class="fa-solid fa-list" aria-hidden="true"></i><span>Quest List</span></span></button>
+    <button class="btn admin-toggle" data-target="adminShopItemsPanel"><span class="btn-icon-content"><i class="fa-solid fa-shop" aria-hidden="true"></i><span>Shop Items</span></span></button>
+    <button class="btn admin-toggle" data-target="adminRedemptionsPanel"><span class="btn-icon-content"><i class="fa-solid fa-receipt" aria-hidden="true"></i><span>Item Redmption</span></span></button>
+    <button class="btn admin-toggle" data-target="adminCallAttendancePanel"><span class="btn-icon-content"><i class="fa-solid fa-headset" aria-hidden="true"></i><span>Call Attendance</span></span></button>
   </div>
 
   <div id="adminSubmissionsPanel" class="admin-panel" style="display: none;">
@@ -333,7 +341,7 @@
     <h3>🎙️ Call Attendance</h3>
     <div id="adminCallAttendanceList" class="admin-list"></div>
   </div>
-  <button class="back-button">Home</button>
+  <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
 </div>
 
 <!-- Chat Section -->
@@ -352,7 +360,7 @@
     <input id="chatInput" type="text" placeholder="Type a message..." maxlength="500" />
     <button id="sendChatButton" class="btn">Send</button>
   </div>
-  <button class="back-button">Home</button>
+  <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
 </div>
 
 
@@ -376,7 +384,7 @@
       </li>
     </ul>
   
-  <button class="back-button">Home</button>
+  <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
 </div>
 
 
@@ -401,7 +409,7 @@
   <button id="quitJobButton" class="btn danger">Quit</button>
   <button id="submitJobButton" class="btn success">Submit</button>
 
-  <button class="back-button">Home</button>
+  <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
 
 <!-- Job Submission Modal -->
 <div id="jobSubmissionModal">
@@ -451,7 +459,7 @@
       <div class="giveaway-info">
         Click the giveaway to enter!
       </div>    
-    <button class="back-button">Home</button>
+    <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
   </div>
 
 <!-- Auto Quests Section -->
@@ -492,7 +500,7 @@
   </div>
   
 
-  <button class="back-button">Home</button>
+  <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
 </div>
 
 <!-- Inventory Section -->
@@ -512,7 +520,7 @@
     <!-- Dynamically populated by script.js -->
   </ul>
 
-  <button class="back-button">Home</button>
+  <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
 </div>
 
 <!-- User Map Section -->
@@ -525,7 +533,7 @@
   </div>
   <div id="memberMapStatus" class="profile-status">Loading map pins...</div>
 
-  <button class="back-button">Home</button>
+  <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
 </div>
 
 <!-- User Profile Section -->
@@ -565,7 +573,7 @@
     </div>
   </div>
 
-  <button class="back-button">Home</button>
+  <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
 </div>
 
 <!-- Console Section -->
@@ -581,7 +589,7 @@
 
   <p>miscellaneous nerd info</p>
 
-  <button class="back-button">Home</button>
+  <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
 </div>
 
 

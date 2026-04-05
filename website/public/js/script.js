@@ -3265,7 +3265,7 @@ async function addAdminButton(userActionContainer, logoutButton) {
     if (!isAdmin) return;
 
     const adminButton = document.createElement('button');
-    adminButton.textContent = 'ADMIN';
+    adminButton.innerHTML = buildButtonIconMarkup('fa-solid fa-screwdriver-wrench', 'Admin');
     adminButton.className = 'btn text-sm font-bold';
     adminButton.style.height = '24px';
     adminButton.style.width = '110px';
@@ -3286,6 +3286,10 @@ async function addAdminButton(userActionContainer, logoutButton) {
   } catch (error) {
     console.error('❌ Failed to check admin status:', error);
   }
+}
+
+function buildButtonIconMarkup(iconClassNames, label) {
+  return `<span class="btn-icon-content"><i class="${iconClassNames}" aria-hidden="true"></i><span>${label}</span></span>`;
 }
 
 
@@ -3337,7 +3341,7 @@ function showPostLoginButtons() {
 
   // ========== INVENTORY BUTTON ==========
   const inventoryButton = document.createElement('button');
-  inventoryButton.textContent = 'INVENTORY';
+  inventoryButton.innerHTML = buildButtonIconMarkup('fa-solid fa-box-open', 'Inventory');
   inventoryButton.className = 'btn text-sm font-bold';
   inventoryButton.style.height = '24px';
   inventoryButton.style.width = '110px'; // Ensure consistent width
@@ -3357,7 +3361,7 @@ function showPostLoginButtons() {
 
   // ========== USER PROFILE BUTTON ==========
   const userProfileButton = document.createElement('button');
-  userProfileButton.textContent = 'PROFILE';
+  userProfileButton.innerHTML = buildButtonIconMarkup('fa-solid fa-user', 'Profile');
   userProfileButton.className = 'btn text-sm font-bold';
   userProfileButton.style.height = '24px';
   userProfileButton.style.width = '110px';
@@ -3383,7 +3387,7 @@ function showPostLoginButtons() {
 
   // ========== CHAT BUTTON ==========
   const chatButton = document.createElement('button');
-  chatButton.textContent = 'CHAT';
+  chatButton.innerHTML = buildButtonIconMarkup('fa-solid fa-comments', 'Chat');
   chatButton.className = 'btn text-sm font-bold';
   chatButton.style.height = '24px';
   chatButton.style.width = '110px';
@@ -3404,7 +3408,7 @@ function showPostLoginButtons() {
 
   // ========== MAP BUTTON ==========
   const mapButton = document.createElement('button');
-  mapButton.textContent = 'MAP';
+  mapButton.innerHTML = buildButtonIconMarkup('fa-solid fa-map', 'Map');
   mapButton.className = 'btn text-sm font-bold';
   mapButton.style.height = '24px';
   mapButton.style.width = '110px';
@@ -3421,7 +3425,7 @@ function showPostLoginButtons() {
 
   // ========== LOGOUT BUTTON ==========
   const logoutButton = document.createElement('button');
-  logoutButton.textContent = 'LOGOUT';
+  logoutButton.innerHTML = buildButtonIconMarkup('fa-solid fa-right-from-bracket', 'Logout');
   logoutButton.className = 'btn text-sm font-bold';
   logoutButton.style.height = '24px';
   logoutButton.style.width = '110px'; // Matches Inventory button width
