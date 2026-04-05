@@ -2542,7 +2542,7 @@ header h1 {
 .logged-in-header {
   position: relative;
   width: min(1180px, 100%);
-  min-height: 118px;
+  min-height: 128px;
   padding: 0 !important;
   background: transparent !important;
   border: 0 !important;
@@ -2559,6 +2559,10 @@ header h1 {
 
 .logged-in-mode > .logged-in-header {
   pointer-events: auto;
+}
+
+.logged-in-mode + header {
+  margin-top: 34px;
 }
 
 .logged-in-header #voltMenuContainer {
@@ -2606,7 +2610,7 @@ header h1 {
   }
 
   .logged-in-header {
-    min-height: 134px;
+    min-height: 144px;
   }
 
   .logged-in-header #voltMenu {
