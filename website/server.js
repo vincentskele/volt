@@ -7,7 +7,7 @@ const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs'); // Needed to read the console.json file
 const multer = require("multer");
-const { EmbedBuilder, AttachmentBuilder } = require("discord.js");
+const { EmbedBuilder } = require("discord.js");
 const { points, formatCurrency } = require("../points");
 const dbHelpers = require("../db");
 
@@ -34,9 +34,80 @@ function formatSolanaWalletMessage(walletAddress) {
 
 
 
-// Import your Discord bot client so we can fetch usernames
-// Make sure ../bot exports something like: module.exports = { client }
+// Import the lightweight Discord client used for lookups from the web process.
 const { client } = require('../info-bot'); 
+
+const DISCORD_API_BASE = 'https://discord.com/api/v10';
+const VOLT_BOT_TOKEN = process.env.TOKEN;
+
+async function sendVoltBotMessage(channelId, { content, embeds = [], files = [] } = {}) {
+  if (!VOLT_BOT_TOKEN) {
+    throw new Error('Missing TOKEN in .env file.');
+  }
+
+  const url = `${DISCORD_API_BASE}/channels/${channelId}/messages`;
+  const payloadEmbeds = embeds.map((embed) => (typeof embed?.toJSON === 'function' ? embed.toJSON() : embed));
+
+  if (!files.length) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bot ${VOLT_BOT_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content, embeds: payloadEmbeds }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Discord API message send failed (${response.status}): ${await response.text()}`);
+    }
+
+    return response.json();
+  }
+
+  const form = new FormData();
+  form.append('payload_json', JSON.stringify({ content, embeds: payloadEmbeds }));
+
+  for (let i = 0; i < files.length; i += 1) {
+    const file = files[i];
+    const buffer = await fs.promises.readFile(file.path);
+    form.append(`files[${i}]`, new Blob([buffer]), file.name);
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bot ${VOLT_BOT_TOKEN}`,
+    },
+    body: form,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Discord API message send failed (${response.status}): ${await response.text()}`);
+  }
+
+  return response.json();
+}
+
+async function addVoltBotReaction(channelId, messageId, emoji) {
+  if (!VOLT_BOT_TOKEN) {
+    throw new Error('Missing TOKEN in .env file.');
+  }
+
+  const response = await fetch(
+    `${DISCORD_API_BASE}/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/@me`,
+    {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bot ${VOLT_BOT_TOKEN}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Discord API reaction add failed (${response.status}): ${await response.text()}`);
+  }
+}
 
 const app = express();
 const PORT = Number(process.env.SERVER_PORT) || 3000;
@@ -769,19 +840,19 @@ app.post('/api/admin/giveaways/create', authenticateToken, requireAdmin, async (
           .setColor(0xffa500);
 
         if (fs.existsSync(bannerPath)) {
-          files.push(new AttachmentBuilder(bannerPath, { name: 'banner.png' }));
+          files.push({ path: bannerPath, name: 'banner.png' });
           giveawayEmbed.setImage('attachment://banner.png');
         } else {
           console.warn(`[WARN] banner.png not found at: ${bannerPath} (sending without image)`);
         }
 
         const adminTag = await resolveUsername(req.user.userId);
-        const giveawayMessage = await channel.send({
+        const giveawayMessage = await sendVoltBotMessage(finalChannel, {
           content: `Started by ${adminTag} (<@${req.user.userId}>)`,
           embeds: [giveawayEmbed],
           files,
         });
-        await giveawayMessage.react('🎉');
+        await addVoltBotReaction(finalChannel, giveawayMessage.id, '🎉');
         messageId = giveawayMessage.id;
       } else {
         console.warn(`[WARN] Giveaway channel ${finalChannel} not found. Proceeding without Discord announcement.`);
@@ -891,7 +962,7 @@ app.post('/api/admin/raffles/create', authenticateToken, requireAdmin, async (re
           .setDescription(
             `Prize: **${finalPrize}**\n` +
             `Ticket Cost: **${formatCurrency(finalCost)}**\n` +
-            `Total Tickets: **${finalQty * 2}**\n` +
+            `Total Tickets: **${finalQty}**\n` +
             `🎉 Ends at **${formattedEndDate}**\n` +
             `🏆 Winners: **${finalWinners}**`
           )
@@ -899,14 +970,14 @@ app.post('/api/admin/raffles/create', authenticateToken, requireAdmin, async (re
           .setTimestamp(endDate);
 
         if (fs.existsSync(bannerPath)) {
-          files.push(new AttachmentBuilder(bannerPath, { name: 'banner_title.png' }));
+          files.push({ path: bannerPath, name: 'banner_title.png' });
           embed.setImage('attachment://banner_title.png');
         } else {
           console.warn(`[WARN] banner_title.png not found at: ${bannerPath} (sending without image)`);
         }
 
         const adminTag = await resolveUsername(req.user.userId);
-        await channel.send({
+        await sendVoltBotMessage(finalChannel, {
           content: `Started by ${adminTag} (<@${req.user.userId}>)`,
           embeds: [embed],
           files,

@@ -31,7 +31,7 @@ module.exports = {
         .setRequired(true))
     .addIntegerOption(option =>
       option.setName('quantity')
-        .setDescription('1/2 the number of tickets you want available')
+        .setDescription('Number of tickets you want available')
         .setRequired(true))
     .addIntegerOption(option =>
       option.setName('winners')
@@ -73,8 +73,6 @@ module.exports = {
     }
 
     const endTime = Date.now() + durationMs;
-    const raffleTicketName = `${raffleName} Raffle Ticket`;
-
     if (ticketCost <= 0 || ticketQuantity <= 0 || winnersCount <= 0 || durationValue <= 0) {
       return interaction.reply({ content: '🚫 Invalid values. Ensure all inputs are positive.', ephemeral: true });
     }
@@ -109,16 +107,8 @@ module.exports = {
         endTime
       );
 
-      // Create the raffle ticket shop item
       const endDate = new Date(endTime);
       const formattedEndDate = endDate.toUTCString().replace(' GMT', ' UTC');
-      
-      await db.upsertShopItem(
-        ticketCost,
-        raffleTicketName,
-        `Entry ticket for ${raffleName}. 🎁 Prize: ${prizeInput}. 🏆 ${winnersCount} winner(s) will be selected! ⏳ Ends at **${formattedEndDate}**.`,
-        ticketQuantity
-      );
 
       const bannerPath = path.join(__dirname, '../banner_title.png');
       const files = [];
@@ -127,7 +117,7 @@ module.exports = {
         .setDescription(
           `Prize: **${prizeInput}**\n` +
           `Ticket Cost: **${formatCurrency(ticketCost)}**\n` +
-          `Total Tickets: **${ticketQuantity * 2}**\n` +
+          `Total Tickets: **${ticketQuantity}**\n` +
           `🎉 Ends at **${formattedEndDate}**\n` +
           `🏆 Winners: **${winnersCount}**`
         )
