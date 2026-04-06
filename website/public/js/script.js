@@ -3908,6 +3908,29 @@ function closeMemberMapCard() {
   document.getElementById('memberMapCard')?.remove();
 }
 
+function getMemberMapMarkerPosition(basePosition, countryIndex, countryCount) {
+  if (!basePosition || countryCount <= 1) return basePosition;
+
+  const ringSize = 8;
+  let remainingIndex = countryIndex;
+  let ring = 1;
+
+  while (remainingIndex >= ring * ringSize) {
+    remainingIndex -= ring * ringSize;
+    ring += 1;
+  }
+
+  const pointsInRing = ring * ringSize;
+  const angle = (Math.PI * 2 * remainingIndex) / pointsInRing;
+  const latRadius = 0.45 * ring;
+  const lngRadius = 0.6 * ring;
+
+  return {
+    lat: basePosition.lat + (Math.sin(angle) * latRadius),
+    lng: basePosition.lng + (Math.cos(angle) * lngRadius),
+  };
+}
+
 function openMemberMapCard(user) {
   const mapCanvas = document.getElementById('memberMapCanvas');
   if (!mapCanvas || !user) return;
@@ -3985,40 +4008,49 @@ async function renderMemberMap(users) {
   closeMemberMapCard();
 
   const countryLookup = await getCountryLatLngLookup();
+  const usersByCountry = new Map();
 
-  let renderedCount = 0;
-  (users || []).forEach((user, index) => {
-    const position = countryLookup[safeText(user.location, '').trim()] ||
-      getCountryMapPosition(user.location);
+  (users || []).forEach((user) => {
+    const countryName = safeText(user.location, '').trim();
+    const position = countryLookup[countryName] || getCountryMapPosition(countryName);
     if (!position) return;
 
-    const offsetLat = ((index % 3) - 1) * 0.35;
-    const offsetLng = ((index % 4) - 1.5) * 0.45;
-    const marker = L.marker(
-      [position.lat + offsetLat, position.lng + offsetLng],
-      {
-        icon: L.divIcon({
-          className: 'member-map-pin',
-          iconSize: [38, 54],
-          iconAnchor: [19, 54],
-          html: `
-            <img class="member-map-pin-avatar" alt="${escapeHtml(user.username || 'User')}" />
-            <span class="member-map-pin-stem"></span>
-          `,
-        }),
-      }
-    );
-    marker.on('click', () => openMemberMapCard(user));
-    marker.addTo(memberMapMarkersLayer);
-    const pinEl = marker.getElement();
-    if (pinEl) {
-      hydrateUserAvatar(user.userID, pinEl.querySelector('.member-map-pin-avatar'));
-    } else {
-      marker.once('add', () => {
-        hydrateUserAvatar(user.userID, marker.getElement()?.querySelector('.member-map-pin-avatar'));
-      });
+    if (!usersByCountry.has(countryName)) {
+      usersByCountry.set(countryName, []);
     }
-    renderedCount += 1;
+    usersByCountry.get(countryName).push({ user, position });
+  });
+
+  let renderedCount = 0;
+  usersByCountry.forEach((countryUsers) => {
+    countryUsers.forEach(({ user, position }, countryIndex) => {
+      const markerPosition = getMemberMapMarkerPosition(position, countryIndex, countryUsers.length);
+      const marker = L.marker(
+        [markerPosition.lat, markerPosition.lng],
+        {
+          icon: L.divIcon({
+            className: 'member-map-pin',
+            iconSize: [38, 54],
+            iconAnchor: [19, 54],
+            html: `
+              <img class="member-map-pin-avatar" alt="${escapeHtml(user.username || 'User')}" />
+              <span class="member-map-pin-stem"></span>
+            `,
+          }),
+        }
+      );
+      marker.on('click', () => openMemberMapCard(user));
+      marker.addTo(memberMapMarkersLayer);
+      const pinEl = marker.getElement();
+      if (pinEl) {
+        hydrateUserAvatar(user.userID, pinEl.querySelector('.member-map-pin-avatar'));
+      } else {
+        marker.once('add', () => {
+          hydrateUserAvatar(user.userID, marker.getElement()?.querySelector('.member-map-pin-avatar'));
+        });
+      }
+      renderedCount += 1;
+    });
   });
 
   if (mapStatus) {
