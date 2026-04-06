@@ -3911,10 +3911,26 @@ function closeMemberMapCard() {
 }
 
 function getMemberMapMarkerPosition(basePosition, countryIndex, countryCount) {
-  if (!basePosition || countryCount <= 1) return basePosition;
+  if (!basePosition || !memberMapInstance || countryCount <= 1) return basePosition;
 
+  const baseLatLng = L.latLng(basePosition.lat, basePosition.lng);
+  const spreadZoom = Math.max(memberMapInstance.getZoom(), 2);
+  const basePoint = memberMapInstance.project(baseLatLng, spreadZoom);
+  const ringSpacingPx = 26;
+  const maxLatitude = 84;
+
+  if (countryIndex === 0) {
+    const centerOffset = L.point(0, -12);
+    const centerLatLng = memberMapInstance.unproject(basePoint.add(centerOffset), spreadZoom);
+    return {
+      lat: Math.max(-maxLatitude, Math.min(maxLatitude, centerLatLng.lat)),
+      lng: L.Util.wrapNum(centerLatLng.lng, [-180, 180], true),
+    };
+  }
+
+  const markerSlot = countryIndex - 1;
   const ringSize = 8;
-  let remainingIndex = countryIndex;
+  let remainingIndex = markerSlot;
   let ring = 1;
 
   while (remainingIndex >= ring * ringSize) {
@@ -3923,13 +3939,17 @@ function getMemberMapMarkerPosition(basePosition, countryIndex, countryCount) {
   }
 
   const pointsInRing = ring * ringSize;
-  const angle = (Math.PI * 2 * remainingIndex) / pointsInRing;
-  const latRadius = 0.45 * ring;
-  const lngRadius = 0.6 * ring;
+  const angle = (-Math.PI / 2) + ((Math.PI * 2 * remainingIndex) / pointsInRing);
+  const radialDistance = ringSpacingPx * ring;
+  const offset = L.point(
+    Math.cos(angle) * radialDistance,
+    Math.sin(angle) * radialDistance,
+  );
+  const offsetLatLng = memberMapInstance.unproject(basePoint.add(offset), spreadZoom);
 
   return {
-    lat: basePosition.lat + (Math.sin(angle) * latRadius),
-    lng: basePosition.lng + (Math.cos(angle) * lngRadius),
+    lat: Math.max(-maxLatitude, Math.min(maxLatitude, offsetLatLng.lat)),
+    lng: L.Util.wrapNum(offsetLatLng.lng, [-180, 180], true),
   };
 }
 
@@ -3991,10 +4011,16 @@ async function renderMemberMap(users) {
   if (!memberMapInstance) {
     memberMapInstance = L.map('memberMapCanvas', {
       worldCopyJump: true,
-      minZoom: 2,
+      minZoom: 1,
       maxZoom: 8,
+      zoomSnap: 0.25,
+      zoomDelta: 0.5,
       zoomControl: true,
-    }).setView([20, 0], 2);
+      maxBounds: [[-85, -180], [85, 180]],
+      maxBoundsViscosity: 0.35,
+    }).fitBounds([[-58, -180], [85, 180]], {
+      padding: [24, 24],
+    });
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
@@ -4003,6 +4029,11 @@ async function renderMemberMap(users) {
 
     memberMapMarkersLayer = L.layerGroup().addTo(memberMapInstance);
     memberMapInstance.on('click', closeMemberMapCard);
+    memberMapInstance.on('zoomend', () => {
+      if (currentMapUsers.length) {
+        renderMemberMap(currentMapUsers);
+      }
+    });
   }
 
   memberMapInstance.invalidateSize();
