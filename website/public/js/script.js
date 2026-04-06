@@ -3878,9 +3878,10 @@ async function getCountryLatLngLookup() {
   if (profileCountryLatLngCache) return profileCountryLatLngCache;
 
   profileCountryLatLngCache = { ...PROFILE_COUNTRY_COORDS };
+  profileCountryAreaCache = { ...PROFILE_COUNTRY_AREAS };
 
   try {
-    const response = await fetch('https://restcountries.com/v3.1/all?fields=name,latlng');
+    const response = await fetch('https://restcountries.com/v3.1/all?fields=name,latlng,area');
     if (!response.ok) {
       throw new Error(`Failed to load country coordinates: ${response.statusText}`);
     }
@@ -3890,13 +3891,20 @@ async function getCountryLatLngLookup() {
       const latlng = Array.isArray(country?.latlng) ? country.latlng : null;
       const lat = Number(latlng?.[0]);
       const lng = Number(latlng?.[1]);
+      const area = Number(country?.area);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
       if (country?.name?.common) {
         profileCountryLatLngCache[country.name.common] = { lat, lng };
+        if (Number.isFinite(area) && area > 0) {
+          profileCountryAreaCache[country.name.common] = area;
+        }
       }
       if (country?.name?.official) {
         profileCountryLatLngCache[country.name.official] = { lat, lng };
+        if (Number.isFinite(area) && area > 0) {
+          profileCountryAreaCache[country.name.official] = area;
+        }
       }
     });
   } catch (error) {
@@ -3910,17 +3918,32 @@ function closeMemberMapCard() {
   document.getElementById('memberMapCard')?.remove();
 }
 
-function getMemberMapMarkerPosition(basePosition, countryIndex, countryCount) {
+function getMemberMapSpreadScale(countryName) {
+  const normalizedCountry = safeText(countryName, '').trim();
+  const area = Number(profileCountryAreaCache?.[normalizedCountry]);
+  if (!Number.isFinite(area) || area <= 0) return 1.15;
+
+  if (area >= 7000000) return 2.6;
+  if (area >= 3000000) return 2.2;
+  if (area >= 1000000) return 1.85;
+  if (area >= 400000) return 1.55;
+  if (area >= 150000) return 1.3;
+  if (area >= 50000) return 1.1;
+  return 0.95;
+}
+
+function getMemberMapMarkerPosition(basePosition, countryName, countryIndex, countryCount) {
   if (!basePosition || !memberMapInstance || countryCount <= 1) return basePosition;
 
   const baseLatLng = L.latLng(basePosition.lat, basePosition.lng);
   const spreadZoom = Math.max(memberMapInstance.getZoom(), 2);
   const basePoint = memberMapInstance.project(baseLatLng, spreadZoom);
-  const ringSpacingPx = 26;
+  const spreadScale = getMemberMapSpreadScale(countryName);
+  const ringSpacingPx = 34 * spreadScale;
   const maxLatitude = 84;
 
   if (countryIndex === 0) {
-    const centerOffset = L.point(0, -12);
+    const centerOffset = L.point(0, -14 * spreadScale);
     const centerLatLng = memberMapInstance.unproject(basePoint.add(centerOffset), spreadZoom);
     return {
       lat: Math.max(-maxLatitude, Math.min(maxLatitude, centerLatLng.lat)),
@@ -4055,9 +4078,9 @@ async function renderMemberMap(users) {
   });
 
   let renderedCount = 0;
-  usersByCountry.forEach((countryUsers) => {
+  usersByCountry.forEach((countryUsers, countryName) => {
     countryUsers.forEach(({ user, position }, countryIndex) => {
-      const markerPosition = getMemberMapMarkerPosition(position, countryIndex, countryUsers.length);
+      const markerPosition = getMemberMapMarkerPosition(position, countryName, countryIndex, countryUsers.length);
       const marker = L.marker(
         [markerPosition.lat, markerPosition.lng],
         {
@@ -4180,6 +4203,7 @@ let currentMapUsers = [];
 let memberMapInstance = null;
 let memberMapMarkersLayer = null;
 let profileCountryLatLngCache = null;
+let profileCountryAreaCache = null;
 const PROFILE_COUNTRY_OPTIONS = [
   'Afghanistan',
   'Albania',
@@ -4466,6 +4490,41 @@ const PROFILE_COUNTRY_COORDS = {
   Vietnam: { lat: 14.1, lng: 108.3 },
   Australia: { lat: -25.3, lng: 133.8 },
   'New Zealand': { lat: -40.9, lng: 174.9 },
+};
+
+const PROFILE_COUNTRY_AREAS = {
+  'United States': 9833517,
+  Canada: 9984670,
+  Mexico: 1964375,
+  Brazil: 8515767,
+  Argentina: 2780400,
+  'United Kingdom': 242900,
+  Ireland: 70273,
+  France: 551695,
+  Spain: 505992,
+  Portugal: 92212,
+  Germany: 357114,
+  Netherlands: 41850,
+  Italy: 301340,
+  Sweden: 450295,
+  Norway: 385207,
+  Poland: 312696,
+  Ukraine: 603500,
+  Turkey: 783562,
+  Egypt: 1002450,
+  Nigeria: 923768,
+  'South Africa': 1221037,
+  India: 3287263,
+  China: 9596961,
+  Japan: 377975,
+  'South Korea': 100210,
+  Philippines: 300000,
+  Indonesia: 1904569,
+  Singapore: 734,
+  Thailand: 513120,
+  Vietnam: 331212,
+  Australia: 7692024,
+  'New Zealand': 268838,
 };
 
 function applySolarianImageSource(imgEl, imageUrl, loadingClassName = null) {
