@@ -3617,27 +3617,29 @@ async function fetchVoltBalance() {
     }
 
     const { wallet, bank, totalBalance } = await response.json();
+    const solarianBalanceEl = document.getElementById("solarianBalance");
 
-    document.getElementById("solarianBalance").textContent = `Solarian: ${wallet}`;
-    document.getElementById("batteryBankBalance").textContent = `Battery Bank: ${bank}`;
-    document.getElementById("totalBalance").textContent = `Total: ${totalBalance}`;
+    if (solarianBalanceEl) {
+      solarianBalanceEl.textContent = `Volt Balance: ${totalBalance}`;
+    }
 
     const userProfileSolarian = document.getElementById('userProfileSolarianValue');
     if (userProfileSolarian) {
-      userProfileSolarian.textContent = `Solarian: ${wallet}`;
+      userProfileSolarian.textContent = `Volt Balance: ${totalBalance}`;
     }
 
     console.log("✅ Volt Balance Updated:", { wallet, bank, totalBalance });
 
   } catch (error) {
     console.error("❌ Error fetching Volt balance:", error);
-    document.getElementById("solarianBalance").textContent = "Error";
-    document.getElementById("batteryBankBalance").textContent = "Error";
-    document.getElementById("totalBalance").textContent = "Error";
+    const solarianBalanceEl = document.getElementById("solarianBalance");
+    if (solarianBalanceEl) {
+      solarianBalanceEl.textContent = "Volt Balance: Error";
+    }
 
     const userProfileSolarian = document.getElementById('userProfileSolarianValue');
     if (userProfileSolarian) {
-      userProfileSolarian.textContent = 'Solarian: Error';
+      userProfileSolarian.textContent = 'Volt Balance: Error';
     }
   }
 }
