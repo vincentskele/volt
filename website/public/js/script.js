@@ -3932,27 +3932,36 @@ function getMemberMapSpreadScale(countryName) {
   return 0.95;
 }
 
+function getMemberMapMaxSpreadKm(countryName) {
+  const normalizedCountry = safeText(countryName, '').trim();
+  const area = Number(profileCountryAreaCache?.[normalizedCountry]);
+  if (!Number.isFinite(area) || area <= 0) return 180;
+
+  const countryRadiusKm = Math.sqrt(area / Math.PI);
+  return Math.max(40, Math.min(420, countryRadiusKm * 0.28));
+}
+
 function getMemberMapMarkerPosition(basePosition, countryName, countryIndex, countryCount) {
   if (!basePosition || !memberMapInstance || countryCount <= 1) return basePosition;
 
-  const baseLatLng = L.latLng(basePosition.lat, basePosition.lng);
-  const spreadZoom = Math.max(memberMapInstance.getZoom(), 2);
-  const basePoint = memberMapInstance.project(baseLatLng, spreadZoom);
   const spreadScale = getMemberMapSpreadScale(countryName);
-  const baseSpacingPx = 26 * spreadScale;
+  const maxSpreadKm = getMemberMapMaxSpreadKm(countryName);
   const maxLatitude = 84;
   const goldenAngle = 2.399963229728653;
   const angle = (-Math.PI / 2) + (countryIndex * goldenAngle);
-  const radialDistance = baseSpacingPx * Math.sqrt(countryIndex + 0.8);
-  const offset = L.point(
-    Math.cos(angle) * radialDistance,
-    Math.sin(angle) * radialDistance,
-  );
-  const offsetLatLng = memberMapInstance.unproject(basePoint.add(offset), spreadZoom);
+  const normalizedIndex = countryCount > 1
+    ? Math.sqrt((countryIndex + 0.5) / countryCount)
+    : 0;
+  const radialDistanceKm = maxSpreadKm * normalizedIndex * spreadScale;
+  const latitudeRadians = (basePosition.lat * Math.PI) / 180;
+  const kmPerLatDegree = 110.574;
+  const kmPerLngDegree = Math.max(111.320 * Math.cos(latitudeRadians), 12);
+  const latOffset = (Math.sin(angle) * radialDistanceKm) / kmPerLatDegree;
+  const lngOffset = (Math.cos(angle) * radialDistanceKm) / kmPerLngDegree;
 
   return {
-    lat: Math.max(-maxLatitude, Math.min(maxLatitude, offsetLatLng.lat)),
-    lng: L.Util.wrapNum(offsetLatLng.lng, [-180, 180], true),
+    lat: Math.max(-maxLatitude, Math.min(maxLatitude, basePosition.lat + latOffset)),
+    lng: L.Util.wrapNum(basePosition.lng + lngOffset, [-180, 180], true),
   };
 }
 
