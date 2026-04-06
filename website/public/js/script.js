@@ -3939,31 +3939,11 @@ function getMemberMapMarkerPosition(basePosition, countryName, countryIndex, cou
   const spreadZoom = Math.max(memberMapInstance.getZoom(), 2);
   const basePoint = memberMapInstance.project(baseLatLng, spreadZoom);
   const spreadScale = getMemberMapSpreadScale(countryName);
-  const ringSpacingPx = 34 * spreadScale;
+  const baseSpacingPx = 26 * spreadScale;
   const maxLatitude = 84;
-
-  if (countryIndex === 0) {
-    const centerOffset = L.point(0, -14 * spreadScale);
-    const centerLatLng = memberMapInstance.unproject(basePoint.add(centerOffset), spreadZoom);
-    return {
-      lat: Math.max(-maxLatitude, Math.min(maxLatitude, centerLatLng.lat)),
-      lng: L.Util.wrapNum(centerLatLng.lng, [-180, 180], true),
-    };
-  }
-
-  const markerSlot = countryIndex - 1;
-  const ringSize = 8;
-  let remainingIndex = markerSlot;
-  let ring = 1;
-
-  while (remainingIndex >= ring * ringSize) {
-    remainingIndex -= ring * ringSize;
-    ring += 1;
-  }
-
-  const pointsInRing = ring * ringSize;
-  const angle = (-Math.PI / 2) + ((Math.PI * 2 * remainingIndex) / pointsInRing);
-  const radialDistance = ringSpacingPx * ring;
+  const goldenAngle = 2.399963229728653;
+  const angle = (-Math.PI / 2) + (countryIndex * goldenAngle);
+  const radialDistance = baseSpacingPx * Math.sqrt(countryIndex + 0.8);
   const offset = L.point(
     Math.cos(angle) * radialDistance,
     Math.sin(angle) * radialDistance,
