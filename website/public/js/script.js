@@ -3918,7 +3918,7 @@ function closeMemberMapCard() {
 function bringMemberMapMarkerToFront(marker) {
   if (!marker || typeof marker.setZIndexOffset !== 'function') return;
 
-  memberMapTopMarkerZIndex += 1;
+  memberMapTopMarkerZIndex += 10000;
   marker.setZIndexOffset(memberMapTopMarkerZIndex);
 }
 
