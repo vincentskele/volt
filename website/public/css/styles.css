@@ -2567,10 +2567,13 @@ header h1 {
 }
 
 .logged-in-mode {
+  position: static !important;
+  inset: auto !important;
   background: transparent !important;
   border-bottom: 0 !important;
   backdrop-filter: none !important;
   padding: 0 16px !important;
+  justify-content: center !important;
   pointer-events: none;
 }
 
@@ -2582,7 +2585,27 @@ header h1 {
   margin-top: 42px;
 }
 
+.logged-in-header #userButtons {
+  position: static !important;
+  top: auto !important;
+  right: auto !important;
+  order: 2;
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 6px !important;
+  width: min(100%, 760px);
+  margin: 12px auto 0;
+}
+
+.logged-in-header .user-action-avatar {
+  align-self: center;
+}
+
 .logged-in-header #voltMenuContainer {
+  order: 1;
   position: static;
   display: flex;
   justify-content: center;

@@ -3324,9 +3324,6 @@ function showPostLoginButtons() {
   // Create a container for the two buttons, top-right corner
   const userActionContainer = document.createElement('div');
   userActionContainer.id = 'userButtons';
-  userActionContainer.style.position = 'absolute';
-  userActionContainer.style.top = '10px';
-  userActionContainer.style.right = '10px';
   userActionContainer.style.display = 'flex';
   userActionContainer.style.flexDirection = 'column';
   userActionContainer.style.alignItems = 'flex-end';
