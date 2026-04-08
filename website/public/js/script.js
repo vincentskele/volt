@@ -3915,6 +3915,13 @@ function closeMemberMapCard() {
   document.getElementById('memberMapCard')?.remove();
 }
 
+function bringMemberMapMarkerToFront(marker) {
+  if (!marker || typeof marker.setZIndexOffset !== 'function') return;
+
+  memberMapTopMarkerZIndex += 1;
+  marker.setZIndexOffset(memberMapTopMarkerZIndex);
+}
+
 function getMemberMapSpreadScale(countryName) {
   const normalizedCountry = safeText(countryName, '').trim();
   const area = Number(profileCountryAreaCache?.[normalizedCountry]);
@@ -4081,6 +4088,8 @@ async function renderMemberMap(users) {
           }),
         }
       );
+      marker.on('mouseover', () => bringMemberMapMarkerToFront(marker));
+      marker.on('focus', () => bringMemberMapMarkerToFront(marker));
       marker.on('click', () => openMemberMapCard(user));
       marker.addTo(memberMapMarkersLayer);
       const pinEl = marker.getElement();
@@ -4188,6 +4197,7 @@ let profileCountryOptionsCache = null;
 let currentMapUsers = [];
 let memberMapInstance = null;
 let memberMapMarkersLayer = null;
+let memberMapTopMarkerZIndex = 0;
 let profileCountryLatLngCache = null;
 let profileCountryAreaCache = null;
 const PROFILE_COUNTRY_OPTIONS = [
