@@ -479,7 +479,8 @@ async function getEconomyProfileDetails(discordId) {
 
   try {
     return await dbGet(
-      `SELECT profile_about_me AS aboutMe,
+      `SELECT username,
+              profile_about_me AS aboutMe,
               profile_specialties AS specialties,
               profile_location AS location
        FROM economy
@@ -501,10 +502,25 @@ async function mergeHolderWithProfileDetails(holder, fallbackDiscordId = null) {
 
   return {
     ...(holder || { discordId, tokens: [] }),
+    username: profileDetails?.username || holder?.username || null,
     aboutMe: profileDetails?.aboutMe || holder?.aboutMe || holder?.about || holder?.about_me || holder?.bio || holder?.description || null,
     specialties: profileDetails?.specialties || holder?.specialties || holder?.specialty || holder?.skills || holder?.interests || null,
     location: profileDetails?.location || holder?.location || holder?.city || holder?.country || holder?.region || null,
   };
+}
+
+function normalizeVoltUsernameInput(value) {
+  const normalizedValue = String(value || '').trim().replace(/\s+/g, ' ');
+  if (!normalizedValue) {
+    throw new Error('Display name is required.');
+  }
+  if (normalizedValue.length > 32) {
+    throw new Error('Display name must be 32 characters or fewer.');
+  }
+  if (!/^[A-Za-z0-9._ -]+$/.test(normalizedValue)) {
+    throw new Error('Display name can only use letters, numbers, spaces, periods, underscores, and hyphens.');
+  }
+  return normalizedValue;
 }
 
 function normalizeProfileDetailInput(value, maxLength) {
@@ -2504,23 +2520,43 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'No user found for this session.' });
     }
 
+    const username = normalizeVoltUsernameInput(req.body?.username);
     const aboutMe = normalizeProfileDetailInput(req.body?.aboutMe, 500);
     const specialties = normalizeProfileDetailInput(req.body?.specialties, 250);
     const location = normalizeProfileDetailInput(req.body?.location, 100);
+    const existingUser = await dbGet(
+      `SELECT userID
+       FROM economy
+       WHERE LOWER(username) = LOWER(?)
+         AND userID != ?`,
+      [username, userId]
+    );
+    if (existingUser?.userID) {
+      return res.status(409).json({ message: 'That display name is already in use.' });
+    }
 
     await dbRun(
       `UPDATE economy
-       SET profile_about_me = ?,
+       SET username = ?,
+           profile_about_me = ?,
            profile_specialties = ?,
            profile_location = ?
        WHERE userID = ?`,
-      [aboutMe || null, specialties || null, location || null, userId]
+      [username, aboutMe || null, specialties || null, location || null, userId]
+    );
+
+    const token = jwt.sign(
+      { userId, username },
+      SECRET_KEY,
+      { expiresIn: '1y' }
     );
 
     return res.json({
       message: 'Profile updated successfully.',
+      token,
       profile: {
         discordId: userId,
+        username,
         aboutMe: aboutMe || null,
         specialties: specialties || null,
         location: location || null,

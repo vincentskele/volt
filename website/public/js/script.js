@@ -85,6 +85,16 @@
     return ['username', ...cleanParts];
   }
 
+  function buildUsernameRoutePath(username, fallbackUserId = null) {
+    const normalizedUsername = String(username || '').trim();
+    if (normalizedUsername) {
+      return `username/${encodeURIComponent(normalizedUsername)}`;
+    }
+
+    const normalizedUserId = String(fallbackUserId || '').trim();
+    return normalizedUserId ? encodeURIComponent(normalizedUserId) : null;
+  }
+
   function getPathRouteState() {
     const pathParts = window.location.pathname
       .split('/')
@@ -431,7 +441,7 @@ async function fetchUserInventoryByHolderRoute(fetchUrl, routePath, fallbackLabe
       }
       return;
     }
-    currentProfileUsername = fallbackLabel || holder.twitterHandle || holder.walletAddress || holder.discordId;
+    currentProfileUsername = holder.username || fallbackLabel || holder.twitterHandle || holder.walletAddress || holder.discordId;
     fetchUserInventory(String(holder.discordId), routePath);
   } catch (error) {
     console.error('Error fetching user inventory by route:', error);
@@ -1408,6 +1418,9 @@ if (loginButton) {
         // ✅ Store JWT token & user ID in localStorage
         localStorage.setItem("token", data.token);
         localStorage.setItem("discordUserID", data.userId); // Store user ID
+        if (data.username) {
+          localStorage.setItem('username', data.username);
+        }
         cachedAdminStatus = null;
 
         console.log(`✅ Stored Discord User ID: ${data.userId}`);
@@ -1711,6 +1724,8 @@ async function loadAdminUsers() {
       item.style.cursor = 'pointer';
 
       const profileName = user.userTag || user.username || user.userID;
+      const profileRoutePath = buildUsernameRoutePath(user.username, user.userID);
+      const profileHref = routeToPathname('userProfileSection', profileRoutePath);
       const xHandle = String(user.twitterHandle || '').trim().replace(/^@+/, '');
       const xProfileUrl = xHandle ? `https://x.com/${encodeURIComponent(xHandle)}` : '';
       const xMetaHtml = xHandle
@@ -1732,6 +1747,7 @@ async function loadAdminUsers() {
         <div class="admin-user-row">
           <div class="admin-user-details">
             <div class="admin-user-name">${escapeHtml(profileName)}</div>
+            <div class="admin-user-meta"><strong>Volt:</strong> <a href="${escapeHtml(profileHref)}" class="admin-user-profile-link">${escapeHtml(profileHref)}</a></div>
             <div class="admin-user-meta"><strong>X:</strong> ${xMetaHtml}</div>
             <div class="admin-user-wallet"><strong>Wallet:</strong> <span class="wallet-address-preserve-case">${escapeHtml(walletText)}</span></div>
           </div>
@@ -1743,6 +1759,16 @@ async function loadAdminUsers() {
       if (xLink) {
         xLink.addEventListener('click', (event) => {
           event.stopPropagation();
+        });
+      }
+
+      const profileLink = item.querySelector('.admin-user-profile-link');
+      if (profileLink) {
+        profileLink.addEventListener('click', async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          await fetchUserHoldingsByProfileRoute(profileRoutePath);
+          showSection('userProfileSection', { profileRoutePath });
         });
       }
 
@@ -3687,6 +3713,7 @@ function renderUserProfileDetails(holder) {
   const aboutMeEl = document.getElementById('userProfileAboutMe');
   const specialtiesEl = document.getElementById('userProfileSpecialties');
   const locationEl = document.getElementById('userProfileLocation');
+  const username = safeText(holder?.username, '').trim();
   const aboutMe = getProfileDetailValue(
     holder,
     ['aboutMe', 'about', 'about_me', 'bio', 'description'],
@@ -3703,7 +3730,7 @@ function renderUserProfileDetails(holder) {
     ''
   );
 
-  currentProfileDetails = { aboutMe, specialties, location };
+  currentProfileDetails = { username, aboutMe, specialties, location };
 
   if (aboutMeEl) {
     aboutMeEl.textContent = aboutMe || 'Not provided yet.';
@@ -3766,6 +3793,7 @@ async function submitProfileUpdate(event) {
   const form = event.currentTarget;
   const submitButton = document.getElementById('submitProfileUpdateButton');
   const payload = {
+    username: form.querySelector('[name="username"]')?.value || '',
     aboutMe: form.querySelector('[name="aboutMe"]')?.value || '',
     specialties: form.querySelector('[name="specialties"]')?.value || '',
     location: form.querySelector('[name="location"]')?.value || '',
@@ -3788,7 +3816,20 @@ async function submitProfileUpdate(event) {
       throw new Error(result.message || 'Failed to update profile.');
     }
 
+    const updatedUsername = safeText(result.profile?.username, payload.username).trim();
+    const updatedRoutePath = buildUsernameRoutePath(updatedUsername, currentProfileUserId);
+    if (result.token) {
+      localStorage.setItem('token', result.token);
+    }
+    localStorage.setItem('username', updatedUsername);
+    currentProfileUsername = updatedUsername || currentProfileUsername;
+    currentProfileRoutePath = updatedRoutePath;
+    const profileTitle = document.getElementById('userProfileTitle');
+    if (profileTitle) {
+      profileTitle.textContent = `${updatedUsername || 'User'}'s Profile`;
+    }
     renderUserProfileDetails(result.profile || payload);
+    setSectionHash('userProfileSection', null, updatedRoutePath);
     closeEditProfileModal();
     showConfirmationPopup('✅ Profile updated successfully!');
   } catch (error) {
@@ -3823,6 +3864,18 @@ function openEditProfileModal() {
   modalBox.innerHTML = `
     <h2>Edit Profile</h2>
     <form id="editProfileForm" class="edit-profile-form">
+      <div>
+        <label class="edit-profile-label" for="editProfileUsername">Display Name</label>
+        <input
+          id="editProfileUsername"
+          name="username"
+          class="edit-profile-control"
+          type="text"
+          maxlength="32"
+          value="${escapeHtml(currentProfileDetails.username)}"
+          placeholder="Choose your public Volt name"
+        />
+      </div>
       <div>
         <label class="edit-profile-label" for="editProfileAboutMe">About Me</label>
         <textarea
@@ -5106,18 +5159,18 @@ async function loadUserHoldingsFromUrl(fetchUrl, fallbackUserId = null, routePat
     }
 
     const resolvedUserId = holder.discordId ? String(holder.discordId) : fallbackUserId;
-    let username = holder.twitterHandle || holder.walletAddress || resolvedUserId;
+    let username = holder.username || holder.twitterHandle || holder.walletAddress || resolvedUserId;
     if (resolvedUserId) {
       if (resolvedUserId === localStorage.getItem('discordUserID')) {
         username = localStorage.getItem('username') || username;
-      } else {
+      } else if (!holder.username) {
         username = await resolveUsername(resolvedUserId);
       }
     }
 
     currentProfileUserId = resolvedUserId || null;
     currentProfileUsername = username || resolvedUserId || null;
-    currentProfileRoutePath = routePath || (resolvedUserId ? encodeURIComponent(resolvedUserId) : null);
+    currentProfileRoutePath = routePath || buildUsernameRoutePath(holder.username, resolvedUserId);
 
     if (profileTitle) {
       const nameLabel = username || resolvedUserId || 'User';
