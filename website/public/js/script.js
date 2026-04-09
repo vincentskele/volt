@@ -3709,6 +3709,26 @@ function getProfileDetailValue(source, keys, fallback = 'Not provided yet.') {
   return fallback;
 }
 
+function renderAboutMeHtml(value) {
+  const normalizedValue = safeText(value, '').trim();
+  if (!normalizedValue) return 'Not provided yet.';
+
+  const urlPattern = /((?:https?:\/\/|www\.)[^\s<]+)/gi;
+  const singleUrlPattern = /^(?:https?:\/\/|www\.)[^\s<]+$/i;
+  return normalizedValue
+    .split(urlPattern)
+    .map((part) => {
+      if (!part) return '';
+      if (!singleUrlPattern.test(part)) {
+        return escapeHtml(part);
+      }
+
+      const href = part.startsWith('www.') ? `https://${part}` : part;
+      return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="link">${escapeHtml(part)}</a>`;
+    })
+    .join('');
+}
+
 function renderUserProfileDetails(holder) {
   const aboutMeEl = document.getElementById('userProfileAboutMe');
   const specialtiesEl = document.getElementById('userProfileSpecialties');
@@ -3733,7 +3753,7 @@ function renderUserProfileDetails(holder) {
   currentProfileDetails = { username, aboutMe, specialties, location };
 
   if (aboutMeEl) {
-    aboutMeEl.textContent = aboutMe || 'Not provided yet.';
+    aboutMeEl.innerHTML = renderAboutMeHtml(aboutMe);
   }
 
   if (specialtiesEl) {
