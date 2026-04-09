@@ -2148,6 +2148,32 @@ const dbRun = util.promisify(db.run).bind(db);
 const dbGet = util.promisify(db.get).bind(db);
 const dbAll = util.promisify(db.all).bind(db);
 
+async function ensureEconomyProfileForDiscordUser(discordId) {
+  const normalizedDiscordId = String(discordId || '').trim();
+  if (!normalizedDiscordId) return null;
+
+  const existingUser = await dbGet(
+    `SELECT userID, username FROM economy WHERE userID = ?`,
+    [normalizedDiscordId]
+  );
+  if (existingUser) return existingUser;
+
+  const holder = findHolderByDiscordId(normalizedDiscordId);
+  if (!holder) return null;
+
+  await dbRun(
+    `INSERT INTO economy (userID, wallet, bank)
+     VALUES (?, 0, 0)
+     ON CONFLICT(userID) DO NOTHING`,
+    [normalizedDiscordId]
+  );
+
+  return dbGet(
+    `SELECT userID, username FROM economy WHERE userID = ?`,
+    [normalizedDiscordId]
+  );
+}
+
 async function isAdmin(userId) {
   if (!userId) return false;
   const row = await dbGet(`SELECT 1 FROM admins WHERE userID = ?`, [userId]);
@@ -2320,15 +2346,12 @@ app.get("/auth/discord/callback", async (req, res) => {
       return res.status(403).send("NO SOLARIAN FOUND IN WALLET");
     }
 
-    const user = await dbGet(
-      `SELECT userID, username FROM economy WHERE userID = ?`,
-      [userId]
-    );
+    const user = await ensureEconomyProfileForDiscordUser(userId);
 
     if (!user) {
       return res
         .status(401)
-        .send("Discord account is not linked to an economy profile.");
+        .send("Discord account is not linked to an economy profile or Robo-Check holder entry.");
     }
 
     const token = jwt.sign(
