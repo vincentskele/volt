@@ -10,6 +10,7 @@ const multer = require("multer");
 const { EmbedBuilder } = require("discord.js");
 const { points, formatCurrency } = require("../points");
 const dbHelpers = require("../db");
+const roboCheckAccountStore = require(path.resolve(__dirname, '..', '..', 'robo-check', 'src', 'accountStore.js'));
 
 const SUBMISSION_EMBED_COLORS = {
   jobSubmission: 0x3b82f6,
@@ -324,6 +325,10 @@ const ROBO_CHECK_HOLDERS_PATH =
   process.env.ROBO_CHECK_HOLDERS_PATH ||
   path.resolve(__dirname, '..', '..', 'robo-check', 'src', 'data', 'holders.json');
 
+const ROBO_CHECK_VERIFIED_PATH =
+  process.env.ROBO_CHECK_VERIFIED_PATH ||
+  path.resolve(__dirname, '..', '..', 'robo-check', 'src', 'data', 'verified.json');
+
 function readRoboCheckHolders() {
   try {
     if (!fs.existsSync(ROBO_CHECK_HOLDERS_PATH)) {
@@ -337,15 +342,62 @@ function readRoboCheckHolders() {
   }
 }
 
+function readRoboCheckAccounts() {
+  try {
+    if (!fs.existsSync(ROBO_CHECK_VERIFIED_PATH)) {
+      return new Map();
+    }
+    return roboCheckAccountStore.buildVerifiedAccountIndex(roboCheckAccountStore.readVerifiedEntries());
+  } catch (error) {
+    console.error('❌ Error reading Robo-Check verified file:', error);
+    return new Map();
+  }
+}
+
+function getPrimaryWalletAddressFromHolder(holder) {
+  if (!holder) return null;
+  const walletList = Array.isArray(holder.wallets) ? holder.wallets : [];
+  const primaryWallet = walletList.find((wallet) => wallet?.isPrimary && wallet?.walletAddress);
+  return primaryWallet?.walletAddress || holder.primaryWalletAddress || holder.walletAddress || null;
+}
+
+function buildResolvedRoboCheckHolder(holder, account = null, fallbackDiscordId = null) {
+  const discordId = String(holder?.discordId || account?.discordId || fallbackDiscordId || '').trim();
+  if (!discordId && !holder && !account) return null;
+
+  const wallets = Array.isArray(account?.wallets) && account.wallets.length
+    ? account.wallets
+    : (Array.isArray(holder?.wallets) && holder.wallets.length
+      ? holder.wallets
+      : (getPrimaryWalletAddressFromHolder(holder)
+        ? [{ walletAddress: getPrimaryWalletAddressFromHolder(holder), isPrimary: true }]
+        : []));
+  const walletAddress = account?.primaryWalletAddress || account?.walletAddress || getPrimaryWalletAddressFromHolder(holder);
+
+  return {
+    ...(holder || { discordId, tokens: [] }),
+    discordId,
+    walletAddress: walletAddress || null,
+    primaryWalletAddress: walletAddress || null,
+    wallets,
+    walletCount: wallets.length,
+    twitterHandle: account?.twitterHandle || holder?.twitterHandle || null,
+  };
+}
+
 function buildRoboCheckHolderMap() {
   const holderMap = new Map();
+  const accounts = readRoboCheckAccounts();
   readRoboCheckHolders().forEach((holder) => {
     const discordId = String(holder?.discordId || '').trim();
     if (!discordId) return;
-    holderMap.set(discordId, {
-      walletAddress: holder?.walletAddress || null,
-      twitterHandle: holder?.twitterHandle || null,
-    });
+    const resolvedHolder = buildResolvedRoboCheckHolder(holder, accounts.get(discordId), discordId);
+    holderMap.set(discordId, resolvedHolder);
+  });
+  accounts.forEach((account, discordId) => {
+    if (!holderMap.has(discordId)) {
+      holderMap.set(discordId, buildResolvedRoboCheckHolder(null, account, discordId));
+    }
   });
   return holderMap;
 }
@@ -435,15 +487,26 @@ function findBestProfileLookupMatch(query, entries, getCandidateValue) {
 function findHolderByDiscordId(discordId) {
   const normalizedDiscordId = String(discordId || '').trim();
   if (!normalizedDiscordId) return null;
-  return readRoboCheckHolders().find((entry) => String(entry?.discordId || '').trim() === normalizedDiscordId) || null;
+  const holder = readRoboCheckHolders().find((entry) => String(entry?.discordId || '').trim() === normalizedDiscordId) || null;
+  return buildResolvedRoboCheckHolder(holder, readRoboCheckAccounts().get(normalizedDiscordId), normalizedDiscordId);
 }
 
 function findHolderByWalletAddress(walletAddress) {
   const normalizedWallet = normalizeWalletAddress(walletAddress);
   if (!normalizedWallet) return null;
-  return readRoboCheckHolders().find(
-    (entry) => normalizeWalletAddress(entry?.walletAddress) === normalizedWallet
-  ) || null;
+  const accountEntry = roboCheckAccountStore.findAccountByWalletAddress(normalizedWallet, roboCheckAccountStore.readVerifiedEntries());
+  if (accountEntry) {
+    return findHolderByDiscordId(accountEntry.discordId);
+  }
+
+  const holder = readRoboCheckHolders().find((entry) => {
+    if (normalizeWalletAddress(entry?.walletAddress) === normalizedWallet) return true;
+    if (normalizeWalletAddress(entry?.primaryWalletAddress) === normalizedWallet) return true;
+    return Array.isArray(entry?.wallets) && entry.wallets.some(
+      (wallet) => normalizeWalletAddress(wallet?.walletAddress) === normalizedWallet
+    );
+  }) || null;
+  return holder ? buildResolvedRoboCheckHolder(holder, null, holder.discordId) : null;
 }
 
 function findHolderByTwitterHandle(twitterHandle) {
@@ -451,7 +514,7 @@ function findHolderByTwitterHandle(twitterHandle) {
   if (!normalizedHandle) return null;
   return findBestProfileLookupMatch(
     normalizedHandle,
-    readRoboCheckHolders(),
+    [...buildRoboCheckHolderMap().values()],
     (entry) => entry?.twitterHandle
   );
 }
@@ -470,7 +533,7 @@ async function findHolderByUsername(username) {
   );
   if (!userRow?.userID) return null;
 
-  return findHolderByDiscordId(userRow.userID) || { discordId: userRow.userID, tokens: [] };
+  return findHolderByDiscordId(userRow.userID) || buildResolvedRoboCheckHolder(null, null, userRow.userID) || { discordId: userRow.userID, tokens: [] };
 }
 
 async function getEconomyProfileDetails(discordId) {
@@ -501,7 +564,7 @@ async function mergeHolderWithProfileDetails(holder, fallbackDiscordId = null) {
   if (!holder && !profileDetails) return null;
 
   return {
-    ...(holder || { discordId, tokens: [] }),
+    ...(buildResolvedRoboCheckHolder(holder, readRoboCheckAccounts().get(discordId), discordId) || { discordId, tokens: [] }),
     username: profileDetails?.username || holder?.username || null,
     aboutMe: profileDetails?.aboutMe || holder?.aboutMe || holder?.about || holder?.about_me || holder?.bio || holder?.description || null,
     specialties: profileDetails?.specialties || holder?.specialties || holder?.specialty || holder?.skills || holder?.interests || null,
@@ -764,6 +827,8 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
         ...row,
         userTag: row.username,
         walletAddress: holderInfo.walletAddress || null,
+        primaryWalletAddress: holderInfo.primaryWalletAddress || holderInfo.walletAddress || null,
+        wallets: holderInfo.wallets || [],
         twitterHandle: holderInfo.twitterHandle || null,
       };
     });
@@ -2524,6 +2589,10 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
     const aboutMe = normalizeProfileDetailInput(req.body?.aboutMe, 500);
     const specialties = normalizeProfileDetailInput(req.body?.specialties, 250);
     const location = normalizeProfileDetailInput(req.body?.location, 100);
+    const twitterHandleRaw = String(req.body?.twitterHandle || '').trim().replace(/^@+/, '');
+    if (twitterHandleRaw && !/^[A-Za-z0-9_]{1,15}$/.test(twitterHandleRaw)) {
+      return res.status(400).json({ message: 'X username must use only letters, numbers, and underscores (max 15).' });
+    }
     const existingUser = await dbGet(
       `SELECT userID
        FROM economy
@@ -2545,6 +2614,15 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
       [username, aboutMe || null, specialties || null, location || null, userId]
     );
 
+    try {
+      const roboCheckAccount = roboCheckAccountStore.getAccountByDiscordId(userId, roboCheckAccountStore.readVerifiedEntries());
+      if (roboCheckAccount) {
+        roboCheckAccountStore.updateTwitterHandle(userId, twitterHandleRaw || null);
+      }
+    } catch (roboCheckError) {
+      console.error('❌ Error updating Robo-Check twitter handle from Volt profile:', roboCheckError);
+    }
+
     const token = jwt.sign(
       { userId, username },
       SECRET_KEY,
@@ -2560,6 +2638,7 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
         aboutMe: aboutMe || null,
         specialties: specialties || null,
         location: location || null,
+        twitterHandle: twitterHandleRaw || findHolderByDiscordId(userId)?.twitterHandle || null,
       },
     });
   } catch (error) {

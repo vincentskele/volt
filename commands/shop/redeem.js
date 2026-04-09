@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const { redeemItem, getInventory, logItemRedemption } = require('../../db'); // Ensure you have both functions
+const roboCheckAccountStore = require(path.resolve(__dirname, '..', '..', '..', 'robo-check', 'src', 'accountStore.js'));
 
 const ROBO_CHECK_HOLDERS_PATH =
   process.env.ROBO_CHECK_HOLDERS_PATH ||
@@ -33,6 +34,27 @@ function readRoboCheckHolders() {
     console.error('Error reading Robo-Check holders file:', error);
     return [];
   }
+}
+
+function getLinkedWalletsForUser(userId) {
+  try {
+    const account = roboCheckAccountStore.getAccountByDiscordId(String(userId), roboCheckAccountStore.readVerifiedEntries());
+    if (Array.isArray(account?.wallets) && account.wallets.length) {
+      return account.wallets;
+    }
+  } catch (error) {
+    console.error('Error reading Robo-Check verified wallets:', error);
+  }
+
+  const holders = readRoboCheckHolders();
+  const holder = holders.find((entry) => String(entry.discordId) === String(userId));
+  if (Array.isArray(holder?.wallets) && holder.wallets.length) {
+    return holder.wallets;
+  }
+  if (holder?.walletAddress) {
+    return [{ walletAddress: holder.walletAddress, isPrimary: true }];
+  }
+  return [];
 }
 
 module.exports = {
@@ -179,13 +201,24 @@ module.exports = {
     const focusedValue = focused.value || '';
 
     if (focused.name === 'wallet') {
-      const holders = readRoboCheckHolders();
-      const holder = holders.find((entry) => String(entry.discordId) === String(userId));
-      if (!holder?.walletAddress) {
+      const linkedWallets = getLinkedWalletsForUser(userId);
+      if (!linkedWallets.length) {
         return interaction.respond([]);
       }
-      const label = `Robo-Check wallet (${holder.walletAddress.slice(0, 4)}...${holder.walletAddress.slice(-4)})`;
-      return interaction.respond([{ name: label, value: holder.walletAddress }]);
+      const normalizedFocusedValue = String(focusedValue || '').trim().toLowerCase();
+      return interaction.respond(
+        linkedWallets
+          .filter((wallet) => !normalizedFocusedValue || wallet.walletAddress.toLowerCase().includes(normalizedFocusedValue))
+          .slice(0, 25)
+          .map((wallet) => {
+            const labelPrefix = wallet.isPrimary ? 'Primary wallet' : 'Linked wallet';
+            const shortened = `${wallet.walletAddress.slice(0, 4)}...${wallet.walletAddress.slice(-4)}`;
+            return {
+              name: `${labelPrefix} (${shortened})`,
+              value: wallet.walletAddress,
+            };
+          })
+      );
     }
     
     let inventoryItems;

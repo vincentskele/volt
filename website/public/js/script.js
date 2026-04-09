@@ -1727,17 +1727,21 @@ async function loadAdminUsers() {
       const profileRoutePath = buildUsernameRoutePath(user.username, user.userID);
       const profileHref = routeToPathname('userProfileSection', profileRoutePath);
       const xHandle = String(user.twitterHandle || '').trim().replace(/^@+/, '');
+      const linkedWallets = Array.isArray(user.wallets) ? user.wallets : [];
       const xProfileUrl = xHandle ? `https://x.com/${encodeURIComponent(xHandle)}` : '';
       const xMetaHtml = xHandle
         ? `<a href="${xProfileUrl}" target="_blank" rel="noopener noreferrer" class="admin-user-x-link">@${escapeHtml(xHandle)}</a>`
         : escapeHtml('No linked X');
-      const walletText = user.walletAddress || 'No linked wallet';
+      const walletText = user.walletAddress
+        ? (linkedWallets.length > 1 ? `${user.walletAddress} (+${linkedWallets.length - 1} more)` : user.walletAddress)
+        : 'No linked wallet';
       item.dataset.searchIndex = [
         profileName,
         user.username,
         user.userID,
         xHandle,
         user.walletAddress,
+        ...linkedWallets.map((wallet) => wallet.walletAddress),
       ]
         .filter(Boolean)
         .join(' ')
@@ -1853,7 +1857,12 @@ function buildAdminHolderRawList(users) {
     .forEach((user) => {
       const holderName = user.userTag || user.username || user.twitterHandle || user.userID || 'Unknown';
       const twitterAccount = user.twitterHandle ? `@${user.twitterHandle}` : '';
-      lines.push(`${holderName}\t${user.walletAddress}\t${twitterAccount}`);
+      const walletAddresses = Array.isArray(user.wallets) && user.wallets.length
+        ? user.wallets.map((wallet) => wallet.walletAddress).filter(Boolean)
+        : [user.walletAddress];
+      walletAddresses.forEach((walletAddress) => {
+        lines.push(`${holderName}\t${walletAddress}\t${twitterAccount}`);
+      });
     });
   return lines.join('\n');
 }
@@ -3734,6 +3743,9 @@ function renderUserProfileDetails(holder) {
   const specialtiesEl = document.getElementById('userProfileSpecialties');
   const locationEl = document.getElementById('userProfileLocation');
   const username = safeText(holder?.username, '').trim();
+  const twitterHandle = safeText(holder?.twitterHandle, '').trim().replace(/^@+/, '');
+  const wallets = Array.isArray(holder?.wallets) ? holder.wallets : [];
+  const walletAddress = safeText(holder?.primaryWalletAddress || holder?.walletAddress, '').trim();
   const aboutMe = getProfileDetailValue(
     holder,
     ['aboutMe', 'about', 'about_me', 'bio', 'description'],
@@ -3750,7 +3762,7 @@ function renderUserProfileDetails(holder) {
     ''
   );
 
-  currentProfileDetails = { username, aboutMe, specialties, location };
+  currentProfileDetails = { username, aboutMe, specialties, location, twitterHandle, wallets, walletAddress };
 
   if (aboutMeEl) {
     aboutMeEl.innerHTML = renderAboutMeHtml(aboutMe);
@@ -3814,6 +3826,7 @@ async function submitProfileUpdate(event) {
   const submitButton = document.getElementById('submitProfileUpdateButton');
   const payload = {
     username: form.querySelector('[name="username"]')?.value || '',
+    twitterHandle: form.querySelector('[name="twitterHandle"]')?.value || '',
     aboutMe: form.querySelector('[name="aboutMe"]')?.value || '',
     specialties: form.querySelector('[name="specialties"]')?.value || '',
     location: form.querySelector('[name="location"]')?.value || '',
@@ -3894,6 +3907,18 @@ function openEditProfileModal() {
           maxlength="32"
           value="${escapeHtml(currentProfileDetails.username)}"
           placeholder="Choose your public Volt name"
+        />
+      </div>
+      <div>
+        <label class="edit-profile-label" for="editProfileTwitterHandle">X Username</label>
+        <input
+          id="editProfileTwitterHandle"
+          name="twitterHandle"
+          class="edit-profile-control"
+          type="text"
+          maxlength="15"
+          value="${escapeHtml(currentProfileDetails.twitterHandle)}"
+          placeholder="your_handle"
         />
       </div>
       <div>
@@ -4323,9 +4348,13 @@ let currentSolarianMosaicRenderedCount = 0;
 const solarianMosaicLoadQueue = [];
 let solarianMosaicActiveLoadCount = 0;
 let currentProfileDetails = {
+  username: '',
   aboutMe: '',
   specialties: '',
   location: '',
+  twitterHandle: '',
+  wallets: [],
+  walletAddress: '',
 };
 let profileCountryOptionsCache = null;
 let currentMapUsers = [];
@@ -6263,7 +6292,8 @@ function showRedeemModal(itemName) {
   modalBox.className = 'modal-box redeem-modal-box';
   modalBox.innerHTML = `
     <h2>ARE YOU SURE YOU WANT TO USE ${itemName}?</h2>
-    <p style="margin-bottom: 8px;">Paste your Solana wallet address:</p>
+    <p style="margin-bottom: 8px;">Choose a linked wallet or paste another Solana wallet address:</p>
+    <select id="redeemWalletSelect" class="redeem-wallet-input" style="margin-bottom: 10px;"></select>
     <div class="redeem-wallet-row">
       <textarea id="redeemWalletAddress" class="redeem-wallet-input" placeholder="Solana wallet address" rows="2" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
       <button id="redeemWalletEdit" class="redeem-wallet-edit" type="button" aria-label="Edit wallet address" title="Edit wallet address">✎</button>
@@ -6279,8 +6309,21 @@ function showRedeemModal(itemName) {
   document.body.appendChild(modalOverlay);
 
   const walletInput = document.getElementById('redeemWalletAddress');
+  const walletSelect = document.getElementById('redeemWalletSelect');
   const walletHint = document.getElementById('redeemWalletHint');
   const walletEditButton = document.getElementById('redeemWalletEdit');
+  const applyWalletValue = (value, hintText = '') => {
+    if (!walletInput) return;
+    walletInput.value = String(value || '').trim();
+    walletInput.readOnly = Boolean(walletInput.value);
+    walletInput.classList.toggle('is-readonly', walletInput.readOnly);
+    if (walletHint) {
+      walletHint.textContent = hintText || (walletInput.value ? 'Using selected wallet. Tap edit to override it.' : '');
+    }
+    if (walletEditButton) {
+      walletEditButton.style.display = walletInput.value ? 'inline-flex' : 'none';
+    }
+  };
   if (walletEditButton) {
     walletEditButton.style.display = 'none';
     walletEditButton.addEventListener('click', () => {
@@ -6308,6 +6351,19 @@ function showRedeemModal(itemName) {
       }
     });
   }
+  if (walletSelect) {
+    walletSelect.innerHTML = '<option value="">Custom wallet</option>';
+    walletSelect.addEventListener('change', () => {
+      const selectedWallet = walletSelect.value;
+      applyWalletValue(
+        selectedWallet,
+        selectedWallet ? 'Auto-filled from your Robo-Check linked wallets.' : 'Enter any Solana wallet address you want to use.'
+      );
+      if (!selectedWallet && walletInput) {
+        walletInput.focus();
+      }
+    });
+  }
   const discordUserId = localStorage.getItem('discordUserID');
   if (discordUserId && walletInput) {
     fetch(`/api/holder/${discordUserId}`, {
@@ -6315,16 +6371,23 @@ function showRedeemModal(itemName) {
     })
       .then((response) => (response.ok ? response.json() : null))
       .then((holder) => {
-        if (holder?.walletAddress && !walletInput.value) {
-          walletInput.value = holder.walletAddress;
-          walletInput.readOnly = true;
-          walletInput.classList.add('is-readonly');
-          if (walletHint) {
-            walletHint.textContent = 'Auto-filled from Robo-Check holder profile.';
-          }
-          if (walletEditButton) {
-            walletEditButton.style.display = 'inline-flex';
-          }
+        const linkedWallets = Array.isArray(holder?.wallets) ? holder.wallets : [];
+        if (walletSelect && linkedWallets.length) {
+          linkedWallets.forEach((wallet) => {
+            const option = document.createElement('option');
+            const labelPrefix = wallet.isPrimary ? 'Primary' : 'Linked';
+            option.value = wallet.walletAddress;
+            option.textContent = `${labelPrefix}: ${wallet.walletAddress}`;
+            walletSelect.appendChild(option);
+          });
+        }
+
+        const preferredWallet = holder?.primaryWalletAddress || holder?.walletAddress || linkedWallets[0]?.walletAddress || '';
+        if (preferredWallet && !walletInput.value) {
+          if (walletSelect) walletSelect.value = preferredWallet;
+          applyWalletValue(preferredWallet, linkedWallets.length > 1
+            ? 'Primary wallet selected from your Robo-Check profile.'
+            : 'Auto-filled from your Robo-Check holder profile.');
         }
       })
       .catch((error) => {
