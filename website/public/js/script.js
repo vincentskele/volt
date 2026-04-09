@@ -155,6 +155,9 @@
     if (AUTH_REQUIRED_SECTIONS.has(safeSectionId) && !isLoggedIn()) {
       safeSectionId = 'landingPage';
     }
+    if (safeSectionId !== 'mapSection' && isMemberMapFullscreenActive()) {
+      exitMemberMapFullscreen();
+    }
     sections.forEach((section) => {
       section.style.display = 'none';
     });
@@ -3915,6 +3918,55 @@ function closeMemberMapCard() {
   document.getElementById('memberMapCard')?.remove();
 }
 
+function isMemberMapFullscreenActive() {
+  const mapShell = document.getElementById('memberMapShell');
+  return Boolean(mapShell?.classList.contains('is-fullscreen-fallback'));
+}
+
+function updateMemberMapFullscreenButton() {
+  const fullscreenButton = document.getElementById('memberMapFullscreenButton');
+  if (!fullscreenButton) return;
+
+  const isExpanded = isMemberMapFullscreenActive();
+  fullscreenButton.innerHTML = buildButtonIconMarkup(
+    isExpanded ? 'fa-solid fa-compress' : 'fa-solid fa-expand',
+    isExpanded ? 'Collapse Map' : 'Expand Map'
+  );
+  fullscreenButton.setAttribute('aria-label', isExpanded ? 'Collapse map' : 'Expand map');
+}
+
+function refreshMemberMapLayout() {
+  if (!memberMapInstance) return;
+  window.requestAnimationFrame(() => {
+    memberMapInstance.invalidateSize();
+  });
+}
+
+async function exitMemberMapFullscreen() {
+  const mapShell = document.getElementById('memberMapShell');
+  if (!mapShell) return;
+
+  mapShell.classList.remove('is-fullscreen-fallback');
+  updateMemberMapFullscreenButton();
+  refreshMemberMapLayout();
+}
+
+async function toggleMemberMapFullscreen() {
+  const mapShell = document.getElementById('memberMapShell');
+  if (!mapShell) return;
+
+  const isExpanded = isMemberMapFullscreenActive();
+  if (isExpanded) {
+    await exitMemberMapFullscreen();
+    return;
+  }
+
+  mapShell.classList.add('is-fullscreen-fallback');
+
+  updateMemberMapFullscreenButton();
+  refreshMemberMapLayout();
+}
+
 function bringMemberMapMarkerToFront(marker) {
   if (!marker || typeof marker.setZIndexOffset !== 'function') return;
 
@@ -4052,9 +4104,16 @@ async function renderMemberMap(users) {
     });
   }
 
+  if (!memberMapFullscreenListenersBound) {
+    document.getElementById('memberMapFullscreenButton')?.addEventListener('click', toggleMemberMapFullscreen);
+    window.addEventListener('resize', refreshMemberMapLayout);
+    memberMapFullscreenListenersBound = true;
+  }
+
   memberMapInstance.invalidateSize();
   memberMapMarkersLayer.clearLayers();
   closeMemberMapCard();
+  updateMemberMapFullscreenButton();
 
   const countryLookup = await getCountryLatLngLookup();
   const usersByCountry = new Map();
@@ -4114,6 +4173,8 @@ async function renderMemberMap(users) {
 async function loadMemberMap() {
   const mapStatus = document.getElementById('memberMapStatus');
   if (mapStatus) mapStatus.textContent = 'Loading map pins...';
+
+  updateMemberMapFullscreenButton();
 
   try {
     const response = await fetch('/api/profile-map', {
@@ -4198,6 +4259,7 @@ let currentMapUsers = [];
 let memberMapInstance = null;
 let memberMapMarkersLayer = null;
 let memberMapTopMarkerZIndex = 0;
+let memberMapFullscreenListenersBound = false;
 let profileCountryLatLngCache = null;
 let profileCountryAreaCache = null;
 const PROFILE_COUNTRY_OPTIONS = [

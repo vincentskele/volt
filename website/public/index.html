@@ -517,10 +517,15 @@
   <h2>🗺️ Member Map</h2>
   <p>Explore Solarians around the world. Click a profile pin to open their profile.</p>
 
-  <div class="member-map-shell">
+  <div id="memberMapShell" class="member-map-shell">
+    <div class="member-map-toolbar">
+      <button type="button" id="memberMapFullscreenButton" class="btn text-sm font-bold">
+        <span class="btn-icon-content"><i class="fa-solid fa-expand" aria-hidden="true"></i><span>Expand Map</span></span>
+      </button>
+    </div>
     <div id="memberMapCanvas" class="member-map-canvas"></div>
+    <div id="memberMapStatus" class="profile-status member-map-status">Loading map pins...</div>
   </div>
-  <div id="memberMapStatus" class="profile-status">Loading map pins...</div>
 
   <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
 </div>
