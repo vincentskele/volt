@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
-const { registerUser } = require('../../db.js');
+const { resetPassword } = require('../../db.js');
 
 
 module.exports = {
@@ -16,7 +16,7 @@ module.exports = {
     const discord_id = interaction.user.id;
 
     try {
-      await registerUser(discord_id, newPassword);
+      await resetPassword(discord_id, newPassword);
       await interaction.reply({ content: `✅ Your password has been successfully reset.`, ephemeral: true });
     } catch (error) {
       await interaction.reply({ content: `❌ Error resetting password: ${error}`, ephemeral: true });

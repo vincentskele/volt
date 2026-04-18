@@ -4,6 +4,7 @@ const { Client, GatewayIntentBits, Partials, Collection } = require('discord.js'
 const fs = require('fs');
 const path = require('path');
 const { points } = require('./points');
+const TEST_MODE = process.env.VOLT_TEST_MODE === '1';
 
 /**
  * NEW: Log capturing functionality.
@@ -23,29 +24,34 @@ function updateLogBuffer(logEntry) {
   fs.writeFileSync(path.join(__dirname, 'console.json'), JSON.stringify(logBuffer, null, 2), 'utf8');
 }
 
-console.log = function (...args) {
-  const message = args.join(' ');
-  const logEntry = { timestamp: new Date().toISOString(), message };
-  updateLogBuffer(logEntry);
-  originalConsoleLog.apply(console, args);
-};
+if (!TEST_MODE) {
+  console.log = function (...args) {
+    const message = args.join(' ');
+    const logEntry = { timestamp: new Date().toISOString(), message };
+    updateLogBuffer(logEntry);
+    originalConsoleLog.apply(console, args);
+  };
 
-console.error = function (...args) {
-  const message = args.join(' ');
-  const logEntry = { timestamp: new Date().toISOString(), message };
-  updateLogBuffer(logEntry);
-  originalConsoleError.apply(console, args);
-};
+  console.error = function (...args) {
+    const message = args.join(' ');
+    const logEntry = { timestamp: new Date().toISOString(), message };
+    updateLogBuffer(logEntry);
+    originalConsoleError.apply(console, args);
+  };
+}
 
 // Import the required database functions (adjust to your actual db.js exports).
 const {
   getActiveGiveaways,
+  getPendingGiveaways,
   getGiveawayEntries,
   deleteGiveaway,
   updateWallet,
+  appendSystemEvent,
   updateDaoCallRewardTimestamp,
   recordDaoCallAttendance,
   getActiveRaffles,
+  getPendingRaffles,
   getPrizeShopItemByName,
   addItemToInventory,
   getGiveawayByMessageId,
@@ -56,8 +62,11 @@ const {
   addTitleGiveawayEntry,
   removeTitleGiveawayEntry,
   getActiveTitleGiveaways,
+  getPendingTitleGiveaways,
   getTitleGiveawayEntries,
   markTitleGiveawayCompleted,
+  markGiveawayCompleted,
+  setDiscordClient,
 } = require('./db');
 
 // Safe chunked timer — handles giveaways longer than Node's 24.8 day setTimeout cap
@@ -73,21 +82,51 @@ function scheduleAt(endTimeMs, fn) {
 
 const scheduledGiveaways = new Set();
 const scheduledRaffles = new Set();
+let giveawayRecoveryChain = Promise.resolve();
 
-
+function createTestClient() {
+  return {
+    user: { tag: 'VoltTest#0000' },
+    once() {},
+    on() {},
+    emit() { return true; },
+    channels: {
+      async fetch() {
+        return null;
+      },
+    },
+    users: {
+      async fetch(userId) {
+        return { id: String(userId), tag: `TestUser#${String(userId).slice(-4).padStart(4, '0')}` };
+      },
+    },
+    guilds: {
+      cache: new Map(),
+      async fetch() {
+        return null;
+      },
+    },
+    login() {
+      return Promise.resolve();
+    },
+  };
+}
 
 // Initialize the bot client with necessary intents and partials.
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMessageReactions,
-    GatewayIntentBits.GuildVoiceStates,
+const client = TEST_MODE
+  ? createTestClient()
+  : new Client({
+      intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.GuildVoiceStates,
+      ],
+      partials: [Partials.Message, Partials.Channel, Partials.Reaction],
+    });
 
-  ],
-  partials: [Partials.Message, Partials.Channel, Partials.Reaction],
-});
+setDiscordClient(client);
 
 const PREFIX = process.env.PREFIX || '$';
 client.commands = new Collection();
@@ -138,6 +177,9 @@ async function userHasAllowedRole(user, guild) {
     try {
       member = await guild.members.fetch(user.id);
     } catch (err) {
+      if (err?.code === 10007 || err?.code === 10013 || err?.status === 404) {
+        return false;
+      }
       console.error(`Error fetching member ${user.id} in guild ${guild.id}:`, err);
       return false;
     }
@@ -191,6 +233,11 @@ raffleCommand.setClient(client);
  */
 async function syncGiveawayEntries(giveaway) {
   try {
+    const messageId = String(giveaway?.message_id || '');
+    if (!/^\d+$/.test(messageId)) {
+      console.log(`ℹ️ Skipping Discord giveaway sync for non-Discord message id "${messageId}" on giveaway ${giveaway.id}`);
+      return;
+    }
     const channel = await client.channels.fetch(giveaway.channel_id);
     if (!channel) return;
     const message = await channel.messages.fetch(giveaway.message_id);
@@ -204,7 +251,7 @@ async function syncGiveawayEntries(giveaway) {
 
     // Get existing entries from the database
     const existingEntries = await getGiveawayEntries(giveaway.id);
-    const existingUserIds = new Set(existingEntries.map(entry => entry.user_id));
+    const existingUserIds = new Set(existingEntries);
 
     // Add new entries if they don't exist
     for (const userId of participantIDs) {
@@ -214,14 +261,14 @@ async function syncGiveawayEntries(giveaway) {
       }
     }
 
-    // Remove users from the database if they no longer have the reaction
-    for (const entry of existingEntries) {
-      if (!participantIDs.includes(entry.user_id)) {
-        await removeGiveawayEntry(giveaway.id, entry.user_id);
-        console.log(`❌ Removed entry for user ${entry.user_id} from giveaway ${giveaway.id}`);
-      }
-    }
+    // Preserve entries that may have come from the web UI. Discord sync only adds
+    // missing reaction-backed entries instead of deleting anyone absent from the
+    // reaction list during startup or cache recovery.
   } catch (error) {
+    if (error?.code === 10008 || error?.code === 50035) {
+      console.warn(`⚠️ Skipping giveaway ${giveaway?.id} Discord sync: ${error.message || error}`);
+      return;
+    }
     console.error('❌ Error syncing giveaway entries:', error);
   }
 }
@@ -268,7 +315,7 @@ async function syncTitleGiveawayEntries(titleGiveaway) {
 async function checkUserInGiveaway(giveawayId, userId) {
   try {
     const existingEntries = await getGiveawayEntries(giveawayId);
-    return existingEntries.some(entry => entry.user_id === userId);
+    return existingEntries.includes(userId);
   } catch (error) {
     console.error(`❌ Error checking giveaway entry for user ${userId}:`, error);
     return false; // Default to false if there's an error
@@ -338,6 +385,11 @@ client.on('messageReactionRemove', async (reaction, user) => {
  */
 async function concludeGiveaway(giveaway) {
   try {
+    const locked = await markGiveawayCompleted(giveaway.id, { source: 'giveaway_conclusion' });
+    if (!locked) {
+      console.warn(`⚠️ Giveaway ${giveaway.id} already completed. Skipping.`);
+      return;
+    }
     console.log(`⏳ DEBUG: Starting conclusion for giveaway ${giveaway.id}`);
     const giveawayName = giveaway.giveaway_name || giveaway.name || 'Giveaway';
     const webUiChannelId = process.env.WEBUI_GIVEAWAY_CHANNELID;
@@ -370,7 +422,8 @@ async function concludeGiveaway(giveaway) {
     // ✅ Select winners randomly (unique winners)
     const pool = [...participants];
     const winners = [];
-    while (winners.length < Math.min(giveaway.winners, pool.length)) {
+    const winnerTarget = Math.min(giveaway.winners, pool.length);
+    while (winners.length < winnerTarget) {
       const randomIndex = Math.floor(Math.random() * pool.length);
       const winnerId = pool.splice(randomIndex, 1)[0];
       winners.push(winnerId);
@@ -387,7 +440,12 @@ async function concludeGiveaway(giveaway) {
             `🎉 Congrats <@${winnerId}>! You won **${giveawayName}** and received **${prizeAmount}${points.symbol}**.`
           );
         }
-        await updateWallet(winnerId, prizeAmount);
+        await updateWallet(winnerId, prizeAmount, {
+          type: 'giveaway_reward',
+          source: 'giveaway',
+          giveawayId: giveaway.id,
+          giveawayName,
+        });
       } else {
         const shopItem = await getPrizeShopItemByName(giveaway.prize);
         if (!shopItem || !shopItem.itemID) {
@@ -405,6 +463,20 @@ async function concludeGiveaway(giveaway) {
         await addItemToInventory(winnerId, shopItem.itemID);
       }
     }
+
+    await appendSystemEvent({
+      domain: 'giveaways',
+      action: 'conclude',
+      entityType: 'giveaway',
+      entityId: giveaway.id,
+      metadata: {
+        giveawayId: giveaway.id,
+        giveawayName,
+        prize: giveaway.prize,
+        winnerIds: winners,
+        participantCount: participants.length,
+      },
+    });
 
     // ✅ Cleanup
     await deleteGiveaway(giveaway.message_id);
@@ -424,7 +496,12 @@ function scheduleGiveawayConclusion(giveaway, reason) {
     });
     console.log(`⏳ Scheduled giveaway ${giveaway.message_id} (${reason}) to conclude in ${remainingTime}ms.`);
   } else {
-    concludeGiveaway(giveaway).finally(() => scheduledGiveaways.delete(giveaway.id));
+    giveawayRecoveryChain = giveawayRecoveryChain
+      .then(() => concludeGiveaway(giveaway))
+      .catch((error) => {
+        console.error(`⚠️ Error during giveaway recovery for ${giveaway.id}:`, error);
+      })
+      .finally(() => scheduledGiveaways.delete(giveaway.id));
   }
 }
 
@@ -454,10 +531,10 @@ const { concludeRaffle } = require('./commands/giveaway/raffle.js');
 client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
   
-  const activeGiveaways = await getActiveGiveaways();
-  console.log(`🚦 Restoring ${activeGiveaways.length} active giveaways...`);
+  const pendingGiveaways = await getPendingGiveaways();
+  console.log(`🚦 Restoring ${pendingGiveaways.length} pending giveaways...`);
 
-  for (const giveaway of activeGiveaways) {
+  for (const giveaway of pendingGiveaways) {
     await syncGiveawayEntries(giveaway);
     scheduleGiveawayConclusion(giveaway, 'startup');
   }
@@ -466,10 +543,10 @@ client.once('ready', async () => {
 client.once('ready', async () => {
   console.log('🔄 Checking active raffles on startup...');
 
-  const activeRaffles = await getActiveRaffles();
-  console.log(`🔄 Restoring ${activeRaffles.length} active raffles...`);
+  const pendingRaffles = await getPendingRaffles();
+  console.log(`🔄 Restoring ${pendingRaffles.length} pending raffles...`);
 
-  for (const raffle of activeRaffles) {
+  for (const raffle of pendingRaffles) {
     scheduleRaffleConclusion(raffle, 'startup');
   }
 });
@@ -527,7 +604,8 @@ async function concludeTitleGiveaway(titleGiveaway) {
 
     const pool = [...participantIDs];
     const winners = [];
-    while (winners.length < Math.min(titleGiveaway.winners, pool.length)) {
+    const winnerTarget = Math.min(titleGiveaway.winners, pool.length);
+    while (winners.length < winnerTarget) {
       winners.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
     }
 
@@ -535,7 +613,14 @@ async function concludeTitleGiveaway(titleGiveaway) {
 
     if (!isNaN(titleGiveaway.prize)) {
       const prizeAmount = parseInt(titleGiveaway.prize, 10);
-      for (const winnerId of winners) await updateWallet(winnerId, prizeAmount);
+      for (const winnerId of winners) {
+        await updateWallet(winnerId, prizeAmount, {
+          type: 'title_giveaway_reward',
+          source: 'title_giveaway',
+          giveawayId: titleGiveaway.id,
+          giveawayName: titleGiveaway.giveaway_name,
+        });
+      }
       if (channel) await channel.send(
         `🏷️ **${titleGiveaway.giveaway_name}** ended!\n` +
         `Winners: ${winnerMentions}\n` +
@@ -561,10 +646,10 @@ async function concludeTitleGiveaway(titleGiveaway) {
 
 client.once('ready', async () => {
   console.log('🔄 Checking active title giveaways on startup...');
-  const activeTitleGiveaways = await getActiveTitleGiveaways();
-  console.log(`🔄 Restoring ${activeTitleGiveaways.length} active title giveaway(s)...`);
+  const pendingTitleGiveaways = await getPendingTitleGiveaways();
+  console.log(`🔄 Restoring ${pendingTitleGiveaways.length} pending title giveaway(s)...`);
 
-  for (const tg of activeTitleGiveaways) {
+  for (const tg of pendingTitleGiveaways) {
     // Sync any reactions that came in while bot was offline
     await syncTitleGiveawayEntries(tg);
 
@@ -709,20 +794,6 @@ client.on('interactionCreate', async (interaction) => {
 // ==========================
 // 🎁 DAILY REWARDS SYSTEM SETUP
 // ==========================
-const userMessageCountsPath = path.join(__dirname, 'userMessageCounts.json');
-
-// Load previous message counts from file
-let userMessageCounts = new Map();
-try {
-  if (fs.existsSync(userMessageCountsPath)) {
-    const rawData = fs.readFileSync(userMessageCountsPath);
-    userMessageCounts = new Map(JSON.parse(rawData));
-    console.log("✅ Loaded message counts from file.");
-  }
-} catch (error) {
-  console.error("⚠️ Error loading message counts:", error);
-}
-
 // Load values from .env
 const allowedChannels = process.env.MESSAGE_REWARD_CHANNELS
   ? process.env.MESSAGE_REWARD_CHANNELS.split(',').map(id => id.trim())
@@ -734,11 +805,6 @@ const MESSAGE_REWARD_LIMIT = parseInt(process.env.MESSAGE_REWARD_LIMIT, 10) || 8
 const REACTION_REWARD_AMOUNT = parseInt(process.env.REACTION_REWARD_AMOUNT, 10) || 20;
 const FIRST_MESSAGE_BONUS = parseInt(process.env.FIRST_MESSAGE_BONUS, 10) || 50;
 const FIRST_MESSAGE_BONUS_CHANNEL = process.env.FIRST_MESSAGE_BONUS_CHANNEL || ""; // Default: all channels
-
-// Function to save message counts to file
-function saveMessageCounts() {
-  fs.writeFileSync(userMessageCountsPath, JSON.stringify([...userMessageCounts]), 'utf8');
-}
 
 // ==========================
 // 🗓️ Helper: Get today's date in EST (without DST handling)
@@ -772,8 +838,6 @@ function scheduleMidnightReset() {
   console.log(`⏳ Scheduling daily rewards reset in ${timeUntilMidnight / 1000 / 60} minutes.`);
 
   setTimeout(() => {
-    userMessageCounts.clear();
-    saveMessageCounts();
     console.log("🔄 Daily rewards counter reset at midnight EST!");
     scheduleMidnightReset(); // Schedule next reset
   }, timeUntilMidnight);
@@ -792,18 +856,7 @@ client.on('messageCreate', async (message) => {
 
   const userId = message.author.id;
   const today = getESTDateString();
-
-  // Initialize or reset user data for a new day.
-  let userData = userMessageCounts.get(userId);
-  if (!userData || userData.date !== today) {
-    userData = {
-      date: today,
-      count: 0,
-      reacted: false,
-      firstMessageBonusGiven: false,
-    };
-    userMessageCounts.set(userId, userData);
-  }
+  const userData = await db.getDailyUserActivitySnapshot(userId, today);
 
   // Determine if the current channel qualifies for a bonus.
   // If no bonus channel is set, allow bonus in any channel.
@@ -811,18 +864,36 @@ client.on('messageCreate', async (message) => {
 
   // 🎁 Award first message bonus if not already given and if in a bonus-eligible channel.
   if (!userData.firstMessageBonusGiven && inBonusChannel) {
-    userData.firstMessageBonusGiven = true;
-    await updateWallet(userId, FIRST_MESSAGE_BONUS);
+    await db.upsertDailyUserActivity(userId, today, {
+      count: userData.count,
+      reacted: userData.reacted,
+      firstMessageBonusGiven: true,
+      rpsWins: userData.rpsWins,
+    }, { reason: 'first_message_bonus_awarded' });
+    await updateWallet(userId, FIRST_MESSAGE_BONUS, {
+      type: 'first_message_reward',
+      source: 'message_reward',
+      channelId: message.channel.id,
+    });
     console.log(`🎁 First message bonus awarded to ${message.author.username} (+${FIRST_MESSAGE_BONUS}).`);
-    saveMessageCounts();
   }
 
   // 💬 Regular message-based rewards (only in allowed channels).
   if (allowedChannels.includes(message.channel.id) && userData.count < MESSAGE_REWARD_LIMIT) {
-    userData.count++;
-    await updateWallet(userId, MESSAGE_REWARD_AMOUNT);
-    console.log(`⚡ Awarded ${MESSAGE_REWARD_AMOUNT} to ${message.author.username} for message #${userData.count} today.`);
-    saveMessageCounts();
+    const nextCount = userData.count + 1;
+    await db.upsertDailyUserActivity(userId, today, {
+      count: nextCount,
+      reacted: userData.reacted,
+      firstMessageBonusGiven: inBonusChannel ? true : userData.firstMessageBonusGiven,
+      rpsWins: userData.rpsWins,
+    }, { reason: 'message_reward_progress' });
+    await updateWallet(userId, MESSAGE_REWARD_AMOUNT, {
+      type: 'message_reward',
+      source: 'message_reward',
+      channelId: message.channel.id,
+      messageCount: nextCount,
+    });
+    console.log(`⚡ Awarded ${MESSAGE_REWARD_AMOUNT} to ${message.author.username} for message #${nextCount} today.`);
   }
 });
 
@@ -840,21 +911,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
   const userId = user.id;
   // Use EST-based date here
   const today = getESTDateString();
-
-  // Get or initialize user data
-  if (!userMessageCounts.has(userId)) {
-    userMessageCounts.set(userId, { date: today, count: 0, reacted: false, firstMessage: false });
-  }
-
-  const userData = userMessageCounts.get(userId);
-
-  // Reset reaction reward eligibility if it's a new day (EST)
-  if (userData.date !== today) {
-    userData.date = today;
-    userData.count = 0;
-    userData.reacted = false; // Reset daily reaction eligibility
-    userData.firstMessage = false; // If needed, though not strictly required for reaction logic
-  }
+  const userData = await db.getDailyUserActivitySnapshot(userId, today);
 
   // If the user has already received a reaction reward today, deny it
   if (userData.reacted) {
@@ -863,57 +920,21 @@ client.on('messageReactionAdd', async (reaction, user) => {
   }
 
   // Grant reward for first reaction of the day
-  userData.reacted = true; // Mark that they have received today's reaction reward
-  userMessageCounts.set(userId, userData);
-  saveMessageCounts(); // Save progress
+  await db.upsertDailyUserActivity(userId, today, {
+    count: userData.count,
+    reacted: true,
+    firstMessageBonusGiven: userData.firstMessageBonusGiven,
+    rpsWins: userData.rpsWins,
+  }, { reason: 'reaction_reward_progress' });
 
   // Grant money (assuming updateWallet is your function for adding points)
-  await updateWallet(userId, REACTION_REWARD_AMOUNT);
+  await updateWallet(userId, REACTION_REWARD_AMOUNT, {
+    type: 'reaction_reward',
+    source: 'reaction_reward',
+    channelId: reaction.message.channel.id,
+    messageId: reaction.message.id,
+  });
   console.log(`🌟 Given ${REACTION_REWARD_AMOUNT} to ${user.username} for reacting in the reward channel.`);
-});
-
-// ==========================
-// 🎟️ RAFFLES
-// ==========================
-
-const {
-  addShopItem,
-  getRaffleParticipants,
-  addRaffleEntry,
-  removeRaffleEntry,
-  clearRaffleEntries
-} = require('./db');
-
-client.on('messageReactionAdd', async (reaction, user) => {
-  if (user.bot || reaction.emoji.name !== '🎟️') return;
-  if (reaction.message.guild && !(await userHasAllowedRole(user, reaction.message.guild))) return;
-
-  try {
-    if (reaction.partial) await reaction.fetch();
-    const raffle = await getRaffleParticipants(reaction.message.id);
-    if (!raffle) return;
-
-    await addRaffleEntry(raffle.id, user.id);
-    console.log(`📌 User ${user.id} entered raffle ${raffle.id}`);
-  } catch (err) {
-    console.error('⚠️ Error recording raffle entry:', err);
-  }
-});
-
-client.on('messageReactionRemove', async (reaction, user) => {
-  if (user.bot || reaction.emoji.name !== '🎟️') return;
-  if (reaction.message.guild && !(await userHasAllowedRole(user, reaction.message.guild))) return;
-
-  try {
-    if (reaction.partial) await reaction.fetch();
-    const raffle = await getRaffleParticipants(reaction.message.id);
-    if (!raffle) return;
-
-    await removeRaffleEntry(raffle.id, user.id);
-    console.log(`📌 User ${user.id} left raffle ${raffle.id}`);
-  } catch (err) {
-    console.error('⚠️ Error removing raffle entry:', err);
-  }
 });
 
 // ==========================
@@ -1042,7 +1063,12 @@ setInterval(async () => {
 
     if (!session.rewardedThisWindow && totalMinutes >= requiredMinutes) {
       const rewardedAt = Math.floor(Date.now() / 1000);
-      await updateWallet(userId, rewardAmount);
+      await updateWallet(userId, rewardAmount, {
+        type: 'dao_call_reward',
+        source: 'voice_reward',
+        meetingStartedAt: Math.floor(windowStart / 1000),
+        minutesAttended: totalMinutes,
+      });
       await updateDaoCallRewardTimestamp(userId, rewardedAt);
       await recordDaoCallAttendance({
         userID: userId,
@@ -1149,6 +1175,7 @@ async function askTriviaQuestion() {
   triviaInProgress = true;
   triviaAskedToday.add(trivia.question);
   triviaCountToday++;
+  const triviaEventId = `${Date.now()}:${triviaCountToday}`;
 
   // Just in case something weird left a collector behind
   if (activeCollector) {
@@ -1158,6 +1185,23 @@ async function askTriviaQuestion() {
 
   await channel.send(`🎲 Trivia Time! First to answer correctly wins ${rewardAmount} Volts:\n**${trivia.question}**`);
   console.log(`🧠 Trivia #${triviaCountToday} asked: ${trivia.question}`);
+  try {
+    await appendSystemEvent({
+      domain: 'trivia',
+      action: 'ask',
+      entityType: 'trivia_question',
+      entityId: triviaEventId,
+      metadata: {
+        triviaIndex: triviaCountToday,
+        question: trivia.question,
+        acceptedAnswers: trivia.answers || [trivia.answer],
+        rewardAmount,
+        channelId: process.env.TRIVIA_CHANNEL_ID,
+      },
+    });
+  } catch (error) {
+    console.error('❌ Failed to record trivia ask event:', error);
+  }
 
   const collector = channel.createMessageCollector({
     filter: msg => !msg.author.bot,
@@ -1167,21 +1211,67 @@ async function askTriviaQuestion() {
   });
 
   activeCollector = collector;
+  let answerResolved = false;
 
   collector.on('collect', async msg => {
+    if (answerResolved) return;
+
     const userAnswer = msg.content.toLowerCase().trim();
     const acceptedAnswers = trivia.answers || [trivia.answer];
     const isCorrect = acceptedAnswers.some(ans => userAnswer.includes(ans.toLowerCase()));
 
     if (isCorrect) {
-      collector.stop('answered');
-      await updateWallet(msg.author.id, rewardAmount);
-      await channel.send(`✅ Correct! ${msg.author} wins ${rewardAmount} Volts!`);
-      console.log(`🏆 ${msg.author.tag} won trivia #${triviaCountToday} (+${rewardAmount} Volts)`);
+      answerResolved = true;
+
+      try {
+        await updateWallet(msg.author.id, rewardAmount, {
+          type: 'trivia_reward',
+          source: 'trivia',
+          question: trivia.question,
+        });
+        await appendSystemEvent({
+          domain: 'trivia',
+          action: 'answer_correct',
+          entityType: 'trivia_question',
+          entityId: triviaEventId,
+          actorUserId: msg.author.id,
+          metadata: {
+            triviaIndex: triviaCountToday,
+            question: trivia.question,
+            answer: msg.content,
+            rewardAmount,
+          },
+        });
+        await channel.send(`✅ Correct! ${msg.author} wins ${rewardAmount} Volts!`);
+        console.log(`🏆 ${msg.author.tag} won trivia #${triviaCountToday} (+${rewardAmount} Volts)`);
+        collector.stop('answered');
+      } catch (error) {
+        answerResolved = false;
+        console.error(`❌ Failed to reward trivia winner ${msg.author.tag}:`, error);
+        try {
+          await appendSystemEvent({
+            domain: 'trivia',
+            action: 'reward_failed',
+            entityType: 'trivia_question',
+            entityId: triviaEventId,
+            actorUserId: msg.author.id,
+            metadata: {
+              triviaIndex: triviaCountToday,
+              question: trivia.question,
+              answer: msg.content,
+              rewardAmount,
+              error: error.message || String(error),
+            },
+          });
+        } catch (eventError) {
+          console.error('❌ Failed to record trivia reward failure event:', eventError);
+        }
+        await channel.send(`⚠️ ${msg.author}, you got the right answer, but the reward failed to process. Please contact an admin.`);
+      }
     }
   });
 
-  collector.on('end', (_, reason) => {
+  collector.on('end', async (_, reason) => {
     activeCollector = null;
     triviaInProgress = false;
 
@@ -1193,6 +1283,22 @@ async function askTriviaQuestion() {
       return;
     } else {
       console.log(`❌ Trivia collector ended with reason: ${reason}`);
+    }
+
+    try {
+      await appendSystemEvent({
+        domain: 'trivia',
+        action: reason === 'answered' ? 'close_answered' : 'close_unanswered',
+        entityType: 'trivia_question',
+        entityId: triviaEventId,
+        metadata: {
+          triviaIndex: triviaCountToday,
+          question: trivia.question,
+          reason,
+        },
+      });
+    } catch (error) {
+      console.error('❌ Failed to record trivia close event:', error);
     }
 
     // Only *now* do we consider the next question
@@ -1275,7 +1381,17 @@ client.emit = function(event, ...args) {
 // ==========================
 // EXPORT THE CLIENT
 // ==========================
-module.exports = { client };
+module.exports = {
+  client,
+  __testOnly: {
+    concludeGiveaway,
+    concludeTitleGiveaway,
+    scheduleGiveawayConclusion,
+    scheduleRaffleConclusion,
+  },
+};
 
 // Finally, log in the bot with your token from .env
-client.login(process.env.TOKEN);
+if (!TEST_MODE) {
+  client.login(process.env.TOKEN);
+}

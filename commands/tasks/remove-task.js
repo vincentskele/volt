@@ -36,42 +36,19 @@ module.exports = {
     }
 
     try {
-      // First, remove any job assignments for this Task.
-      await new Promise((resolve, reject) => {
-        db.db.run(
-          `DELETE FROM job_assignees WHERE jobID = ?`,
-          [jobId],
-          function(err) {
-            if (err) reject(err);
-            else resolve(this.changes);
-          }
-        );
-      });
-
-      // Next, remove the job from the joblist.
-      const changes = await new Promise((resolve, reject) => {
-        db.db.run(
-          `DELETE FROM joblist WHERE jobID = ?`,
-          [jobId],
-          function(err) {
-            if (err) reject(err);
-            else resolve(this.changes);
-          }
-        );
-      });
-
-      if (changes === 0) {
-        return interaction.reply({
-          content: `No job with ID ${jobId} was found.`,
-          ephemeral: true
-        });
-      }
+      await db.deleteJobById(jobId, { actorUserId: interaction.user.id });
 
       return interaction.reply({
         content: `Job with ID ${jobId} was successfully removed.`
       });
     } catch (error) {
       console.error("Error removing job:", error);
+      if (String(error?.message || '').toLowerCase().includes('not found')) {
+        return interaction.reply({
+          content: `No job with ID ${jobId} was found.`,
+          ephemeral: true
+        });
+      }
       return interaction.reply({
         content: `Error removing job: ${error.message}`,
         ephemeral: true

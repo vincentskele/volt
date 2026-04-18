@@ -6,7 +6,7 @@ module.exports = {
   // Command definition
   data: new SlashCommandBuilder()
     .setName('deposit') // Command name
-    .setDescription('Transfer Volts from your Solarian to your battery bank.') // Command description
+    .setDescription('Legacy command kept for compatibility after the balance merge.') // Command description
     .addIntegerOption(option =>
       option.setName('amount') // Option to specify the deposit amount
         .setDescription('The amount to deposit') // Option description
@@ -23,11 +23,13 @@ module.exports = {
     }
 
     try {
-      // Deposit the amount into the user's battery bank account in the database
-      await db.deposit(interaction.user.id, amount);
+      await db.deposit(interaction.user.id, amount, {
+        source: 'deposit_command',
+      });
 
-      // Respond with a success message
-      return interaction.reply(`✅ Transfered ${formatCurrency(amount)} into your battery bank.`);
+      return interaction.reply(
+        `ℹ️ Volt balances are unified now, so there’s nothing to transfer. Your ${formatCurrency(amount)} stays in the same balance.`
+      );
     } catch (err) {
       // Handle errors gracefully and log them
       console.error(`Error in deposit command for user ${interaction.user.id}:`, err);

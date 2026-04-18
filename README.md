@@ -48,8 +48,7 @@ Follow these steps to set up PizzaBot on your server:
 
 ### Point system
 - **`volts`**: Check Volt balances.
-- **`deposit <amount>`**: Move Volts from Solarian to their battery bank.
-- **`withdraw <amount>`**: Move Volts from battery bank to Solarian.
+- **`deposit <amount>` / `withdraw <amount>`**: Legacy compatibility commands now that Volt balances are unified.
 - **`drain @username`**: Attempt to drain another Solarian's Volts.
 - **`give @username <amount>`**: Transfer Volts to another Solarian.
 - **`leaderboard`**: Shows top 10 total balances.
@@ -82,4 +81,3 @@ Feel free to contribute to Volt! Submit pull requests or create issues for any b
 
 ---
 Happy botting!
-

@@ -5,10 +5,19 @@ const fs = require('fs');
 const db = require('../../db');
 const { points, formatCurrency } = require('../../points');
 
-let client;
+const LONG_TIMEOUT_MAX = 2_147_483_647;
 
 function setClient(discordClient) {
-  client = discordClient;
+  db.setDiscordClient(discordClient);
+}
+
+function scheduleAt(endTimeMs, fn) {
+  const tick = () => {
+    const remaining = endTimeMs - Date.now();
+    if (remaining <= 0) return fn();
+    setTimeout(tick, Math.min(remaining, LONG_TIMEOUT_MAX));
+  };
+  tick();
 }
 
 module.exports = {
@@ -134,13 +143,13 @@ module.exports = {
       await interaction.reply({ embeds: [embed], files });
 
       // Schedule raffle conclusion
-      setTimeout(async () => {
+      scheduleAt(endTime, async () => {
         try {
           await concludeRaffle(raffleId);
         } catch (err) {
           console.error('⚠️ Error concluding raffle:', err);
         }
-      }, durationMs);
+      });
 
     } catch (err) {
       console.error('⚠️ Raffle Creation Error:', err);
@@ -167,146 +176,11 @@ module.exports = {
   concludeRaffle,
 };
 
-/**
- * Concludes the raffle by selecting winners based on raffle ticket entries in user inventories.
- * This version builds the pool of entries by querying inventory for the raffle ticket item.
- */
 async function concludeRaffle(raffleId) {
-  try {
-    // First get the raffle data since we're only passed the ID
-    const raffle = await db.getRaffleById(raffleId);
-    
-    if (!raffle) {
-      console.error(`❌ Cannot conclude raffle: no raffle found with ID ${raffleId}`);
-      return;
-    }
-
-    console.log(`🎟️ Concluding raffle: ${raffle.name} (ID: ${raffle.id})`);
-
-    if (!client) {
-      console.error('❌ Discord client not initialized in raffle module');
-      return;
-    }
-
-    // Get the raffle ticket item ID first
-    const ticketName = `${raffle.name} Raffle Ticket`;
-    const ticketItem = await db.getShopItemByName(ticketName);
-    
-    if (!ticketItem) {
-      console.error(`❌ Could not find ticket item "${ticketName}"`);
-      return;
-    }
-
-    // Get all users who have this ticket in their inventory
-    const ticketHolders = await db.getInventoryByItemID(ticketItem.itemID);
-    
-    // Create an array of entries where each user appears once for each ticket they own
-    const entries = [];
-    for (const holder of ticketHolders) {
-      // Add an entry for each ticket the user owns
-      for (let i = 0; i < holder.quantity; i++) {
-        entries.push(holder.userID);
-      }
-    }
-
-    if (entries.length === 0) {
-      console.log(`🚫 No participants found for raffle "${raffle.name}"`);
-      
-      // Try to announce if we can
-      try {
-        const channel = await client.channels.fetch(raffle.channel_id);
-        await channel.send(`🚫 The **${raffle.name}** raffle ended, but no one entered.`);
-      } catch (err) {
-        console.error(`❌ Could not send no-participants message:`, err);
-      }
-      
-      // Clean up
-      await db.removeRaffleShopItem(raffle.name);
-      return;
-    }
-
-    console.log(`📊 Found ${entries.length} total entries from ${ticketHolders.length} unique participants`);
-
-    // Shuffle & pick winners
-    const shuffled = entries.sort(() => Math.random() - 0.5);
-    const winners = shuffled.slice(0, raffle.winners);
-
-    console.log(`🎟️ Selected ${winners.length} winners from ${entries.length} total entries`);
-
-    // Award prizes
-    if (!isNaN(raffle.prize)) {
-      // Prize is currency
-      const prizeAmount = parseInt(raffle.prize, 10);
-      for (const winnerId of winners) {
-        await db.updateWallet(winnerId, prizeAmount);
-        console.log(`💰 User ${winnerId} won ${prizeAmount} coins`);
-      }
-    } else {
-      // Prize is a shop item
-      const shopItem = await db.getAnyShopItemByName(raffle.prize);
-      if (!shopItem) {
-        console.error(`⚠️ Shop item "${raffle.prize}" not found`);
-        // Try to announce error
-        try {
-          const channel = await client.channels.fetch(raffle.channel_id);
-          await channel.send(`⚠️ Error: Prize item "${raffle.prize}" no longer exists in the shop!`);
-        } catch (err) {
-          console.error('Could not announce prize error:', err);
-        }
-        return;
-      }
-      
-      // Award the item to winners
-      for (const winnerId of winners) {
-        try {
-          await db.addItemToInventory(winnerId, shopItem.itemID);
-          console.log(`🎁 User ${winnerId} won "${shopItem.name}"`);
-        } catch (err) {
-          console.error(`Failed to award item to ${winnerId}:`, err);
-        }
-      }
-    }
-
-    // 🎁 Bonus: Award Robot Oil to all participants (one per unique participant)
-try {
-  const robotOil = await db.getAnyShopItemByName('Robot Oil');
-  if (robotOil) {
-    const awarded = new Set();
-    for (const holder of ticketHolders) {
-      if (!awarded.has(holder.userID)) {
-        await db.addItemToInventory(holder.userID, robotOil.itemID);
-        console.log(`🛢️ Gave Robot Oil to ${holder.userID}`);
-        awarded.add(holder.userID);
-      }
-    }
-  } else {
-    console.warn('⚠️ Robot Oil item not found in items table!');
+  const raffle = await db.getRaffleById(raffleId);
+  if (!raffle) {
+    console.error(`❌ Cannot conclude raffle: no raffle found with ID ${raffleId}`);
+    return;
   }
-} catch (err) {
-  console.error('❌ Failed to award Robot Oil:', err);
-}
-
-
-    // Announce winners if possible
-    try {
-      const channel = await client.channels.fetch(raffle.channel_id);
-      const winnerMentions = winners.map(id => `<@${id}>`).join(', ');
-      await channel.send(`🎉 Congratulations to the winners: ${winnerMentions}!`);
-    } catch (err) {
-      console.error('❌ Could not announce winners:', err);
-    }
-
-    // Clean up
-    await db.removeRaffleShopItem(raffle.name);
-
-  } catch (err) {
-    console.error('⚠️ Raffle Conclusion Error:', err);
-    // Only reply if we haven't already
-    if (!interaction.replied) {
-      await interaction.reply({ 
-        content: '🚫 Failed to conclude raffle. Please try again later.', 
-        ephemeral: true 
-      });
-    }
-  }
+  await db.concludeRaffle(raffle);
 }

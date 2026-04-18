@@ -3,16 +3,28 @@ const path = require('path');
 const fs = require('fs');
 const {
   saveGiveaway,
+  deleteGiveaway,
   updateWallet,
   getPrizeShopItemByName,
   getAllShopItems,
   addItemToInventory,
   getGiveawayEntries,
+  appendSystemEvent,
 } = require('../../db'); 
 require('dotenv').config();
 
 const POINTS_NAME = process.env.POINTS_NAME || 'Coins';
 const POINTS_SYMBOL = process.env.POINTS_SYMBOL || '';
+const LONG_TIMEOUT_MAX = 2_147_483_647;
+
+function scheduleAt(endTimeMs, fn) {
+  const tick = () => {
+    const remaining = endTimeMs - Date.now();
+    if (remaining <= 0) return fn();
+    setTimeout(tick, Math.min(remaining, LONG_TIMEOUT_MAX));
+  };
+  tick();
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -62,6 +74,13 @@ module.exports = {
     const winners = interaction.options.getInteger('winners');
     const prizeInput = interaction.options.getString('prize').trim();
     const repeat = interaction.options.getInteger('repeat') || 0;
+
+    if (duration <= 0 || winners <= 0) {
+      return interaction.reply({
+        content: '🚫 Duration and winners must be positive.',
+        ephemeral: true,
+      });
+    }
 
     // Validate prize if it's not a number (must be a valid shop item)
     if (isNaN(prizeInput)) {
@@ -132,7 +151,7 @@ module.exports = {
       await giveawayMessage.react('🎉');
 
       // Timer to conclude the giveaway after durationMs.
-      setTimeout(async () => {
+      scheduleAt(endTime, async () => {
         try {
           const participantIDs = await getGiveawayEntries(giveawayId);
           console.log(`[INFO] Found ${participantIDs.length} entries for giveaway "${giveawayName}" (ID: ${giveawayId})`);
@@ -145,7 +164,8 @@ module.exports = {
           // Randomly select winners.
           const pool = [...participantIDs];
           const selectedWinners = [];
-          while (selectedWinners.length < Math.min(winners, pool.length)) {
+          const winnerTarget = Math.min(winners, pool.length);
+          while (selectedWinners.length < winnerTarget) {
             const randomIndex = Math.floor(Math.random() * pool.length);
             const winnerId = pool.splice(randomIndex, 1)[0];
             selectedWinners.push(winnerId);
@@ -158,7 +178,11 @@ module.exports = {
             const prizeAmount = parseInt(prizeInput, 10);
             for (const winnerId of selectedWinners) {
               await interaction.channel.send(`🎉 Congrats <@${winnerId}>! You won **${giveawayName}** and received **${prizeAmount}${POINTS_SYMBOL}**.`);
-              await updateWallet(winnerId, prizeAmount);
+              await updateWallet(winnerId, prizeAmount, {
+                type: 'giveaway_reward',
+                source: 'create_giveaway_command',
+                giveawayName,
+              });
               console.log(`[SUCCESS] Awarded ${prizeAmount}${POINTS_SYMBOL} to ${winnerId}`);
             }
           } else {
@@ -174,14 +198,34 @@ module.exports = {
               }
             }
           }
+
+          await appendSystemEvent({
+            domain: 'giveaways',
+            action: 'conclude',
+            entityType: 'giveaway',
+            entityId: giveawayId,
+            metadata: {
+              giveawayId,
+              giveawayName,
+              prize: prizeInput,
+              winnerIds: selectedWinners,
+              participantCount: participantIDs.length,
+              source: 'create_giveaway_command',
+            },
+          });
         } catch (error) {
           console.error(`[ERROR] Error concluding giveaway "${giveawayName}":`, error);
         } finally {
+          try {
+            await deleteGiveaway(giveawayMessage.id);
+          } catch (cleanupError) {
+            console.error(`[ERROR] Failed to delete giveaway "${giveawayName}" after conclusion:`, cleanupError);
+          }
           if (repeatCount > 0) {
             startGiveaway(repeatCount - 1);
           }
         }
-      }, durationMs);
+      });
     };
 
     // Start the first giveaway.

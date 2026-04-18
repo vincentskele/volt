@@ -29,8 +29,7 @@ module.exports = {
               `⚡ **volts** [@user]: Check Solarians Volts.\n` +
               `⚡ **leaderboard**: Shows top 10 most charged Solarians.\n` +
               `⚡ **give** [@user]: transfers Volts to a user.\n` +
-              `⚡ **deposit <amount>**: Trasnfer Volts into your battery bank.\n` +
-              `⚡ **withdraw <amount>**: Trasnfer Volts from your battery bank.`,
+              `⚡ **deposit / withdraw**: Legacy commands now that Volt balances are unified.`,
             inline: false,
           },
           {

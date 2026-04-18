@@ -213,7 +213,8 @@ module.exports = {
             // Pick winners
             const pool = [...participantIDs];
             const winners = [];
-            while (winners.length < Math.min(winnersCount, pool.length)) {
+            const winnerTarget = Math.min(winnersCount, pool.length);
+            while (winners.length < winnerTarget) {
               winners.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
             }
 
@@ -221,7 +222,11 @@ module.exports = {
             if (!isNaN(prizeInput)) {
               const prizeAmount = parseInt(prizeInput, 10);
               for (const winnerId of winners) {
-                await db.updateWallet(winnerId, prizeAmount);
+                await db.updateWallet(winnerId, prizeAmount, {
+                  type: 'title_giveaway_reward',
+                  source: 'title_giveaway_command',
+                  giveawayName,
+                });
               }
 
               const winnerMentions = winners.map(id => `<@${id}>`).join(', ');

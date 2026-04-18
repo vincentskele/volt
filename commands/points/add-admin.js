@@ -25,7 +25,10 @@ module.exports = {
         return interaction.reply({ content: '🚫 Could not find the specified user.', ephemeral: true });
       }
 
-      await db.addAdmin(targetUser.id);
+      await db.addAdmin(targetUser.id, {
+        actorUserId: interaction.user.id,
+        source: 'discord_add_admin',
+      });
       return interaction.reply(`✅ Successfully added <@${targetUser.id}> as a bot admin.`);
     } catch (err) {
       console.error(`Error in add-admin command: ${err}`);

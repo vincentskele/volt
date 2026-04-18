@@ -111,21 +111,23 @@ module.exports = {
       }
 
       const totalCost = shopItem.price * quantity;
-      const { wallet } = await db.getBalances(user.id);
-      if (wallet < totalCost) {
+      const { balance } = await db.getBalances(user.id);
+      if (balance < totalCost) {
         const replyPayload = {
-          content: `🚫 You only have ${formatCurrency(wallet)}, but **${shopItem.name} x${quantity}** costs ${formatCurrency(totalCost)}.`,
+          content: `🚫 You only have ${formatCurrency(balance)}, but **${shopItem.name} x${quantity}** costs ${formatCurrency(totalCost)}.`,
           ephemeral: true,
         };
         if (messageOrInteraction) return messageOrInteraction.reply(replyPayload);
         return context.reply(replyPayload);
       }
 
-      await db.updateWallet(user.id, -totalCost);
-      await db.addItemToInventory(user.id, shopItem.itemID, quantity);
-      await db.updateShopItemQuantity(shopItem.itemID, shopItem.quantity - quantity);
-
-      const bonusInfo = await db.applyRafflePurchaseBonus(user.id, shopItem.name, quantity);
+      const purchaseResult = await db.purchaseShopItem(user.id, shopItem.name, quantity, {
+        source: messageOrInteraction ? 'prefix_command' : 'slash_command',
+        metadata: {
+          command: 'buy',
+        },
+      });
+      const bonusInfo = purchaseResult.bonusInfo;
 
       const embed = new EmbedBuilder()
         .setTitle(`✅ Purchased ${shopItem.name} x${quantity}`)

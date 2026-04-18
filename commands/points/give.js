@@ -65,7 +65,11 @@ module.exports = {
 
     try {
       // Transfer money using the database method
-      await db.transferFromWallet(senderId, targetUser.id, amount);
+      await db.transferFromWallet(senderId, targetUser.id, amount, {
+        type: 'transfer',
+        source: 'give_command',
+        initiatedBy: senderId,
+      });
       const successMessage = `✅ You gave ${formatCurrency(amount)} to <@${targetUser.id}>!`;
       if (messageOrInteraction) {
         return messageOrInteraction.reply(successMessage);

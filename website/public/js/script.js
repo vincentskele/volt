@@ -16,6 +16,7 @@
     mapSection: 'map',
     userProfileSection: 'profile',
     chatSection: 'chat',
+    voltScanSection: 'voltscan',
     adminPage: 'admin',
   };
   const ADMIN_PANEL_HASHES = {
@@ -37,9 +38,48 @@
   );
   const ADMIN_ROUTE_SECTION = 'adminPage';
   const DEFAULT_ADMIN_PANEL = 'adminSubmissionsPanel';
-  const AUTH_REQUIRED_SECTIONS = new Set(['userProfileSection', 'inventorySection', 'mapSection']);
+  const AUTH_REQUIRED_SECTIONS = new Set(['userProfileSection', 'inventorySection', 'mapSection', 'voltScanSection']);
   let cachedAdminStatus = null;
   let adminStatusPromise = null;
+  let voltScanPollingIntervalId = null;
+  const voltScanState = {
+    limit: 20,
+    offset: 0,
+    hasMore: false,
+    activeTab: 'chain',
+    filters: {
+      q: '',
+      type: '',
+      userId: '',
+    },
+  };
+  const VOLTSCAN_POLL_MS = 5000;
+
+  const VOLTSCAN_TAB_HASHES = new Set(['chain', 'network', 'node-key']);
+
+  function getVoltScanTabHash(tabName) {
+    const normalized = String(tabName || 'chain').trim().toLowerCase();
+    return VOLTSCAN_TAB_HASHES.has(normalized) ? normalized : 'chain';
+  }
+
+  function getVoltScanHash() {
+    const tab = getVoltScanTabHash(voltScanState.activeTab);
+    return tab === 'chain' ? '#voltscan' : `#voltscan/${tab}`;
+  }
+
+  function setVoltScanTab(tabName) {
+    voltScanState.activeTab = getVoltScanTabHash(tabName);
+    document.querySelectorAll('.voltscan-tab').forEach((button) => {
+      const isActive = button.getAttribute('data-tab') === voltScanState.activeTab;
+      button.classList.toggle('is-active', isActive);
+      button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+    document.querySelectorAll('.voltscan-panel').forEach((panel) => {
+      const isActive = panel.getAttribute('data-panel') === voltScanState.activeTab;
+      panel.classList.toggle('is-active', isActive);
+      panel.hidden = !isActive;
+    });
+  }
 
   function getAuthToken() {
     return localStorage.getItem('token') || '';
@@ -54,6 +94,136 @@
     return token
       ? { ...extraHeaders, Authorization: `Bearer ${token}` }
       : { ...extraHeaders };
+  }
+
+  async function showNodeKeyModal() {
+    const token = getAuthToken();
+    if (!token) {
+      showConfirmationPopup('❌ Sign in first to generate a node key.');
+      return;
+    }
+
+    try {
+      const statusResponse = await fetch('/api/node-key', {
+        headers: getAuthHeaders(),
+      });
+      const statusPayload = await statusResponse.json().catch(() => ({}));
+      if (!statusResponse.ok) {
+        throw new Error(statusPayload.error || 'Failed to load node key status.');
+      }
+
+      const shouldRotate = window.confirm(
+        statusPayload?.key
+          ? 'Generating a new node key will revoke your current one. Continue?'
+          : 'Generate a new node key for your verifier node?'
+      );
+      if (!shouldRotate) return;
+
+      const issueResponse = await fetch('/api/node-key', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({ label: 'default-node-key' }),
+      });
+      const issuePayload = await issueResponse.json().catch(() => ({}));
+      if (!issueResponse.ok) {
+        throw new Error(issuePayload.error || 'Failed to generate node key.');
+      }
+
+      const nodeKey = String(issuePayload.key || '').trim();
+      if (!nodeKey) {
+        throw new Error('Node key was not returned.');
+      }
+
+      const modalOverlay = document.createElement('div');
+      modalOverlay.className = 'modal-overlay';
+
+      const modalBox = document.createElement('div');
+      modalBox.className = 'modal-box';
+      modalBox.innerHTML = `
+        <h2>NODE KEY</h2>
+        <p>This key is tied to <strong>${escapeHtml(issuePayload?.operator?.displayName || 'your account')}</strong>.</p>
+        <p>Paste it into your node on first boot. Volt-node will save it into its local <code>.env</code> automatically.</p>
+        <textarea readonly style="width:100%;min-height:110px;margin:12px 0;padding:10px;border-radius:10px;">${escapeHtml(nodeKey)}</textarea>
+        <div style="display:flex;gap:8px;justify-content:center;">
+          <button class="confirm-button" id="copyNodeKeyButton">Copy Key</button>
+          <button class="confirm-button" id="closeNodeKeyButton">Close</button>
+        </div>
+      `;
+
+      modalOverlay.appendChild(modalBox);
+      document.body.appendChild(modalOverlay);
+
+      document.getElementById('copyNodeKeyButton')?.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(nodeKey);
+          showConfirmationPopup('✅ Node key copied.');
+        } catch (error) {
+          console.error('Failed to copy node key:', error);
+          showConfirmationPopup('❌ Failed to copy node key.');
+        }
+      });
+
+      document.getElementById('closeNodeKeyButton')?.addEventListener('click', () => {
+        modalOverlay.remove();
+      });
+    } catch (error) {
+      console.error('Failed to generate node key:', error);
+      showConfirmationPopup(`❌ ${error.message || 'Failed to generate node key.'}`);
+    }
+  }
+
+  async function loadNodeKeyStatus() {
+    const nodeKeyStatus = document.getElementById('voltscanNodeKeyStatus');
+    if (!nodeKeyStatus) return;
+
+    if (!isLoggedIn()) {
+      nodeKeyStatus.innerHTML = `
+        <div class="voltscan-mini-card">
+          <div class="voltscan-mini-label">Eligibility</div>
+          <div class="voltscan-mini-value">Sign in with Discord to generate a node key.</div>
+        </div>
+      `;
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/node-key', {
+        headers: getAuthHeaders(),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || 'Failed to load node key status.');
+      }
+
+      nodeKeyStatus.innerHTML = `
+        <div class="voltscan-mini-card">
+          <div class="voltscan-mini-label">Operator</div>
+          <div class="voltscan-mini-value">${escapeHtml(payload?.operator?.displayName || 'Eligible holder')}</div>
+        </div>
+        <div class="voltscan-mini-card">
+          <div class="voltscan-mini-label">Voting Power</div>
+          <div class="voltscan-mini-value">${escapeHtml(Number(payload?.operator?.votingPower || 0).toFixed(4))}</div>
+        </div>
+        <div class="voltscan-mini-card">
+          <div class="voltscan-mini-label">Current Key</div>
+          <div class="voltscan-mini-value">${escapeHtml(payload?.key?.createdAt ? `Issued ${new Date(payload.key.createdAt).toLocaleString()}` : 'No active node key yet')}</div>
+        </div>
+        <div class="voltscan-mini-card">
+          <div class="voltscan-mini-label">Last Use</div>
+          <div class="voltscan-mini-value">${escapeHtml(payload?.key?.lastUsedAt ? new Date(payload.key.lastUsedAt).toLocaleString() : 'Not used yet')}</div>
+        </div>
+      `;
+    } catch (error) {
+      nodeKeyStatus.innerHTML = `
+        <div class="voltscan-mini-card">
+          <div class="voltscan-mini-label">Eligibility</div>
+          <div class="voltscan-mini-value">${escapeHtml(error.message || 'Unable to load node key status.')}</div>
+        </div>
+      `;
+    }
   }
 
   function routeToPathname(sectionId, routePath = null) {
@@ -136,6 +306,8 @@
     let nextHash = `#${routeName}`;
     if (sectionId === ADMIN_ROUTE_SECTION && adminPanelId && ADMIN_PANEL_HASHES[adminPanelId]) {
       nextHash = `#${routeName}/${ADMIN_PANEL_HASHES[adminPanelId]}`;
+    } else if (sectionId === 'voltScanSection') {
+      nextHash = getVoltScanHash();
     } else if (sectionId === 'userProfileSection' && profileRoutePath) {
       nextHash = `#${routeName}/${profileRoutePath}`;
     }
@@ -164,6 +336,9 @@
     let safeSectionId = document.getElementById(sectionId) ? sectionId : 'landingPage';
     if (AUTH_REQUIRED_SECTIONS.has(safeSectionId) && !isLoggedIn()) {
       safeSectionId = 'landingPage';
+    }
+    if (safeSectionId !== 'voltScanSection') {
+      stopVoltScanPolling();
     }
     if (safeSectionId !== 'mapSection' && isMemberMapFullscreenActive()) {
       exitMemberMapFullscreen();
@@ -257,7 +432,7 @@
   function getFormatter(type) {
     const formatters = {
       leaderboard: (item) =>
-        `User: ${item.userTag} | Wallet: ${item.wallet} | Battery Bank: ${item.bank} | Total: ${item.totalBalance}`,
+        `User: ${item.userTag} | Balance: ${item.balance}`,
       admins: (item) => `Admin: ${item.userTag}`,
       shop: (item) =>
         `[${item.id}] ${item.name} - ${item.price} | Qty: ${item.quantity ?? 'N/A'} | Desc: ${item.description ?? ''}`,
@@ -292,6 +467,770 @@
     }
   }
 
+  function formatVoltScanTimestamp(timestamp) {
+    if (!timestamp) return 'Unknown time';
+    return new Date(Number(timestamp) * 1000).toLocaleString();
+  }
+
+  function formatVoltAmount(amount) {
+    return `⚡${Number(amount || 0).toLocaleString()}`;
+  }
+
+  function shortVoltHash(hash, size = 14) {
+    const value = String(hash || '');
+    if (value.length <= size * 2) return value || '—';
+    return `${value.slice(0, size)}…${value.slice(-size)}`;
+  }
+
+  function describeVoltTransaction(tx) {
+    if (!tx) return 'Ledger transaction';
+    if (tx.direction === 'credit') {
+      return `${tx.to_label} received ${formatVoltAmount(tx.amount)} in ${tx.to_account}.`;
+    }
+    if (tx.direction === 'debit') {
+      return `${tx.from_label} spent ${formatVoltAmount(tx.amount)} from ${tx.from_account}.`;
+    }
+    if (tx.direction === 'internal') {
+      return `${tx.from_label} moved ${formatVoltAmount(tx.amount)} from ${tx.from_account} to ${tx.to_account}.`;
+    }
+    return `${tx.from_label} sent ${formatVoltAmount(tx.amount)} to ${tx.to_label}.`;
+  }
+
+  function formatRelativeAge(value) {
+    if (!value) return 'Never';
+    const diffMs = Math.max(0, Date.now() - new Date(value).getTime());
+    const diffMinutes = Math.floor(diffMs / 60000);
+    if (diffMinutes < 1) return 'just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 48) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  }
+
+  function isRecentNodeActivity(value, windowMs = 120000) {
+    if (!value) return false;
+    const timestamp = new Date(value).getTime();
+    if (!Number.isFinite(timestamp)) return false;
+    return (Date.now() - timestamp) <= windowMs;
+  }
+
+  function hasPlaceholderNodeUrl(node) {
+    const value = String(node?.statusUrl || node?.nodeUrl || '').trim().toLowerCase();
+    return value.includes('192.168.1.x') || value.includes('://0.0.0.0');
+  }
+
+  function enrichVoltNetworkNodes(network) {
+    const nodes = mergeVoltNetworkNodes(network);
+    return nodes.map((node) => {
+      const placeholder = hasPlaceholderNodeUrl(node);
+      const hasRecentRegistryPresence = isRecentNodeActivity(
+        node.lastSeenAt || node.reportedAt || node.observedAt,
+        30000
+      );
+      const displayOnline = (node.online === true && isRecentNodeActivity(node.observedAt || node.lastSeenAt, 30000))
+        || (placeholder && isRecentNodeActivity(node.reportedAt || node.lastSeenAt, 30000))
+        || (!node.statusUrl && !node.nodeUrl && hasRecentRegistryPresence && String(node.status || '').toLowerCase() !== 'offline');
+      const displayInSync = node.executionAgreement === 'agree' || node.inSync === true;
+      return {
+        ...node,
+        displayOnline,
+        displayInSync,
+        hasPlaceholderNodeUrl: placeholder,
+      };
+    });
+  }
+
+  function mergeVoltNetworkNodes(network) {
+    const merged = new Map();
+    const registryNodes = Array.isArray(network?.nodeRegistry?.nodes) ? network.nodeRegistry.nodes : [];
+    const polledNodes = Array.isArray(network?.nodes) ? network.nodes : [];
+    const consensusNodes = Array.isArray(network?.consensusBridge?.nodes) ? network.consensusBridge.nodes : [];
+
+    function buildNodeKeys(node, source) {
+      const keys = [
+        node?.nodeId,
+        node?.statusUrl,
+        node?.nodeUrl,
+        node?.peerUrl,
+      ]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+
+      if (!keys.length) {
+        keys.push(`${source}-${merged.size}`);
+      }
+
+      return [...new Set(keys)];
+    }
+
+    function upsert(node, source) {
+      if (!node) return;
+      const keys = buildNodeKeys(node, source);
+      const existing = keys
+        .map((key) => merged.get(key))
+        .find(Boolean) || {};
+      const nextValue = {
+        ...existing,
+        ...node,
+        source: existing.source || source,
+        nodeName: node.nodeName || existing.nodeName || node.nodeId || node.nodeUrl || node.peerUrl || 'Unnamed node',
+        nodeUrl: node.nodeUrl || existing.nodeUrl || null,
+        statusUrl: node.statusUrl || existing.statusUrl || node.peerUrl || null,
+        online: typeof node.online === 'boolean' ? node.online : existing.online,
+        inSync: typeof node.inSync === 'boolean' ? node.inSync : existing.inSync,
+        executionAgreement: node.executionAgreement || existing.executionAgreement || 'unknown',
+        lastSeenAt: node.lastSeenAt || existing.lastSeenAt || node.reportedAt || node.observedAt || null,
+      };
+
+      keys.forEach((key) => {
+        merged.set(key, nextValue);
+      });
+    }
+
+    registryNodes.forEach((node) => upsert({
+      ...node,
+      executionAgreement: node.executionAgreement || (node?.consensus?.healthy === true ? 'agree' : 'unknown'),
+      inSync: node.executionAgreement === 'agree' || node?.consensus?.healthy === true,
+    }, 'registry'));
+    polledNodes.forEach((node) => upsert(node, 'network'));
+    consensusNodes.forEach((node) => upsert(node, 'consensus'));
+
+    return [...new Set(merged.values())].sort((left, right) => {
+      const onlineDelta = Number(Boolean(right?.online)) - Number(Boolean(left?.online));
+      if (onlineDelta !== 0) return onlineDelta;
+
+      const seenDelta = new Date(right?.lastSeenAt || right?.observedAt || 0).getTime()
+        - new Date(left?.lastSeenAt || left?.observedAt || 0).getTime();
+      if (seenDelta !== 0) return seenDelta;
+
+      return String(left?.nodeName || left?.nodeId || left?.nodeUrl || '')
+        .localeCompare(String(right?.nodeName || right?.nodeId || right?.nodeUrl || ''));
+    });
+  }
+
+  function renderVoltScanNetwork(network) {
+    const grid = document.getElementById('voltscanNetworkGrid');
+    const list = document.getElementById('voltscanNetworkList');
+    const meta = document.getElementById('voltscanNetworkMeta');
+    if (!grid || !list || !meta) return;
+
+    const consensusSummary = network?.consensusBridge?.summary || {};
+    const enrichedNodes = enrichVoltNetworkNodes(network);
+    const onlineCount = enrichedNodes.filter((node) => node.displayOnline).length;
+    const inSyncCount = enrichedNodes.filter((node) => node.displayInSync).length;
+    const seenLast48Hours = enrichedNodes.filter((node) => {
+      const timestamp = new Date(node.lastSeenAt || node.observedAt || node.reportedAt || 0).getTime();
+      return Number.isFinite(timestamp) && (Date.now() - timestamp) <= (48 * 60 * 60 * 1000);
+    }).length;
+    const cards = [
+      {
+        label: 'Online Now',
+        value: Number(onlineCount || 0).toLocaleString(),
+        subtitle: 'Nodes responding right now to live network sweeps.',
+      },
+      {
+        label: 'In Sync',
+        value: Number(inSyncCount || 0).toLocaleString(),
+        subtitle: 'Nodes matching the canonical ledger and event heads.',
+      },
+      {
+        label: 'Seen In 48h',
+        value: Number(seenLast48Hours || 0).toLocaleString(),
+        subtitle: 'Peers that have reported in during the last 48 hours.',
+      },
+      {
+        label: 'Holder Weight In Agreeance',
+        value: consensusSummary.weightedAgreement !== null && typeof consensusSummary.weightedAgreement !== 'undefined'
+          ? `${Number(consensusSummary.weightedAgreement || 0).toFixed(1)}%`
+          : '—',
+        subtitle: Number(consensusSummary.totalVotingPower || 0)
+          ? `${Number(consensusSummary.agreeVotingPower || 0).toFixed(4)} agree / ${Number(consensusSummary.disagreeVotingPower || 0).toFixed(4)} disagree out of ${Number(consensusSummary.totalVotingPower || 0).toFixed(4)} total audited voting power`
+          : 'No verified voting power is auditing right now.',
+      },
+    ];
+
+    grid.innerHTML = cards.map((card) => `
+      <div class="voltscan-summary-card">
+        <span class="voltscan-summary-value">${escapeHtml(String(card.value))}</span>
+        <div class="voltscan-summary-label">${escapeHtml(card.label)}</div>
+        <div class="voltscan-card-subtitle">${escapeHtml(card.subtitle)}</div>
+      </div>
+    `).join('');
+
+    meta.textContent = network?.generatedAt
+      ? `Last network sweep ${formatRelativeAge(network.generatedAt)} • Execution ${shortVoltHash(network?.canonical?.ledger?.latestHash, 10)} • Consensus ${String(consensusSummary.status || 'unknown').toUpperCase()}`
+      : 'No node telemetry yet.';
+
+    if (!enrichedNodes.length) {
+      list.innerHTML = '<div class="empty-state voltscan-empty">No mirror nodes are known yet.</div>';
+      return;
+    }
+
+    list.innerHTML = enrichedNodes.map((node) => {
+      const badges = [
+        `<span class="voltscan-network-badge ${node.displayOnline ? 'ok' : 'warn'}">${escapeHtml(node.displayOnline ? 'ONLINE' : 'OFFLINE')}</span>`,
+        `<span class="voltscan-network-badge ${node.displayInSync ? 'ok' : 'warn'}">${escapeHtml(node.displayInSync ? 'IN SYNC' : 'OUT OF SYNC')}</span>`,
+        node.executionAgreement
+          ? `<span class="voltscan-network-badge ${(node.executionAgreement === 'agree' || node.executionAgreement === 'updating') ? 'ok' : 'warn'}">${escapeHtml(String(node.executionAgreement).toUpperCase())}</span>`
+          : '',
+      ].join('');
+
+      return `
+        <article class="voltscan-network-node">
+          <div class="voltscan-network-node-head">
+            <div>
+              <h4>${escapeHtml(node.nodeName || node.nodeId || node.nodeUrl || 'Unnamed node')}</h4>
+              <div class="voltscan-card-subtitle">${escapeHtml(node.statusUrl || node.nodeUrl || 'No status URL')}</div>
+              <div class="voltscan-card-subtitle">${escapeHtml(
+                node?.operator?.displayName
+                  ? `Operator ${node.operator.displayName}${node.operator.verifiedHolder ? ` • Voting Power ${Number(node.operator.votingPower || 0).toFixed(4)}` : ''}`
+                  : 'Operator identity not verified'
+              )}</div>
+            </div>
+            <div class="voltscan-network-badges">${badges}</div>
+          </div>
+          <div class="voltscan-network-node-grid">
+            <div class="voltscan-mini-card">
+              <div class="voltscan-mini-label">Last Seen</div>
+              <div class="voltscan-mini-value">${escapeHtml(formatRelativeAge(node.lastSeenAt || node.observedAt))}</div>
+            </div>
+            <div class="voltscan-mini-card">
+              <div class="voltscan-mini-label">Ledger Head</div>
+              <div class="voltscan-mini-value">${escapeHtml(shortVoltHash(node?.ledger?.latestHash, 10))}</div>
+            </div>
+            <div class="voltscan-mini-card">
+              <div class="voltscan-mini-label">Tx Count</div>
+              <div class="voltscan-mini-value">${escapeHtml(Number(node?.ledger?.transactionCount || 0).toLocaleString())}</div>
+            </div>
+            <div class="voltscan-mini-card">
+              <div class="voltscan-mini-label">Seen In 48h</div>
+              <div class="voltscan-mini-value">${escapeHtml(String(node?.history48h?.samples || 0))} checks</div>
+            </div>
+            <div class="voltscan-mini-card">
+              <div class="voltscan-mini-label">Execution Link</div>
+              <div class="voltscan-mini-value">${escapeHtml(String(node?.executionAgreement || 'unknown').toUpperCase())}</div>
+            </div>
+            <div class="voltscan-mini-card">
+              <div class="voltscan-mini-label">Voting Power</div>
+              <div class="voltscan-mini-value">${escapeHtml(Number(node?.operator?.votingPower || 0).toFixed(4))}</div>
+            </div>
+          </div>
+          <div class="voltscan-network-note">
+            ${escapeHtml(
+              node.hasPlaceholderNodeUrl
+                ? 'Live sweep fallback is using recent node heartbeats because this node is still advertising a placeholder public URL.'
+                : node.lastError
+                ? `Last error: ${node.lastError}`
+                : node.conflicts?.length
+                  ? node.conflicts.join(' | ')
+                  : 'No peer disagreement reported on the latest sweep.'
+            )}
+          </div>
+        </article>
+      `;
+    }).join('');
+  }
+
+  function renderVoltScanSummary(data) {
+    const summaryGrid = document.getElementById('voltscanSummaryGrid');
+    const headHash = document.getElementById('voltscanHeadHash');
+    const headMeta = document.getElementById('voltscanHeadMeta');
+    const agreementBadge = document.getElementById('voltscanAgreementBadge');
+    if (!summaryGrid) return;
+
+    const summary = data?.summary || {};
+    const integrity = data?.integrity;
+    const consensusSummary = data?.consensusBridge?.summary || {};
+    const effectiveNetworkNodes = enrichVoltNetworkNodes({
+      ...(data?.network || {}),
+      canonical: data?.canonical || data?.network?.canonical || null,
+      nodeRegistry: data?.nodeRegistry || data?.network?.nodeRegistry || null,
+      consensusBridge: data?.consensusBridge || data?.network?.consensusBridge || null,
+    });
+    const agreementStatus = String(consensusSummary.status || 'unknown').toUpperCase();
+    const hasOnlineNodes = effectiveNetworkNodes.some((node) => node.displayOnline);
+    const noVerifiedNodesOnline = !hasOnlineNodes;
+    const cards = [
+      {
+        label: 'Transactions',
+        value: Number(summary.transactionCount || 0).toLocaleString(),
+        subtitle: 'Append-only records in the current result set.',
+      },
+      {
+        label: 'Volume Moved',
+        value: formatVoltAmount(summary.totalVolume || 0),
+        subtitle: 'Total amount represented by the visible query.',
+      },
+      {
+        label: 'Participants',
+        value: Number(summary.uniqueUsers || 0).toLocaleString(),
+        subtitle: 'Unique user IDs seen anywhere in the ledger.',
+      },
+      {
+        label: 'Chain Status',
+        value: integrity?.valid ? 'Verified' : 'Attention',
+        subtitle: integrity?.valid ? 'Hash chain is intact from genesis to head.' : (integrity?.reason || 'Integrity check unavailable.'),
+      },
+      {
+        label: 'Exec Vs Consensus',
+        value: noVerifiedNodesOnline ? 'NO NODES ONLINE' : agreementStatus,
+        subtitle: !noVerifiedNodesOnline
+          ? `${Number(consensusSummary.agreeCount || 0)} agree / ${Number(consensusSummary.updatingCount || 0)} updating / ${Number(consensusSummary.disagreeCount || 0)} disagree`
+          : 'No verified nodes are online right now.',
+      },
+      {
+        label: 'Weighted Confidence',
+        value: consensusSummary.weightedAgreement !== null && typeof consensusSummary.weightedAgreement !== 'undefined'
+          ? `${Number(consensusSummary.weightedAgreement || 0).toFixed(1)}%`
+          : '—',
+        subtitle: Number(consensusSummary.totalVotingPower || 0)
+          ? `${Number(consensusSummary.agreeVotingPower || 0).toFixed(4)} agree / ${Number(consensusSummary.disagreeVotingPower || 0).toFixed(4)} disagree out of ${Number(consensusSummary.totalVotingPower || 0).toFixed(4)} audited voting power`
+          : 'No verified voting power is online right now.',
+      },
+    ];
+
+    summaryGrid.innerHTML = cards.map((card) => `
+      <div class="voltscan-summary-card">
+        <span class="voltscan-summary-value">${escapeHtml(String(card.value))}</span>
+        <div class="voltscan-summary-label">${escapeHtml(card.label)}</div>
+        <div class="voltscan-card-subtitle">${escapeHtml(card.subtitle)}</div>
+      </div>
+    `).join('');
+
+    if (headHash) {
+      headHash.textContent = summary.latestHash ? shortVoltHash(summary.latestHash, 18) : 'No transactions yet';
+    }
+    if (headMeta) {
+      const disagreeingOperators = Array.isArray(consensusSummary.disagreeingOperators)
+        ? consensusSummary.disagreeingOperators.slice(0, 3).map((entry) => `${entry.name} (${Number(entry.votingPower || 0).toFixed(4)})`)
+        : [];
+      headMeta.textContent = summary.latestTransactionId
+        ? `Latest tx #${summary.latestTransactionId} • ${formatVoltScanTimestamp(summary.latestTimestamp)} • ${noVerifiedNodesOnline ? 'No verified nodes online' : `Consensus ${agreementStatus}`}${disagreeingOperators.length ? ` • Contesting: ${disagreeingOperators.join(', ')}` : ''}`
+        : 'Genesis only';
+    }
+
+    if (agreementBadge) {
+      agreementBadge.textContent = noVerifiedNodesOnline
+        ? 'NO VERIFIED NODES ONLINE'
+        : agreementStatus === 'AGREE'
+        ? 'EXECUTION AND CONSENSUS AGREE'
+        : (agreementStatus === 'UPDATING'
+          ? 'CONSENSUS IS CATCHING UP'
+          : (agreementStatus === 'DISAGREE' ? 'EXECUTION AND CONSENSUS DISAGREE' : 'CONSENSUS CHECK PENDING'));
+      agreementBadge.className = `voltscan-network-badge ${(!noVerifiedNodesOnline && (agreementStatus === 'AGREE' || agreementStatus === 'UPDATING')) ? 'ok' : 'warn'}`;
+    }
+
+    renderVoltScanNetwork({
+      ...(data?.network || {}),
+      canonical: data?.canonical || data?.network?.canonical || null,
+      nodeRegistry: data?.nodeRegistry || data?.network?.nodeRegistry || null,
+      consensusBridge: data?.consensusBridge || data?.network?.consensusBridge || null,
+    });
+  }
+
+  function renderVoltScanErrorState(message = 'Failed to load VoltScan.') {
+    const summaryGrid = document.getElementById('voltscanSummaryGrid');
+    const headHash = document.getElementById('voltscanHeadHash');
+    const headMeta = document.getElementById('voltscanHeadMeta');
+    const agreementBadge = document.getElementById('voltscanAgreementBadge');
+    const networkGrid = document.getElementById('voltscanNetworkGrid');
+    const networkList = document.getElementById('voltscanNetworkList');
+    const networkMeta = document.getElementById('voltscanNetworkMeta');
+
+    if (summaryGrid) {
+      summaryGrid.innerHTML = `
+        <div class="voltscan-summary-card">
+          <span class="voltscan-summary-value">Unavailable</span>
+          <div class="voltscan-summary-label">VoltScan</div>
+          <div class="voltscan-card-subtitle">${escapeHtml(message)}</div>
+        </div>
+      `;
+    }
+    if (headHash) {
+      headHash.textContent = 'Unavailable';
+    }
+    if (headMeta) {
+      headMeta.textContent = message;
+    }
+    if (agreementBadge) {
+      agreementBadge.textContent = 'VOLTSCAN ERROR';
+      agreementBadge.className = 'voltscan-network-badge warn';
+    }
+    if (networkGrid) {
+      networkGrid.innerHTML = `
+        <div class="voltscan-summary-card">
+          <span class="voltscan-summary-value">Unavailable</span>
+          <div class="voltscan-summary-label">Mirror Health</div>
+          <div class="voltscan-card-subtitle">${escapeHtml(message)}</div>
+        </div>
+      `;
+    }
+    if (networkMeta) {
+      networkMeta.textContent = message;
+    }
+    if (networkList) {
+      networkList.innerHTML = `<div class="empty-state voltscan-empty">${escapeHtml(message)}</div>`;
+    }
+  }
+
+  function describeVoltActivity(entry) {
+    if (!entry) return 'Unknown chain activity.';
+    if (entry.kind === 'transaction') {
+      return describeVoltTransaction({
+        id: entry.transactionId,
+        type: entry.type,
+        from_label: entry.fromLabel || entry.fromUserId || 'System',
+        to_label: entry.toLabel || entry.toUserId || 'System',
+        from_account: entry.fromAccount || entry.metadata?.fromAccount || 'system',
+        to_account: entry.toAccount || entry.metadata?.toAccount || 'system',
+        amount: entry.amount || 0,
+      });
+    }
+
+    const actor = entry.actorUserId ? ` by ${entry.actorUserId}` : '';
+    return `${entry.domain}.${entry.action}${actor}`;
+  }
+
+  function buildVoltScanHumanDetails(entry) {
+    if (!entry) {
+      return ['No activity details available yet.'];
+    }
+
+    if (entry.kind === 'transaction') {
+      const lines = [
+        `${describeVoltActivity(entry)}`,
+        `Recorded as transaction #${entry.transactionId || 'n/a'} on the ledger.`,
+      ];
+      const source = String(entry.metadata?.source || entry.metadata?.route || '').trim();
+      if (source) {
+        lines.push(`Source: ${source}.`);
+      }
+      if (entry.metadata?.question) {
+        lines.push(`Context: trivia question "${entry.metadata.question}".`);
+      }
+      return lines;
+    }
+
+    const lines = [
+      `${entry.domain || 'system'}.${entry.action || 'unknown'} was recorded on the system-events rail.`,
+    ];
+    if (entry.actorUserId) {
+      lines.push(`Actor: ${entry.actorUserId}.`);
+    }
+    if (entry.entityType || entry.entityId) {
+      lines.push(`Entity: ${entry.entityType || 'n/a'}${entry.entityId ? `:${entry.entityId}` : ''}.`);
+    }
+
+    const metadata = entry.metadata || {};
+    const summaryFields = [
+      metadata.giveawayName || metadata.raffleName || metadata.name,
+      metadata.itemName,
+      metadata.prize,
+      metadata.userID || metadata.userId,
+    ].filter(Boolean);
+
+    if (summaryFields.length) {
+      lines.push(`Highlights: ${summaryFields.join(' • ')}.`);
+    }
+
+    const metadataKeys = Object.keys(metadata);
+    if (metadataKeys.length) {
+      lines.push(`Metadata fields: ${metadataKeys.slice(0, 6).join(', ')}${metadataKeys.length > 6 ? ', ...' : ''}.`);
+    }
+
+    return lines;
+  }
+
+  function renderVoltScanActivity(entries, { append = false } = {}) {
+    const list = document.getElementById('voltscanTransactionList');
+    if (!list) return;
+
+    if (!append) {
+      list.innerHTML = '';
+    }
+
+    if (!entries?.length && !append) {
+      list.innerHTML = '<div class="empty-state voltscan-empty">No chain activity matched your search.</div>';
+      return;
+    }
+
+    const markup = (entries || []).map((entry) => {
+      const isTransaction = entry.kind === 'transaction';
+      const eyebrow = isTransaction
+        ? `TX #${entry.transactionId} • ${escapeHtml(entry.type || 'unknown')}`
+        : `EVENT #${entry.eventId} • ${escapeHtml(`${entry.domain}.${entry.action}`)}`;
+      const amountMarkup = isTransaction && Number.isFinite(entry.amount)
+        ? `<div class="voltscan-card-amount">${escapeHtml(formatVoltAmount(entry.amount))}</div>`
+        : `<div class="voltscan-card-amount">${escapeHtml(String(entry.kind || 'activity').toUpperCase())}</div>`;
+      const gridCards = isTransaction
+        ? `
+            <div class="voltscan-mini-card">
+              <div class="voltscan-mini-label">From</div>
+              <div class="voltscan-mini-value">${escapeHtml(entry.fromUserId || 'System')}</div>
+            </div>
+            <div class="voltscan-mini-card">
+              <div class="voltscan-mini-label">To</div>
+              <div class="voltscan-mini-value">${escapeHtml(entry.toUserId || 'System')}</div>
+            </div>
+            <div class="voltscan-mini-card">
+              <div class="voltscan-mini-label">Source Account</div>
+              <div class="voltscan-mini-value">${escapeHtml(entry.metadata?.fromAccount || 'system')}</div>
+            </div>
+            <div class="voltscan-mini-card">
+              <div class="voltscan-mini-label">Destination Account</div>
+              <div class="voltscan-mini-value">${escapeHtml(entry.metadata?.toAccount || 'system')}</div>
+            </div>
+          `
+        : `
+            <div class="voltscan-mini-card">
+              <div class="voltscan-mini-label">Domain</div>
+              <div class="voltscan-mini-value">${escapeHtml(entry.domain || 'system')}</div>
+            </div>
+            <div class="voltscan-mini-card">
+              <div class="voltscan-mini-label">Action</div>
+              <div class="voltscan-mini-value">${escapeHtml(entry.action || 'unknown')}</div>
+            </div>
+            <div class="voltscan-mini-card">
+              <div class="voltscan-mini-label">Actor</div>
+              <div class="voltscan-mini-value">${escapeHtml(entry.actorUserId || 'System')}</div>
+            </div>
+            <div class="voltscan-mini-card">
+              <div class="voltscan-mini-label">Entity</div>
+              <div class="voltscan-mini-value">${escapeHtml(entry.entityType && entry.entityId ? `${entry.entityType}:${entry.entityId}` : (entry.entityType || entry.entityId || 'n/a'))}</div>
+            </div>
+          `;
+
+      return `
+      <article class="voltscan-card">
+        <div class="voltscan-card-header">
+          <div class="voltscan-card-title-wrap">
+            <div class="voltscan-card-eyebrow">${eyebrow}</div>
+            <div class="voltscan-card-title">${escapeHtml(describeVoltActivity(entry))}</div>
+            <div class="voltscan-card-subtitle">${escapeHtml(formatVoltScanTimestamp(entry.timestamp))}</div>
+          </div>
+          ${amountMarkup}
+        </div>
+        <div class="voltscan-card-body">
+          <div class="voltscan-card-grid">
+            ${gridCards}
+          </div>
+          <div class="voltscan-chain">
+            <div class="voltscan-chain-row">
+              <div class="voltscan-chain-label">Previous Hash</div>
+              <div class="voltscan-prev-hash">${escapeHtml(shortVoltHash(entry.previous_hash, 18))}</div>
+            </div>
+            <div class="voltscan-chain-link">↓ chained into ↓</div>
+            <div class="voltscan-chain-row">
+              <div class="voltscan-chain-label">Current Hash</div>
+              <div class="voltscan-hash">${escapeHtml(shortVoltHash(entry.hash, 18))}</div>
+            </div>
+          </div>
+        </div>
+        <details>
+          <summary>Open Details</summary>
+          <div class="voltscan-detail-tabs" role="tablist" aria-label="VoltScan detail views">
+            <button type="button" class="voltscan-detail-tab is-active" data-voltscan-detail-tab="human">Human View</button>
+            <button type="button" class="voltscan-detail-tab" data-voltscan-detail-tab="metadata">Metadata + Hashes</button>
+          </div>
+          <div class="voltscan-detail-panel is-active" data-voltscan-detail-panel="human">
+            <div class="voltscan-human-list">${buildVoltScanHumanDetails(entry).map((line) => `<div class="voltscan-human-line">${escapeHtml(line)}</div>`).join('')}</div>
+          </div>
+          <div class="voltscan-detail-panel" data-voltscan-detail-panel="metadata" hidden>
+            <pre class="voltscan-metadata">${escapeHtml(JSON.stringify({
+              kind: entry.kind,
+              metadata: entry.metadata || {},
+              previous_hash: entry.previous_hash,
+              hash: entry.hash,
+            }, null, 2))}</pre>
+          </div>
+        </details>
+      </article>
+    `;
+    }).join('');
+
+    if (append) {
+      list.insertAdjacentHTML('beforeend', markup);
+    } else {
+      list.innerHTML = markup;
+    }
+  }
+
+  async function loadVoltScan(options = {}) {
+    const reset = options.reset !== false;
+    const summaryOnly = options.summaryOnly === true;
+    const status = document.getElementById('voltscanStatus');
+    const loadMoreButton = document.getElementById('voltscanLoadMoreButton');
+
+    if (reset && !summaryOnly) {
+      voltScanState.offset = 0;
+      voltScanState.filters.q = String(document.getElementById('voltscanSearchInput')?.value || '').trim();
+      voltScanState.filters.type = String(document.getElementById('voltscanTypeSelect')?.value || '').trim();
+      voltScanState.filters.userId = String(document.getElementById('voltscanUserInput')?.value || '').trim();
+    }
+
+    if (status && !summaryOnly) {
+      status.textContent = reset ? 'Scanning ledger...' : 'Loading more transactions...';
+    }
+    if (loadMoreButton && !summaryOnly) {
+      loadMoreButton.style.display = 'none';
+      loadMoreButton.disabled = true;
+    }
+
+    const params = new URLSearchParams({
+      limit: String(voltScanState.limit),
+      offset: String(voltScanState.offset),
+    });
+    if (voltScanState.filters.q) params.set('q', voltScanState.filters.q);
+    if (voltScanState.filters.type) params.set('type', voltScanState.filters.type);
+    if (voltScanState.filters.userId) params.set('userId', voltScanState.filters.userId);
+
+    try {
+      const summaryResponse = await fetch(`/api/voltscan?${params.toString()}`, {
+        headers: getAuthHeaders(),
+      });
+      const activityResponse = summaryOnly
+        ? null
+        : await fetch(`/api/voltscan/activity?${params.toString()}`, {
+            headers: getAuthHeaders(),
+          });
+      if (!summaryResponse.ok || (activityResponse && !activityResponse.ok)) {
+        const statusCode = !summaryResponse.ok ? summaryResponse.status : activityResponse.status;
+        throw new Error(
+          statusCode === 401
+            ? 'Sign in to view VoltScan.'
+            : `Failed to load VoltScan (HTTP ${statusCode}).`
+        );
+      }
+
+      const data = await summaryResponse.json();
+      const activity = activityResponse ? await activityResponse.json() : null;
+      renderVoltScanSummary(data);
+      if (activity) {
+        renderVoltScanActivity(activity.entries, { append: !reset });
+
+        voltScanState.offset += Array.isArray(activity.entries) ? activity.entries.length : 0;
+        voltScanState.hasMore = Boolean(activity.pagination?.hasMore);
+
+        if (status) {
+          const count = Number(activity.summary?.totalCount || 0);
+          status.textContent = count
+            ? `Showing ${Math.min(voltScanState.offset, count)} of ${count.toLocaleString()} chain event(s).`
+            : 'No chain activity yet.';
+        }
+
+        if (loadMoreButton) {
+          loadMoreButton.style.display = voltScanState.hasMore ? 'inline-flex' : 'none';
+          loadMoreButton.disabled = false;
+        }
+      } else if (loadMoreButton) {
+        loadMoreButton.disabled = false;
+      }
+    } catch (error) {
+      console.error('Error loading VoltScan:', error);
+      const message = error?.message || 'Failed to load VoltScan.';
+      if (status && !summaryOnly) status.textContent = message;
+      if (!summaryOnly) {
+        renderVoltScanErrorState(message);
+        renderVoltScanActivity([], { append: false });
+      }
+      if (loadMoreButton) loadMoreButton.disabled = false;
+    }
+  }
+
+  function stopVoltScanPolling() {
+    if (voltScanPollingIntervalId) {
+      clearInterval(voltScanPollingIntervalId);
+      voltScanPollingIntervalId = null;
+    }
+  }
+
+  function startVoltScanPolling() {
+    stopVoltScanPolling();
+    voltScanPollingIntervalId = setInterval(() => {
+      const section = document.getElementById('voltScanSection');
+      if (!section || section.style.display === 'none') {
+        stopVoltScanPolling();
+        return;
+      }
+      loadVoltScan({ reset: true, summaryOnly: true });
+    }, VOLTSCAN_POLL_MS);
+  }
+
+  const voltscanApplyButton = document.getElementById('voltscanApplyButton');
+  const voltscanResetButton = document.getElementById('voltscanResetButton');
+  const voltscanLoadMoreButton = document.getElementById('voltscanLoadMoreButton');
+  const voltscanGenerateNodeKeyButton = document.getElementById('voltscanGenerateNodeKeyButton');
+  const voltscanTransactionList = document.getElementById('voltscanTransactionList');
+  const voltscanSearchInput = document.getElementById('voltscanSearchInput');
+  const voltscanTypeSelect = document.getElementById('voltscanTypeSelect');
+  const voltscanUserInput = document.getElementById('voltscanUserInput');
+  const voltscanTabs = Array.from(document.querySelectorAll('.voltscan-tab'));
+
+  voltscanTransactionList?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-voltscan-detail-tab]');
+    if (!button) return;
+
+    const nextTab = button.getAttribute('data-voltscan-detail-tab');
+    const details = button.closest('details');
+    if (!details || !nextTab) return;
+
+    details.querySelectorAll('[data-voltscan-detail-tab]').forEach((tabButton) => {
+      tabButton.classList.toggle('is-active', tabButton === button);
+    });
+
+    details.querySelectorAll('[data-voltscan-detail-panel]').forEach((panel) => {
+      const isActive = panel.getAttribute('data-voltscan-detail-panel') === nextTab;
+      panel.classList.toggle('is-active', isActive);
+      panel.hidden = !isActive;
+    });
+  });
+
+  voltscanTabs.forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      const tabName = button.getAttribute('data-tab') || 'chain';
+      setVoltScanTab(tabName);
+      setSectionHash('voltScanSection');
+      if (tabName === 'node-key') {
+        await loadNodeKeyStatus();
+      }
+    });
+  });
+
+  voltscanApplyButton?.addEventListener('click', () => {
+    loadVoltScan({ reset: true });
+  });
+
+  voltscanResetButton?.addEventListener('click', () => {
+    if (voltscanSearchInput) voltscanSearchInput.value = '';
+    if (voltscanTypeSelect) voltscanTypeSelect.value = '';
+    if (voltscanUserInput) voltscanUserInput.value = '';
+    loadVoltScan({ reset: true });
+  });
+
+  voltscanLoadMoreButton?.addEventListener('click', () => {
+    loadVoltScan({ reset: false });
+  });
+
+  [voltscanSearchInput, voltscanUserInput].forEach((input) => {
+    input?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        loadVoltScan({ reset: true });
+      }
+    });
+  });
+
+  voltscanTypeSelect?.addEventListener('change', () => {
+    loadVoltScan({ reset: true });
+  });
+
+  voltscanGenerateNodeKeyButton?.addEventListener('click', async () => {
+    await showNodeKeyModal();
+    await loadNodeKeyStatus();
+  });
+
 // ------------------------------
 // Leaderboard Section (Clickable to view user's inventory)
 // ------------------------------
@@ -322,12 +1261,12 @@ if (showLeaderboardButton) {
           });
 
           // Create the content for this leaderboard entry
-          const totalBalance = entry.wallet + entry.bank;
+          const totalBalance = entry.totalBalance ?? entry.balance ?? 0;
           item.innerHTML = `
             <span class="rank">${index + 1}. </span>
             <span class="user-tag">${entry.userTag}</span> 
             <span class="details">
-              Solarian: ${entry.wallet} | Battery Bank: ${entry.bank} | Total: ${totalBalance}
+              Volt Balance: ${totalBalance}
             </span>
           `;
           leaderboardList.appendChild(item);
@@ -2631,7 +3570,8 @@ async function loadAdminRedemptions() {
       const item = document.createElement('div');
       item.className = 'admin-item';
       const walletAddress = row.wallet_address || '';
-      if (walletAddress) {
+      const canCopyWallet = Boolean(walletAddress) && row.wallet_visible !== false && row.wallet_redacted !== true;
+      if (canCopyWallet) {
         item.classList.add('admin-redemption-copyable');
         item.title = 'Click to copy wallet address';
       }
@@ -2658,7 +3598,7 @@ async function loadAdminRedemptions() {
         <div><strong>Command:</strong> ${commandText}</div>
         <div><strong>Message:</strong> ${messageLink}</div>
       `;
-      if (walletAddress) {
+      if (canCopyWallet) {
         item.addEventListener('click', async (event) => {
           if (event.target.closest('a')) return;
           try {
@@ -3441,6 +4381,23 @@ function showPostLoginButtons() {
     }
   });
 
+  // ========== VOLTSCAN BUTTON ==========
+  const voltScanButton = document.createElement('button');
+  voltScanButton.innerHTML = buildButtonIconMarkup('fa-solid fa-link', 'VoltScan');
+  voltScanButton.className = 'btn text-sm font-bold';
+  voltScanButton.style.height = '24px';
+  voltScanButton.style.width = '110px';
+  voltScanButton.style.lineHeight = '24px';
+  voltScanButton.style.padding = '0 12px';
+  voltScanButton.style.textAlign = 'center';
+
+  voltScanButton.addEventListener('click', () => {
+    loadVoltScan({ reset: true });
+    if (typeof showSection === 'function') {
+      showSection('voltScanSection');
+    }
+  });
+
   // ========== MAP BUTTON ==========
   const mapButton = document.createElement('button');
   mapButton.innerHTML = buildButtonIconMarkup('fa-solid fa-map', 'Map');
@@ -3480,6 +4437,7 @@ function showPostLoginButtons() {
   userActionContainer.appendChild(userProfileButton);
   userActionContainer.appendChild(mapButton);
   userActionContainer.appendChild(chatButton);
+  userActionContainer.appendChild(voltScanButton);
   userActionContainer.appendChild(logoutButton);
   addAdminButton(userActionContainer, logoutButton);
 
@@ -3567,6 +4525,13 @@ async function loadSectionDataForRoute(sectionId, routeParts = []) {
     pingChatPresence();
     loadChatPresence();
     startChatPresencePolling();
+  } else if (sectionId === 'voltScanSection') {
+    setVoltScanTab(routeParts?.[0] || voltScanState.activeTab || 'chain');
+    if ((voltScanState.activeTab || 'chain') === 'node-key') {
+      await loadNodeKeyStatus();
+    }
+    await loadVoltScan({ reset: true });
+    startVoltScanPolling();
   }
 }
 
@@ -3651,19 +4616,20 @@ async function fetchVoltBalance() {
       throw new Error(`Failed to fetch Volt balance: ${response.statusText}`);
     }
 
-    const { wallet, bank, totalBalance } = await response.json();
+    const { balance, totalBalance } = await response.json();
+    const mergedBalance = totalBalance ?? balance ?? 0;
     const solarianBalanceEl = document.getElementById("solarianBalance");
 
     if (solarianBalanceEl) {
-      solarianBalanceEl.textContent = `Volt Balance: ${totalBalance}`;
+      solarianBalanceEl.textContent = `Volt Balance: ${mergedBalance}`;
     }
 
     const userProfileSolarian = document.getElementById('userProfileSolarianValue');
     if (userProfileSolarian) {
-      userProfileSolarian.textContent = `Volt Balance: ${totalBalance}`;
+      userProfileSolarian.textContent = `Volt Balance: ${mergedBalance}`;
     }
 
-    console.log("✅ Volt Balance Updated:", { wallet, bank, totalBalance });
+    console.log("✅ Volt Balance Updated:", { balance: mergedBalance });
 
   } catch (error) {
     console.error("❌ Error fetching Volt balance:", error);
@@ -6312,6 +7278,9 @@ function showRedeemModal(itemName) {
   const walletSelect = document.getElementById('redeemWalletSelect');
   const walletHint = document.getElementById('redeemWalletHint');
   const walletEditButton = document.getElementById('redeemWalletEdit');
+  const confirmButton = document.getElementById('redeemConfirmButton');
+  const cancelButton = document.getElementById('redeemCancelButton');
+  let isSubmittingRedeem = false;
   const applyWalletValue = (value, hintText = '') => {
     if (!walletInput) return;
     walletInput.value = String(value || '').trim();
@@ -6396,13 +7365,28 @@ function showRedeemModal(itemName) {
   }
 
   const close = () => modalOverlay.remove();
-  document.getElementById('redeemCancelButton').addEventListener('click', close);
+  cancelButton.addEventListener('click', () => {
+    if (isSubmittingRedeem) return;
+    close();
+  });
 
-  document.getElementById('redeemConfirmButton').addEventListener('click', async () => {
+  confirmButton.addEventListener('click', async () => {
+    if (isSubmittingRedeem) return;
     const walletAddress = document.getElementById('redeemWalletAddress').value.trim();
     if (!walletAddress) {
       showConfirmationPopup('❌ Please paste your Solana wallet address.');
       return;
+    }
+
+    isSubmittingRedeem = true;
+    confirmButton.disabled = true;
+    cancelButton.disabled = true;
+    confirmButton.textContent = 'PROCESSING...';
+    if (walletSelect) walletSelect.disabled = true;
+    if (walletInput) walletInput.disabled = true;
+    if (walletEditButton) walletEditButton.disabled = true;
+    if (walletHint) {
+      walletHint.textContent = 'Submitting redemption...';
     }
 
     try {

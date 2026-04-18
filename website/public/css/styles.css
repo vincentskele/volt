@@ -1830,6 +1830,477 @@ code {
   color: var(--text-secondary);
 }
 
+.voltscan-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.8fr);
+  gap: 18px;
+  align-items: stretch;
+  margin-bottom: 22px;
+}
+
+.voltscan-hero-copy,
+.voltscan-head-card,
+.voltscan-summary-card,
+.voltscan-card,
+.voltscan-chain {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.08)),
+    var(--bg-dark);
+  border: 2px solid rgba(242, 162, 75, 0.55);
+  border-radius: 16px;
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.28);
+}
+
+.voltscan-hero-copy {
+  padding: 22px 24px;
+}
+
+.voltscan-kicker {
+  color: #ffd37d;
+  font-size: 0.68rem;
+  margin-bottom: 12px;
+  letter-spacing: 1.6px;
+}
+
+.voltscan-hero-copy h2 {
+  margin: 0 0 14px;
+  line-height: 1.3;
+}
+
+.voltscan-hero-copy p,
+.voltscan-head-meta,
+.voltscan-card-subtitle,
+.voltscan-summary-label,
+.voltscan-chain-label,
+.voltscan-chain-link,
+.voltscan-metadata,
+.voltscan-empty {
+  font-size: 0.67rem;
+  line-height: 1.6;
+  text-transform: none;
+  letter-spacing: 0.2px;
+}
+
+.voltscan-head-card {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+}
+
+.voltscan-head-label,
+.voltscan-summary-value,
+.voltscan-card-eyebrow,
+.voltscan-card-amount {
+  color: var(--highlight);
+}
+
+.voltscan-head-hash,
+.voltscan-hash,
+.voltscan-prev-hash {
+  font-size: 0.63rem;
+  text-transform: none;
+  word-break: break-all;
+  line-height: 1.55;
+}
+
+.voltscan-toolbar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 18px;
+}
+
+.voltscan-tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.voltscan-tab {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(242, 162, 75, 0.4);
+  background: rgba(255, 255, 255, 0.05);
+  color: #ffe1a8;
+  border-radius: 999px;
+  padding: 9px 16px;
+  cursor: pointer;
+  font-size: 0.62rem;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.voltscan-tab.is-active {
+  background: rgba(242, 162, 75, 0.18);
+  color: #fff2cf;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+}
+
+.voltscan-panel {
+  display: none;
+}
+
+.voltscan-panel.is-active {
+  display: block;
+}
+
+.voltscan-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.voltscan-filter span {
+  color: var(--highlight);
+  font-size: 0.62rem;
+}
+
+.voltscan-input {
+  width: 100%;
+  text-transform: none;
+  font-size: 0.68rem;
+}
+
+.voltscan-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.voltscan-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.voltscan-network-shell {
+  margin-bottom: 18px;
+  padding: 18px 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.08)),
+    var(--bg-dark);
+  border: 2px solid rgba(242, 162, 75, 0.55);
+  border-radius: 16px;
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.28);
+}
+
+.voltscan-nodekey-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.9fr);
+  gap: 14px;
+}
+
+.voltscan-nodekey-copy,
+.voltscan-nodekey-status {
+  display: grid;
+  gap: 12px;
+}
+
+.voltscan-nodekey-copy h4 {
+  margin: 0;
+}
+
+.voltscan-network-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-end;
+  margin-bottom: 14px;
+}
+
+.voltscan-network-header h3 {
+  margin: 0;
+}
+
+.voltscan-network-grid {
+  margin-bottom: 14px;
+}
+
+.voltscan-network-list {
+  display: grid;
+  gap: 10px;
+}
+
+.voltscan-network-node {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+}
+
+.voltscan-network-node-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.voltscan-network-node h4 {
+  margin: 0 0 6px;
+  font-size: 0.78rem;
+}
+
+.voltscan-network-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.voltscan-network-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.56rem;
+  letter-spacing: 0.4px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.voltscan-network-badge.ok {
+  background: rgba(52, 211, 153, 0.18);
+  color: #a7f3d0;
+}
+
+.voltscan-network-badge.warn {
+  background: rgba(248, 113, 113, 0.18);
+  color: #fecaca;
+}
+
+.voltscan-network-node-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.voltscan-network-note {
+  font-size: 0.62rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  text-transform: none;
+}
+
+.voltscan-summary-card {
+  padding: 16px 18px;
+}
+
+.voltscan-summary-value {
+  display: block;
+  font-size: 0.95rem;
+  margin-bottom: 10px;
+}
+
+.voltscan-status {
+  margin-bottom: 14px;
+}
+
+.voltscan-list {
+  display: grid;
+  gap: 14px;
+}
+
+.voltscan-card {
+  overflow: hidden;
+}
+
+.voltscan-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 20px 14px;
+}
+
+.voltscan-card-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.voltscan-card-eyebrow {
+  font-size: 0.6rem;
+}
+
+.voltscan-card-title {
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.voltscan-card-subtitle {
+  color: var(--text-secondary);
+}
+
+.voltscan-card-amount {
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.voltscan-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.9fr);
+  gap: 16px;
+  padding: 0 20px 20px;
+}
+
+.voltscan-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.voltscan-mini-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.voltscan-mini-label {
+  color: var(--text-secondary);
+  font-size: 0.56rem;
+  margin-bottom: 8px;
+}
+
+.voltscan-mini-value {
+  font-size: 0.7rem;
+  text-transform: none;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.voltscan-chain {
+  padding: 12px 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.voltscan-chain-row {
+  display: grid;
+  gap: 6px;
+}
+
+.voltscan-chain-link {
+  color: var(--text-secondary);
+}
+
+.voltscan-card details {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0 20px 18px;
+}
+
+.voltscan-card summary {
+  cursor: pointer;
+  color: #ffe1a8;
+  padding-top: 14px;
+}
+
+.voltscan-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.voltscan-detail-tabs {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.voltscan-detail-tab {
+  border: 1px solid rgba(255, 225, 168, 0.2);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.voltscan-detail-tab.is-active {
+  color: #1a1205;
+  background: #ffe1a8;
+  border-color: #ffe1a8;
+}
+
+.voltscan-detail-panel {
+  margin-top: 12px;
+}
+
+.voltscan-human-list {
+  display: grid;
+  gap: 8px;
+}
+
+.voltscan-human-line {
+  padding: 12px 14px;
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 12px;
+}
+
+.voltscan-metadata {
+  margin: 12px 0 0;
+  padding: 14px;
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 12px;
+  overflow-x: auto;
+}
+
+.voltscan-footer {
+  display: flex;
+  justify-content: center;
+  margin: 18px 0 8px;
+}
+
+@media (max-width: 1100px) {
+  .voltscan-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .voltscan-network-node-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .voltscan-card-body,
+  .voltscan-hero,
+  .voltscan-nodekey-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .voltscan-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .voltscan-actions {
+    justify-content: stretch;
+  }
+
+  .voltscan-actions .btn {
+    width: 100%;
+  }
+
+  .voltscan-summary-grid,
+  .voltscan-card-grid,
+  .voltscan-network-node-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .voltscan-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .voltscan-card-amount {
+    white-space: normal;
+  }
+}
+
 @media (max-width: 720px) {
   #userProfileSection {
     padding: 16px;

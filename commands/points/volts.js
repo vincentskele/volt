@@ -41,14 +41,12 @@ async function handleBalanceCommand(ctx, isSlash, targetUser = null) {
     }
 
     // Fetch balances from the database
-    const { wallet, bank } = await db.getBalances(user.id);
+    const { balance } = await db.getBalances(user.id);
 
     // Format the response
     const response =
-      `**${user.username}'s Battery levels**\n` +
-      `Solarian: ${formatCurrency(wallet)}\n` +
-      `Battery bank: ${formatCurrency(bank)}\n` +
-      `Total: ${formatCurrency(wallet + bank)}`;
+      `**${user.username}'s Volt Balance**\n` +
+      `Balance: ${formatCurrency(balance)}`;
 
     // Send the response
     if (isSlash) {

@@ -19,7 +19,10 @@ module.exports = {
 
     const targetUser = interaction.options.getUser('user');
     try {
-      await db.removeAdmin(targetUser.id);
+      await db.removeAdmin(targetUser.id, {
+        actorUserId: interaction.user.id,
+        source: 'discord_remove_admin',
+      });
       return interaction.reply(`✅ Successfully removed <@${targetUser.id}> from bot admins.`);
     } catch (err) {
       return interaction.reply({ content: `🚫 Failed to remove admin: ${err}`, ephemeral: true });

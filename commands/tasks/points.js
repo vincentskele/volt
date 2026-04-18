@@ -52,7 +52,12 @@ module.exports = {
       }
 
       // Use the existing updateWallet function to add points
-      const result = await db.updateWallet(targetUser.id, amount);
+      const result = await db.updateWallet(targetUser.id, amount, {
+        type: 'admin_reward',
+        source: 'tasks_points_command',
+        awardedBy: user.id,
+        reason,
+      });
       
       if (!result || !result.changes) {
         return interaction.reply({ content: `🚫 Failed to award points to <@${targetUser.id}>.`, ephemeral: true });

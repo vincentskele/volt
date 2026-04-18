@@ -5,7 +5,7 @@ const db = require('../../db');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('withdraw')
-    .setDescription('Charge your Solarian with Volts from your battery bank.')
+    .setDescription('Legacy command kept for compatibility after the balance merge.')
     .addIntegerOption(option =>
       option.setName('amount')
         .setDescription('The amount to transfer')
@@ -18,8 +18,12 @@ module.exports = {
     }
 
     try {
-      await db.withdraw(interaction.user.id, amount);
-      return interaction.reply(`✅ Charged their Solarian with ${formatCurrency(amount)} from their battery bank.`);
+      await db.withdraw(interaction.user.id, amount, {
+        source: 'withdraw_command',
+      });
+      return interaction.reply(
+        `ℹ️ Volt balances are unified now, so there’s nothing to transfer. Your ${formatCurrency(amount)} is already in your main balance.`
+      );
     } catch (err) {
       return interaction.reply({ content: `🚫 Transfer failed: ${err}`, ephemeral: true });
     }

@@ -1,79 +1,74 @@
 // commands/games/rps.js
 const { SlashCommandBuilder } = require('discord.js');
-const { updateWallet, getBalances } = require('../../db');
-const { loadGames, saveGames } = require('../../utils/persistRPS');
-const fs = require('fs');
-const path = require('path');
-
-// === RPS DAILY WIN BONUS TRACKER ===
-const RPS_WIN_TRACKER_PATH = path.join(__dirname, '../../rpsWinTracker.json');
-let rpsWinTracker = new Map();
-
-try {
-  if (fs.existsSync(RPS_WIN_TRACKER_PATH)) {
-    const raw = fs.readFileSync(RPS_WIN_TRACKER_PATH, 'utf8');
-    rpsWinTracker = new Map(JSON.parse(raw));
-    console.log('✅ Loaded RPS win tracker.');
-  }
-} catch (err) {
-  console.error('⚠️ Error loading RPS win tracker:', err);
-}
-
-function saveRPSWinTracker() {
-  fs.writeFileSync(RPS_WIN_TRACKER_PATH, JSON.stringify([...rpsWinTracker]), 'utf8');
-}
-
-function getTodayDate() {
-  const now = new Date();
-  const est = new Date(now.getTime() - 5 * 60 * 60 * 1000);
-  return est.toISOString().split('T')[0];
-}
+const db = require('../../db');
 
 async function awardRPSBonus(userId) {
-  const today = getTodayDate();
-  const entry = rpsWinTracker.get(userId) || { date: today, wins: 0 };
+  const today = db.getCurrentESTDateString();
+  const entry = await db.getDailyUserActivitySnapshot(userId, today);
+  const nextWins = Number(entry?.rpsWins || 0) + 1;
 
-  if (entry.date !== today) {
-    entry.date = today;
-    entry.wins = 0;
+  await db.upsertDailyUserActivity(userId, today, { rpsWins: nextWins }, {
+    reason: 'rps_win_progress',
+  });
+
+  if (nextWins <= 3) {
+    await db.updateWallet(userId, 8, {
+      type: 'rps_bonus',
+      source: 'rps',
+      dailyWinNumber: nextWins,
+    });
+    console.log(`🎉 Bonus: +8 volts for user ${userId} (daily win #${nextWins}).`);
   }
 
-  entry.wins++;
-  if (entry.wins <= 3) {
-    await updateWallet(userId, 8);
-    console.log(`🎉 Bonus: +8 volts for user ${userId} (daily win #${entry.wins}).`);
-  }
-
-  rpsWinTracker.set(userId, entry);
-  saveRPSWinTracker();
-  return entry.wins;
+  return nextWins;
 }
-
-function scheduleRPSReset() {
-  const now = new Date();
-  const estMidnight = new Date(now.toISOString().split('T')[0] + 'T05:00:00.000Z');
-  let delay = estMidnight.getTime() - now.getTime();
-  if (delay < 0) delay += 24 * 60 * 60 * 1000;
-
-  setTimeout(() => {
-    rpsWinTracker.clear();
-    saveRPSWinTracker();
-    console.log('🔄 RPS win tracker cleared for new day.');
-    scheduleRPSReset();
-  }, delay);
-}
-
-scheduleRPSReset();
 
 // === RPS GAME LOGIC ===
 const GAME_TIMEOUT_MS = 2 * 60 * 60 * 1000;
-const activeRPSGames = loadGames();
+const activeRPSGames = new Map();
+let activeGamesLoadedPromise = null;
 
-for (const [gameId, game] of activeRPSGames.entries()) {
-  game.timeout = setTimeout(() => {
+function scheduleGameExpiry(gameId, game) {
+  const delay = Math.max(0, Number(game.expiresAt || Date.now()) - Date.now());
+  game.timeout = setTimeout(async () => {
     activeRPSGames.delete(gameId);
-    saveGames(activeRPSGames);
-  }, GAME_TIMEOUT_MS);
+    await db.deleteRpsGame(gameId, { reason: 'expired' }).catch((error) => {
+      console.error('❌ Failed to delete expired RPS game:', error);
+    });
+    const chan = await game.client?.channels?.fetch?.(game.channelId).catch(() => null);
+    if (chan) {
+      chan.send(`⏰ RPS between <@${game.challengerId}> and <@${game.opponentId}> expired.`).catch(() => {});
+    }
+  }, delay);
+}
+
+async function ensureActiveGamesLoaded(client) {
+  if (!activeGamesLoadedPromise) {
+    activeGamesLoadedPromise = db.listActiveRpsGames()
+      .then((games) => {
+        activeRPSGames.clear();
+        for (const game of games) {
+          const hydrated = {
+            ...game,
+            client: client || null,
+            timeout: null,
+          };
+          activeRPSGames.set(game.gameId, hydrated);
+          scheduleGameExpiry(game.gameId, hydrated);
+        }
+      })
+      .catch((error) => {
+        activeGamesLoadedPromise = null;
+        throw error;
+      });
+  }
+
+  await activeGamesLoadedPromise;
+  for (const game of activeRPSGames.values()) {
+    if (!game.client && client) {
+      game.client = client;
+    }
+  }
 }
 
 function findSingleOpponent(me) {
@@ -145,6 +140,8 @@ module.exports = {
             .setRequired(false))),
 
   async execute(interaction) {
+    await ensureActiveGamesLoaded(interaction.client);
+
     const me = interaction.user.id;
     const sub = interaction.options.getSubcommand();
 
@@ -169,7 +166,7 @@ module.exports = {
 
       clearTimeout(g.timeout);
       activeRPSGames.delete(gameId);
-      saveGames(activeRPSGames);
+      await db.deleteRpsGame(gameId, { reason: 'cancelled' });
       return interaction.reply({ content: '❌ Your RPS game has been cancelled.', ephemeral: true });
     }
 
@@ -187,6 +184,8 @@ module.exports = {
       if (g.choices[me]) return interaction.reply({ content: '⚠️ You already submitted your move.', ephemeral: true });
 
       g.choices[me] = choice;
+      g.client = interaction.client;
+      await db.saveRpsGame(gameId, g, { reason: 'respond' });
       await interaction.reply({ content: `✅ You chose **${choice}**.`, ephemeral: true });
 
       clearTimeout(g.timeout);
@@ -203,8 +202,15 @@ module.exports = {
       } else {
         const winner = result === 1 ? g.challengerId : g.opponentId;
         const loser = result === 1 ? g.opponentId : g.challengerId;
-        await updateWallet(winner, g.wager);
-        await updateWallet(loser, -g.wager);
+        await db.transferFromWallet(loser, winner, g.wager, {
+          type: 'wager_rps',
+          source: 'rps',
+          challengerId: g.challengerId,
+          opponentId: g.opponentId,
+          channelId: g.channelId,
+          wager: g.wager,
+          winningChoice: result === 1 ? c : o,
+        });
         const bonusCount = await awardRPSBonus(winner);
         summary = `🎉 <@${winner}> wins **${g.wager}** volts! (<@${loser}> loses ${g.wager})`;
         if (bonusCount <= 3) summary += `\n🏅 Bonus win (+8 Volts) ${bonusCount}/3 today!`;
@@ -218,7 +224,7 @@ module.exports = {
       ).catch(() => {});
 
       activeRPSGames.delete(gameId);
-      saveGames(activeRPSGames);
+      await db.deleteRpsGame(gameId, { reason: 'resolved' });
       return;
     }
 
@@ -236,25 +242,32 @@ module.exports = {
     if (activeRPSGames.has(gameId))
       return interaction.reply({ content: '⚠️ You already have an active game against that user.', ephemeral: true });
 
-    const b1 = await getBalances(me);
-    const b2 = await getBalances(them);
+    const b1 = await db.getBalances(me);
+    const b2 = await db.getBalances(them);
     const reserved = getReservedVolts(me);
-    const available = b1.wallet - reserved;
+    const available = b1.balance - reserved;
 
     if (available < wager)
       return interaction.reply({ content: `🚫 You need at least ${wager} available volts (after ${reserved} reserved) to challenge.`, ephemeral: true });
-    if (b2.wallet < wager)
+    if (b2.balance < wager)
       return interaction.reply({ content: `🚫 <@${them}> does not have enough volts.`, ephemeral: true });
 
-    const g = { challengerId: me, opponentId: them, channelId: interaction.channel.id, wager, choices: { [me]: choice }, timeout: null };
-    g.timeout = setTimeout(() => {
-      activeRPSGames.delete(gameId);
-      saveGames(activeRPSGames);
-      interaction.channel.send(`⏰ RPS between <@${me}> and <@${them}> expired.`);
-    }, GAME_TIMEOUT_MS);
+    const now = Date.now();
+    const g = {
+      challengerId: me,
+      opponentId: them,
+      channelId: interaction.channel.id,
+      wager,
+      choices: { [me]: choice },
+      createdAt: now,
+      expiresAt: now + GAME_TIMEOUT_MS,
+      client: interaction.client,
+      timeout: null,
+    };
 
     activeRPSGames.set(gameId, g);
-    saveGames(activeRPSGames);
+    scheduleGameExpiry(gameId, g);
+    await db.saveRpsGame(gameId, g, { reason: 'challenge' });
 
     await interaction.reply({ content: `✅ Challenged <@${them}> for **${wager}** volts (you chose **${choice}**).`, ephemeral: true });
     interaction.channel.send(`🎮 <@${me}> challenged <@${them}> for **${wager}** volts — first move locked in!`).catch(() => {});

@@ -4,12 +4,14 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const express = require('express');
 const cors = require('cors');
+const crypto = require('crypto');
 const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs'); // Needed to read the console.json file
 const multer = require("multer");
 const { EmbedBuilder } = require("discord.js");
 const { points, formatCurrency } = require("../points");
 const dbHelpers = require("../db");
+const { PRIMARY_BALANCE_ACCOUNT, normalizeLedgerAccount } = require("../ledgerService");
 const roboCheckAccountStore = require(path.resolve(__dirname, '..', '..', 'robo-check', 'src', 'accountStore.js'));
 
 const SUBMISSION_EMBED_COLORS = {
@@ -22,6 +24,53 @@ const SUBMISSION_EMBED_COLORS = {
 const QUEST_SUBMISSION_CHANNEL_ID = process.env.QUEST_SUBMISSION_CHANNEL_ID || process.env.SUBMISSION_CHANNEL_ID;
 const WEB_ADMIN_EDITS_CHANNEL_ID = process.env.WEB_ADMIN_EDITS_CHANNEL_ID || process.env.SUBMISSION_CHANNEL_ID;
 const ITEM_REDEMPTION_CHANNEL_ID = process.env.ITEM_REDEMPTION_CHANNEL_ID || process.env.SUBMISSION_CHANNEL_ID;
+const TEST_MODE = process.env.VOLT_TEST_MODE === '1';
+const VOLT_INSTANCE_SECRET = String(process.env.VOLT_INSTANCE_SECRET || '').trim();
+
+function hasWalletVisibilityAccess() {
+  return Boolean(VOLT_INSTANCE_SECRET);
+}
+
+function maskWalletAddress(walletAddress) {
+  const value = String(walletAddress || '').trim();
+  if (!value) return '';
+  if (value.length <= 8) return '*'.repeat(value.length);
+  return `${value.slice(0, 4)}${'*'.repeat(Math.max(4, value.length - 8))}${value.slice(-4)}`;
+}
+
+function redactWalletInCommandText(commandText) {
+  const value = String(commandText || '').trim();
+  if (!value) return value;
+  return value
+    .replace(/(wallet\s*=\s*")([^"]+)(")/gi, (_, prefix, wallet, suffix) => `${prefix}${maskWalletAddress(wallet)}${suffix}`)
+    .replace(/(wallet_address\s*=\s*")([^"]+)(")/gi, (_, prefix, wallet, suffix) => `${prefix}${maskWalletAddress(wallet)}${suffix}`);
+}
+
+function redactWalletFields(value, { reveal = hasWalletVisibilityAccess() } = {}) {
+  if (reveal || value === null || typeof value === 'undefined') {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => redactWalletFields(entry, { reveal }));
+  }
+
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nestedValue]) => {
+        if (key === 'walletAddress' || key === 'wallet_address') {
+          return [key, nestedValue ? maskWalletAddress(nestedValue) : nestedValue];
+        }
+        if (key === 'commandText' || key === 'command_text') {
+          return [key, redactWalletInCommandText(nestedValue)];
+        }
+        return [key, redactWalletFields(nestedValue, { reveal })];
+      })
+    );
+  }
+
+  return value;
+}
 
 function getSolanaExplorerUrl(walletAddress) {
   if (!walletAddress) return null;
@@ -33,10 +82,39 @@ function formatSolanaWalletMessage(walletAddress) {
   return `${walletAddress}`;
 }
 
-
+function createTestClient() {
+  return {
+    isReady() {
+      return true;
+    },
+    once(event, handler) {
+      if (event === 'ready' && typeof handler === 'function') {
+        queueMicrotask(handler);
+      }
+    },
+    users: {
+      async fetch(userId) {
+        return { id: String(userId), tag: `TestUser#${String(userId).slice(-4).padStart(4, '0')}` };
+      },
+    },
+    channels: {
+      async fetch() {
+        return null;
+      },
+    },
+    guilds: {
+      cache: new Map(),
+      async fetch() {
+        return null;
+      },
+    },
+  };
+}
 
 // Import the lightweight Discord client used for lookups from the web process.
-const { client } = require('../info-bot'); 
+const { client } = TEST_MODE
+  ? { client: createTestClient() }
+  : require('../info-bot');
 
 const DISCORD_API_BASE = 'https://discord.com/api/v10';
 const VOLT_BOT_TOKEN = process.env.TOKEN;
@@ -112,6 +190,7 @@ async function addVoltBotReaction(channelId, messageId, emoji) {
 
 const app = express();
 const PORT = Number(process.env.SERVER_PORT) || 3000;
+const HOST = String(process.env.SERVER_HOST || '0.0.0.0').trim() || '0.0.0.0';
 
 
 // Enable CORS and JSON parsing
@@ -122,12 +201,25 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Connect to SQLite database (adjust path as needed)
-const dbPath = path.join(__dirname, '..', 'points.db');
+const dbPath = process.env.VOLT_DB_PATH
+  ? path.resolve(process.env.VOLT_DB_PATH)
+  : path.join(__dirname, '..', 'points.db');
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('Error connecting to SQLite DB:', err.message);
   } else {
     console.log(`Connected to SQLite database at ${dbPath}`);
+  }
+});
+db.configure('busyTimeout', 5000);
+db.run('PRAGMA journal_mode = WAL', (err) => {
+  if (err) {
+    console.error('❌ Failed to enable SQLite WAL mode for web server:', err);
+  }
+});
+db.run('PRAGMA foreign_keys = ON', (err) => {
+  if (err) {
+    console.error('❌ Failed to enable SQLite foreign keys for web server:', err);
   }
 });
 
@@ -541,15 +633,7 @@ async function getEconomyProfileDetails(discordId) {
   if (!normalizedDiscordId) return null;
 
   try {
-    return await dbGet(
-      `SELECT username,
-              profile_about_me AS aboutMe,
-              profile_specialties AS specialties,
-              profile_location AS location
-       FROM economy
-       WHERE userID = ?`,
-      [normalizedDiscordId]
-    );
+    return await dbHelpers.getReadableProfileDetails(normalizedDiscordId, { maskOnFailure: true });
   } catch (error) {
     console.error(`Error loading profile details for ${normalizedDiscordId}:`, error);
     return null;
@@ -569,6 +653,61 @@ async function mergeHolderWithProfileDetails(holder, fallbackDiscordId = null) {
     aboutMe: profileDetails?.aboutMe || holder?.aboutMe || holder?.about || holder?.about_me || holder?.bio || holder?.description || null,
     specialties: profileDetails?.specialties || holder?.specialties || holder?.specialty || holder?.skills || holder?.interests || null,
     location: profileDetails?.location || holder?.location || holder?.city || holder?.country || holder?.region || null,
+    twitterHandle: profileDetails?.twitterHandle || holder?.twitterHandle || null,
+  };
+}
+
+function getHolderVotingPower(holder) {
+  const votingPowerIndex = {
+    commander: 0.13,
+    spy: 0.032,
+    pilot: 0.018,
+    monitor: 0.014,
+    prospector: 0.013,
+    guard: 0.01,
+    'squad leader': 0.0086,
+    administrator: 0.0061,
+    drone: 0.0039,
+  };
+
+  const tokens = Array.isArray(holder?.tokens) ? holder.tokens : [];
+  return tokens.reduce((sum, token) => {
+    const attributes = Array.isArray(token?.metadata?.attributes) ? token.metadata.attributes : [];
+    const titleAttr = attributes.find((attr) => String(attr?.trait_type || '').trim().toLowerCase() === 'title');
+    const titleValue = String(titleAttr?.value || '').trim().toLowerCase();
+    return sum + Number(votingPowerIndex[titleValue] || 0);
+  }, 0);
+}
+
+function formatPublicNodeOperatorName(holderProfile) {
+  const username = String(holderProfile?.username || '').trim();
+  if (username) return username;
+
+  const twitterHandle = String(holderProfile?.twitterHandle || '').trim().replace(/^@+/, '');
+  if (twitterHandle) return `@${twitterHandle}`;
+
+  return holderProfile?.discordId ? 'Verified holder' : 'Unverified node';
+}
+
+async function resolveNodeOperator(operatorDiscordId) {
+  const normalizedDiscordId = String(operatorDiscordId || '').trim();
+  if (!normalizedDiscordId) return null;
+
+  const holderProfile = await mergeHolderWithProfileDetails(
+    findHolderByDiscordId(normalizedDiscordId),
+    normalizedDiscordId
+  );
+  const votingPower = getHolderVotingPower(holderProfile);
+
+  return {
+    discordId: normalizedDiscordId,
+    displayName: formatPublicNodeOperatorName(holderProfile),
+    username: holderProfile?.username || null,
+    twitterHandle: holderProfile?.twitterHandle || null,
+    votingPower,
+    holderCount: Array.isArray(holderProfile?.tokens) ? holderProfile.tokens.length : 0,
+    verifiedHolder: Boolean(holderProfile && votingPower > 0),
+    verifiedWalletLink: Boolean(holderProfile?.walletCount || holderProfile?.walletAddress),
   };
 }
 
@@ -594,7 +733,121 @@ function normalizeProfileDetailInput(value, maxLength) {
   return normalizedValue;
 }
 
+function sha256Hex(value) {
+  return crypto.createHash('sha256').update(String(value || '')).digest('hex');
+}
 
+function createNodeOperatorKeyValue() {
+  return `volt_node_${crypto.randomBytes(24).toString('base64url')}`;
+}
+
+async function getActiveNodeOperatorKeyByHash(keyHash) {
+  if (!keyHash) return null;
+  return dbGet(
+    `SELECT id, discord_id, key_label, created_at, last_used_at
+     FROM node_operator_keys
+     WHERE key_hash = ?
+       AND revoked_at IS NULL
+     ORDER BY id DESC
+     LIMIT 1`,
+    [keyHash]
+  );
+}
+
+async function getActiveNodeOperatorKeyForDiscordId(discordId) {
+  const normalizedDiscordId = String(discordId || '').trim();
+  if (!normalizedDiscordId) return null;
+  return dbGet(
+    `SELECT id, discord_id, key_label, created_at, last_used_at
+     FROM node_operator_keys
+     WHERE discord_id = ?
+       AND revoked_at IS NULL
+     ORDER BY id DESC
+     LIMIT 1`,
+    [normalizedDiscordId]
+  );
+}
+
+async function issueNodeOperatorKey(discordId, keyLabel = null) {
+  const normalizedDiscordId = String(discordId || '').trim();
+  if (!normalizedDiscordId) {
+    throw new Error('Discord ID is required to issue a node key.');
+  }
+
+  const now = Date.now();
+  const plaintextKey = createNodeOperatorKeyValue();
+  const keyHash = sha256Hex(plaintextKey);
+
+  await dbRunWithMeta(
+    `UPDATE node_operator_keys
+        SET revoked_at = ?
+      WHERE discord_id = ?
+        AND revoked_at IS NULL`,
+    [now, normalizedDiscordId]
+  );
+
+  await dbRunWithMeta(
+    `INSERT INTO node_operator_keys (
+       discord_id,
+       key_hash,
+       key_label,
+       created_at,
+       last_used_at,
+       revoked_at
+     ) VALUES (?, ?, ?, ?, NULL, NULL)`,
+    [normalizedDiscordId, keyHash, keyLabel ? String(keyLabel).trim() : null, now]
+  );
+
+  return {
+    key: plaintextKey,
+    createdAt: now,
+  };
+}
+
+async function markNodeOperatorKeyUsed(keyId) {
+  if (!keyId) return;
+  await dbRunWithMeta(
+    `UPDATE node_operator_keys
+        SET last_used_at = ?
+      WHERE id = ?`,
+    [Date.now(), keyId]
+  );
+}
+
+async function assertNodeKeyEligible(discordId) {
+  const operator = await resolveNodeOperator(discordId);
+  if (!operator?.verifiedHolder || Number(operator.votingPower || 0) <= 0) {
+    throw new Error('Node keys are only available to verified Robo-Check holder accounts.');
+  }
+  return operator;
+}
+
+async function authenticateNodeKey(req, res, next) {
+  try {
+    const providedKey = String(req.headers['x-volt-node-key'] || req.body?.nodeKey || '').trim();
+    if (!providedKey) {
+      return res.status(403).json({ error: 'Missing node key.' });
+    }
+
+    const record = await getActiveNodeOperatorKeyByHash(sha256Hex(providedKey));
+    if (!record) {
+      return res.status(403).json({ error: 'Invalid node key.' });
+    }
+
+    await markNodeOperatorKeyUsed(record.id).catch(() => {});
+    req.nodeAuth = {
+      keyId: record.id,
+      discordId: String(record.discord_id || '').trim(),
+      keyLabel: record.key_label || null,
+      createdAt: record.created_at || null,
+      lastUsedAt: record.last_used_at || null,
+    };
+    next();
+  } catch (error) {
+    console.error('Node key authentication failed:', error);
+    return res.status(500).json({ error: 'Failed to verify node key.' });
+  }
+}
 
 /**
  * Adds a user to a giveaway.
@@ -602,22 +855,11 @@ function normalizeProfileDetailInput(value, maxLength) {
  */
 async function addGiveawayEntry(giveawayId, userId) {
   try {
-    // Check if the user is already entered
-    const existingEntry = await dbGet(
-      `SELECT 1 FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?`,
-      [giveawayId, userId]
-    );
-
-    if (existingEntry) {
-      console.log(`⚠️ User ${userId} already entered in giveaway ${giveawayId}. Skipping duplicate.`);
-      return;
-    }
-
-    // Insert entry into giveaway_entries
-    await dbRun(`INSERT INTO giveaway_entries (giveaway_id, user_id) VALUES (?, ?)`, [giveawayId, userId]);
+    await dbHelpers.addGiveawayEntry(giveawayId, userId);
     console.log(`✅ Added new giveaway entry for user ${userId} in giveaway ${giveawayId}`);
   } catch (error) {
     console.error(`❌ Error adding giveaway entry:`, error);
+    throw error;
   }
 }
 
@@ -656,46 +898,27 @@ async function fetchDiscordUserInfo(userId) {
 
 /**
  * GET /api/leaderboard
- * Return top 10 by total (wallet + bank), plus userTag in place of userID.
+ * Return top 10 by unified Volt balance, plus userTag in place of userID.
  */
 app.get('/api/leaderboard', async (req, res) => {
   try {
-    // Query database for top 10 users by total balance
-    db.all(
-      `SELECT userID, wallet, bank, (wallet + bank) AS totalBalance
-       FROM economy
-       ORDER BY totalBalance DESC
-       LIMIT 10`,
-      [],
-      async (err, rows) => {
-        if (err) {
-          console.error('Error fetching leaderboard:', err);
-          return res.status(500).json({ error: 'Failed to fetch leaderboard' });
-        }
-
-        try {
-          // Resolve Discord tags for each user
-          const withTags = await Promise.all(
-            rows.map(async (row) => {
-              const userTag = await resolveUsername(row.userID);
-              return {
-                userID: row.userID, // Include userID for link generation
-                userTag,
-                wallet: row.wallet,
-                bank: row.bank,
-                totalBalance: row.totalBalance,
-              };
-            })
-          );
-
-          // Send leaderboard data as response
-          res.json(withTags);
-        } catch (tagError) {
-          console.error('Error resolving usernames:', tagError);
-          res.status(500).json({ error: 'Failed to resolve usernames' });
-        }
-      }
+    const rows = await dbHelpers.getLeaderboard(10);
+    const withTags = await Promise.all(
+      rows.map(async (row) => {
+        const userTag = await resolveUsername(row.userID);
+        const balance = Number((row.balance ?? row.totalBalance ?? row.wallet) || 0);
+        return {
+          userID: row.userID,
+          userTag,
+          balance,
+          wallet: balance,
+          bank: 0,
+          totalBalance: balance,
+        };
+      })
     );
+
+    res.json(withTags);
   } catch (err) {
     console.error('Error in /api/leaderboard route:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -775,7 +998,16 @@ app.get('/api/admin/redemptions', authenticateToken, requireAdmin, async (req, r
        ORDER BY created_at DESC
        LIMIT 200`
     );
-    return res.json(rows || []);
+    const decodedRows = dbHelpers.decodeItemRedemptionRows(rows || []);
+    const revealWallets = hasWalletVisibilityAccess();
+    const safeRows = decodedRows.map((row) => ({
+      ...row,
+      wallet_address: revealWallets ? row.wallet_address : maskWalletAddress(row.wallet_address),
+      command_text: revealWallets ? row.command_text : redactWalletInCommandText(row.command_text),
+      wallet_visible: revealWallets,
+      wallet_redacted: !revealWallets && Boolean(row.wallet_address),
+    }));
+    return res.json(safeRows);
   } catch (err) {
     console.error('Error in /api/admin/redemptions:', err);
     return res.status(500).json({ message: 'Failed to load redemptions.' });
@@ -1135,11 +1367,7 @@ app.post('/api/admin/shop-items/create', authenticateToken, requireAdmin, async 
       return res.status(400).json({ message: 'Invalid item data.' });
     }
 
-    await dbRun(
-      `INSERT INTO items (name, description, price, quantity, isAvailable, isHidden, isRedeemable)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [rawName, rawDescription, price, quantity, isAvailable, isHidden, isRedeemable]
-    );
+    await dbHelpers.addShopItem(price, rawName, rawDescription, quantity, isHidden, isRedeemable, isAvailable);
 
     await logAdminChange(req.user.userId, 'Shop item created', [
       `Name: "${rawName}"`,
@@ -1187,11 +1415,18 @@ app.post('/api/admin/shop-items/:id/update', authenticateToken, requireAdmin, as
       return res.status(400).json({ message: 'Invalid item data.' });
     }
 
-    await dbRun(
-      `UPDATE items
-       SET name = ?, description = ?, price = ?, quantity = ?, isAvailable = ?, isHidden = ?, isRedeemable = ?
-       WHERE itemID = ?`,
-      [rawName, rawDescription, price, quantity, isAvailable, isHidden, isRedeemable, itemId]
+    await dbHelpers.updateShopItemById(
+      itemId,
+      {
+        name: rawName,
+        description: rawDescription,
+        price,
+        quantity,
+        isAvailable,
+        isHidden,
+        isRedeemable,
+      },
+      { actorUserId: req.user.userId }
     );
 
     const changes = [];
@@ -1227,10 +1462,7 @@ app.post('/api/admin/shop-items/:id/delete', authenticateToken, requireAdmin, as
       return res.status(404).json({ message: 'Item not found.' });
     }
 
-    await dbRun('BEGIN TRANSACTION');
-    await dbRun(`DELETE FROM inventory WHERE itemID = ?`, [itemId]);
-    await dbRun(`DELETE FROM items WHERE itemID = ?`, [itemId]);
-    await dbRun('COMMIT');
+    await dbHelpers.deleteShopItemById(itemId, { actorUserId: req.user.userId });
 
     await logAdminChange(req.user.userId, `Shop item deleted (#${itemId})`, [
       `Name: "${existing.name}"`,
@@ -1239,7 +1471,6 @@ app.post('/api/admin/shop-items/:id/delete', authenticateToken, requireAdmin, as
     return res.json({ message: 'Shop item deleted.' });
   } catch (err) {
     console.error('Error deleting shop item:', err);
-    try { await dbRun('ROLLBACK'); } catch (rollbackErr) {}
     return res.status(500).json({ message: 'Failed to delete shop item.' });
   }
 });
@@ -1320,10 +1551,12 @@ app.post('/api/chat/messages', authenticateToken, async (req, res) => {
 
   try {
     const admin = await isAdmin(userId);
-    await dbRun(
-      `INSERT INTO chat_messages (userID, username, message, is_admin) VALUES (?, ?, ?, ?)`,
-      [userId, username, message, admin ? 1 : 0]
-    );
+    await dbHelpers.createChatMessage({
+      userID: userId,
+      username,
+      message,
+      isAdmin: admin ? 1 : 0,
+    });
     return res.json({ success: true });
   } catch (err) {
     console.error('Error in /api/chat/messages:', err);
@@ -1341,14 +1574,11 @@ app.post('/api/chat/ping', authenticateToken, async (req, res) => {
   if (!userId) return res.status(401).json({ message: 'User not authenticated.' });
 
   try {
-    await dbRun(
-      `INSERT INTO chat_presence (userID, username, last_seen)
-       VALUES (?, ?, ?)
-       ON CONFLICT(userID) DO UPDATE SET
-         username = excluded.username,
-         last_seen = excluded.last_seen`,
-      [userId, username, Math.floor(Date.now() / 1000)]
-    );
+    await dbHelpers.touchChatPresence({
+      userID: userId,
+      username,
+      lastSeen: Math.floor(Date.now() / 1000),
+    });
     return res.json({ success: true });
   } catch (err) {
     console.error('Error in /api/chat/ping:', err);
@@ -1499,8 +1729,15 @@ app.post('/api/admin/giveaways/:id/update', authenticateToken, requireAdmin, asy
     }
 
     if (!updates.length) return res.json({ message: 'No changes.' });
-    params.push(id);
-    await dbRun(`UPDATE giveaways SET ${updates.join(', ')} WHERE id = ?`, params);
+    await dbHelpers.updateGiveawayById(id, {
+      giveaway_name: giveaway_name !== undefined ? giveaway_name : existing.giveaway_name,
+      prize: prize !== undefined ? prize : existing.prize,
+      winners: winners !== undefined ? Number(winners) : existing.winners,
+      end_time: end_time !== undefined ? Number(end_time) : existing.end_time,
+      repeat: repeat !== undefined ? Number(repeat) : existing.repeat,
+    }, {
+      actorUserId: req.user.userId,
+    });
 
     await logAdminChange(req.user.userId, `Giveaway #${id} updated`, changes);
     return res.json({ message: 'Giveaway updated.' });
@@ -1516,7 +1753,7 @@ app.post('/api/admin/giveaways/:id/stop', authenticateToken, requireAdmin, async
     const existing = await dbGet(`SELECT * FROM giveaways WHERE id = ?`, [id]);
     if (!existing) return res.status(404).json({ message: 'Giveaway not found.' });
     const now = Date.now();
-    await dbRun(`UPDATE giveaways SET end_time = ? WHERE id = ?`, [now, id]);
+    await dbHelpers.updateGiveawayById(id, { end_time: now }, { actorUserId: req.user.userId });
     await logAdminChange(req.user.userId, `Giveaway #${id} stopped`, [`End set to ${now}`]);
     return res.json({ message: 'Giveaway stopped.' });
   } catch (err) {
@@ -1532,7 +1769,7 @@ app.post('/api/admin/giveaways/:id/start', authenticateToken, requireAdmin, asyn
     const existing = await dbGet(`SELECT * FROM giveaways WHERE id = ?`, [id]);
     if (!existing) return res.status(404).json({ message: 'Giveaway not found.' });
     const end = Date.now() + durationHours * 60 * 60 * 1000;
-    await dbRun(`UPDATE giveaways SET end_time = ? WHERE id = ?`, [end, id]);
+    await dbHelpers.updateGiveawayById(id, { end_time: end }, { actorUserId: req.user.userId });
     await logAdminChange(req.user.userId, `Giveaway #${id} started`, [`End set to ${end}`]);
     return res.json({ message: 'Giveaway started.' });
   } catch (err) {
@@ -1581,8 +1818,16 @@ app.post('/api/admin/title-giveaways/:id/update', authenticateToken, requireAdmi
     }
 
     if (!updates.length) return res.json({ message: 'No changes.' });
-    params.push(id);
-    await dbRun(`UPDATE title_giveaways SET ${updates.join(', ')} WHERE id = ?`, params);
+    await dbHelpers.updateTitleGiveawayById(id, {
+      giveaway_name: giveaway_name !== undefined ? giveaway_name : existing.giveaway_name,
+      prize: prize !== undefined ? prize : existing.prize,
+      winners: winners !== undefined ? Number(winners) : existing.winners,
+      end_time: end_time !== undefined ? Number(end_time) : existing.end_time,
+      repeat: repeat !== undefined ? Number(repeat) : existing.repeat,
+      is_completed: is_completed !== undefined ? Number(is_completed) : existing.is_completed,
+    }, {
+      actorUserId: req.user.userId,
+    });
 
     await logAdminChange(req.user.userId, `Title Giveaway #${id} updated`, changes);
     return res.json({ message: 'Title giveaway updated.' });
@@ -1597,7 +1842,7 @@ app.post('/api/admin/title-giveaways/:id/stop', authenticateToken, requireAdmin,
   try {
     const existing = await dbGet(`SELECT * FROM title_giveaways WHERE id = ?`, [id]);
     if (!existing) return res.status(404).json({ message: 'Title giveaway not found.' });
-    await dbRun(`UPDATE title_giveaways SET is_completed = 1 WHERE id = ?`, [id]);
+    await dbHelpers.updateTitleGiveawayById(id, { is_completed: 1 }, { actorUserId: req.user.userId });
     await logAdminChange(req.user.userId, `Title Giveaway #${id} stopped`, ['Completed set to 1']);
     return res.json({ message: 'Title giveaway stopped.' });
   } catch (err) {
@@ -1613,7 +1858,7 @@ app.post('/api/admin/title-giveaways/:id/start', authenticateToken, requireAdmin
     const existing = await dbGet(`SELECT * FROM title_giveaways WHERE id = ?`, [id]);
     if (!existing) return res.status(404).json({ message: 'Title giveaway not found.' });
     const end = Date.now() + durationHours * 60 * 60 * 1000;
-    await dbRun(`UPDATE title_giveaways SET is_completed = 0, end_time = ? WHERE id = ?`, [end, id]);
+    await dbHelpers.updateTitleGiveawayById(id, { is_completed: 0, end_time: end }, { actorUserId: req.user.userId });
     await logAdminChange(req.user.userId, `Title Giveaway #${id} started`, [`End set to ${end}`]);
     return res.json({ message: 'Title giveaway started.' });
   } catch (err) {
@@ -1647,11 +1892,7 @@ app.post('/api/admin/title-giveaways/create', authenticateToken, requireAdmin, a
   try {
     const messageId = `admin-${Date.now()}`;
     const channelId = process.env.SUBMISSION_CHANNEL_ID || 'admin';
-    await dbRun(
-      `INSERT INTO title_giveaways (message_id, channel_id, end_time, prize, winners, giveaway_name, repeat, is_completed)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
-      [messageId, channelId, finalEnd, finalPrize, finalWinners, name, finalRepeat]
-    );
+    await dbHelpers.saveTitleGiveaway(messageId, channelId, finalEnd, finalPrize, finalWinners, name, finalRepeat);
     await logAdminChange(req.user.userId, 'Title Giveaway created', [
       `Name: "${name}"`,
       `Prize: "${finalPrize}"`,
@@ -1706,8 +1947,16 @@ app.post('/api/admin/raffles/:id/update', authenticateToken, requireAdmin, async
     }
 
     if (!updates.length) return res.json({ message: 'No changes.' });
-    params.push(id);
-    await dbRun(`UPDATE raffles SET ${updates.join(', ')} WHERE id = ?`, params);
+    await dbHelpers.updateRaffleById(id, {
+      name: name !== undefined ? name : existing.name,
+      prize: prize !== undefined ? prize : existing.prize,
+      cost: cost !== undefined ? Number(cost) : existing.cost,
+      quantity: quantity !== undefined ? Number(quantity) : existing.quantity,
+      winners: winners !== undefined ? Number(winners) : existing.winners,
+      end_time: end_time !== undefined ? Number(end_time) : existing.end_time,
+    }, {
+      actorUserId: req.user.userId,
+    });
 
     await logAdminChange(req.user.userId, `Raffle #${id} updated`, changes);
     return res.json({ message: 'Raffle updated.' });
@@ -1723,7 +1972,7 @@ app.post('/api/admin/raffles/:id/stop', authenticateToken, requireAdmin, async (
     const existing = await dbGet(`SELECT * FROM raffles WHERE id = ?`, [id]);
     if (!existing) return res.status(404).json({ message: 'Raffle not found.' });
     const now = Date.now();
-    await dbRun(`UPDATE raffles SET end_time = ? WHERE id = ?`, [now, id]);
+    await dbHelpers.updateRaffleById(id, { end_time: now }, { actorUserId: req.user.userId });
     await logAdminChange(req.user.userId, `Raffle #${id} stopped`, [`End set to ${now}`]);
     return res.json({ message: 'Raffle stopped.' });
   } catch (err) {
@@ -1739,7 +1988,7 @@ app.post('/api/admin/raffles/:id/start', authenticateToken, requireAdmin, async 
     const existing = await dbGet(`SELECT * FROM raffles WHERE id = ?`, [id]);
     if (!existing) return res.status(404).json({ message: 'Raffle not found.' });
     const end = Date.now() + durationHours * 60 * 60 * 1000;
-    await dbRun(`UPDATE raffles SET end_time = ? WHERE id = ?`, [end, id]);
+    await dbHelpers.restartRaffleById(id, end, { actorUserId: req.user.userId });
     await logAdminChange(req.user.userId, `Raffle #${id} started`, [`End set to ${end}`]);
     return res.json({ message: 'Raffle started.' });
   } catch (err) {
@@ -1759,11 +2008,7 @@ app.post('/api/admin/joblist', authenticateToken, requireAdmin, async (req, res)
       req.body?.cooldown_value,
       req.body?.cooldown_unit
     );
-    await dbRun(
-      `INSERT INTO joblist (description, cooldown_value, cooldown_unit) VALUES (?, ?, ?)`,
-      [description, cooldownValue, cooldownUnit]
-    );
-    await renumberJobs();
+    await dbHelpers.addJob(description, cooldownValue, cooldownUnit);
     const cooldownLabel = cooldownValue && cooldownUnit ? ` (Cooldown: ${cooldownValue} ${cooldownUnit}${cooldownValue === 1 ? '' : 's'})` : '';
     await logAdminChange(req.user.userId, 'Job list updated', [`Added quest: "${description}"${cooldownLabel}`]);
     return res.json({ message: 'Job added.' });
@@ -1788,10 +2033,9 @@ app.post('/api/admin/joblist/:id/update', authenticateToken, requireAdmin, async
       req.body?.cooldown_value,
       req.body?.cooldown_unit
     );
-    await dbRun(
-      `UPDATE joblist SET description = ?, cooldown_value = ?, cooldown_unit = ? WHERE jobID = ?`,
-      [description, cooldownValue, cooldownUnit, id]
-    );
+    await dbHelpers.updateJobById(id, description, cooldownValue, cooldownUnit, {
+      actorUserId: req.user.userId,
+    });
     const beforeCooldown = existing.cooldown_value && existing.cooldown_unit
       ? `${existing.cooldown_value} ${existing.cooldown_unit}${existing.cooldown_value === 1 ? '' : 's'}`
       : 'None';
@@ -1815,9 +2059,7 @@ app.post('/api/admin/joblist/:id/delete', authenticateToken, requireAdmin, async
   try {
     const existing = await dbGet(`SELECT description FROM joblist WHERE jobID = ?`, [id]);
     if (!existing) return res.status(404).json({ message: 'Job not found.' });
-    await dbRun(`DELETE FROM job_assignees WHERE jobID = ?`, [id]);
-    await dbRun(`DELETE FROM joblist WHERE jobID = ?`, [id]);
-    await renumberJobs();
+    await dbHelpers.deleteJobById(id, { actorUserId: req.user.userId });
     await logAdminChange(req.user.userId, 'Job list updated', [
       `Deleted quest #${id}: "${existing.description}"`,
     ]);
@@ -2209,10 +2451,24 @@ app.post("/api/register", async (req, res) => {
     db.run(
       `INSERT INTO users (username, password) VALUES (?, ?)`,
       [username, hashedPassword],
-      function (err) {
+      async function onRegister(err) {
         if (err) {
           console.error("Error registering user:", err.message);
           return res.status(500).json({ message: "Username already exists." });
+        }
+        try {
+          await dbHelpers.appendSystemEvent({
+            domain: 'web_auth',
+            action: 'register_local_user',
+            entityType: 'local_user',
+            entityId: this.lastID,
+            metadata: {
+              localUserId: this.lastID,
+              username,
+            },
+          });
+        } catch (eventError) {
+          console.error('Failed to log local user registration:', eventError);
         }
         res.json({ message: "Registration successful!" });
       }
@@ -2229,6 +2485,812 @@ const dbRun = util.promisify(db.run).bind(db);
 const dbGet = util.promisify(db.get).bind(db);
 const dbAll = util.promisify(db.all).bind(db);
 
+function dbRunWithMeta(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function onRun(error) {
+      if (error) return reject(error);
+      resolve({ changes: this.changes ?? 0, lastID: this.lastID ?? null });
+    });
+  });
+}
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS node_operator_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    discord_id TEXT NOT NULL,
+    key_hash TEXT NOT NULL UNIQUE,
+    key_label TEXT,
+    created_at INTEGER NOT NULL,
+    last_used_at INTEGER,
+    revoked_at INTEGER
+  )
+`);
+
+function getClientErrorStatus(message, { allowNotFound = true } = {}) {
+  const normalized = String(message || '').toLowerCase();
+
+  if (allowNotFound && (normalized.includes('not found') || normalized.includes('no oil available') || normalized.includes('no buy offers'))) {
+    return 404;
+  }
+
+  if (
+    normalized.startsWith('🚫') ||
+    normalized.includes('insufficient') ||
+    normalized.includes('not enough') ||
+    normalized.includes('invalid') ||
+    normalized.includes('cannot') ||
+    normalized.includes('required') ||
+    normalized.includes('mismatch') ||
+    normalized.includes('not available') ||
+    normalized.startsWith('only ')
+  ) {
+    return 400;
+  }
+
+  return 500;
+}
+
+function parseLedgerMetadata(rawMetadata) {
+  if (!rawMetadata) return {};
+  if (typeof rawMetadata === 'object') return rawMetadata;
+
+  try {
+    return JSON.parse(rawMetadata);
+  } catch (error) {
+    return {};
+  }
+}
+
+function buildVoltScanLabel(userId, username, fallback = 'System') {
+  if (!userId) return fallback;
+  return username ? `${username}` : String(userId);
+}
+
+const NODE_HISTORY_WINDOW_MS = 48 * 60 * 60 * 1000;
+const NODE_NETWORK_POLL_MS = Math.max(5000, Number(process.env.VOLT_NETWORK_POLL_MS || 5000));
+const CANONICAL_EXPORT_REFRESH_MS = Math.max(15000, Number(process.env.VOLT_EXPORT_REFRESH_MS || 60000));
+const NODE_STATUS_FETCH_TIMEOUT_MS = Math.max(1000, Number(process.env.VOLT_NODE_STATUS_FETCH_TIMEOUT_MS || 4000));
+const NODE_NETWORK_CACHE_PATH = path.join(__dirname, '..', 'data', 'node-network-cache.json');
+const NODE_REGISTRY_PATH = path.join(__dirname, '..', 'data', 'node-registry.json');
+const NODE_REGISTRY_TTL_MS = Math.max(60000, Number(process.env.VOLT_NODE_REGISTRY_TTL_MS || 10 * 60 * 1000));
+const CONSENSUS_REPORTS_PATH = path.join(__dirname, '..', 'data', 'consensus-reports.json');
+const CONSENSUS_REPORT_TTL_MS = Math.max(60000, Number(process.env.VOLT_CONSENSUS_REPORT_TTL_MS || 10 * 60 * 1000));
+const CONSENSUS_UPDATE_GRACE_MS = Math.max(10000, Number(process.env.VOLT_CONSENSUS_UPDATE_GRACE_MS || 45000));
+const VOLT_NODE_AUTH_KEY = String(process.env.VOLT_NODE_AUTH_KEY || '').trim();
+const NODE_NETWORK_NODE_URLS = String(process.env.VOLT_NETWORK_NODE_URLS || '')
+  .split(',')
+  .map((entry) => entry.trim())
+  .filter(Boolean);
+const NODE_NETWORK_CANONICAL_ID = String(process.env.VOLT_NETWORK_CANONICAL_ID || 'volt-primary').trim();
+const NODE_NETWORK_CANONICAL_NAME = String(process.env.VOLT_NETWORK_CANONICAL_NAME || 'Volt Primary').trim();
+const CANONICAL_LEDGER_EXPORT_PATH = path.join(__dirname, '..', 'ledger-export.json');
+const CANONICAL_SYSTEM_EVENTS_EXPORT_PATH = path.join(__dirname, '..', 'system-events-export.json');
+const CANONICAL_ACTIVITY_EXPORT_PATH = path.join(__dirname, '..', 'activity-export.json');
+
+function normalizeNodeStatusUrl(value) {
+  const input = String(value || '').trim().replace(/\/+$/, '');
+  if (!input) return null;
+  return /\/node\/status$/i.test(input) ? input : `${input}/node/status`;
+}
+
+function normalizeNodeBaseUrl(value) {
+  return String(value || '').trim().replace(/\/+$/, '') || null;
+}
+
+function deriveCombinedHeadKey(payload) {
+  const ledger = payload?.ledger || {};
+  const systemEvents = payload?.systemEvents || {};
+  if (!ledger.latestHash || !systemEvents.latestHash) return null;
+
+  return [
+    Number(ledger.transactionCount || 0),
+    ledger.latestHash,
+    Number(systemEvents.eventCount || 0),
+    systemEvents.latestHash,
+  ].join(':');
+}
+
+function classifyExecutionAgreement(execution, report) {
+  const executionHeadKey = deriveCombinedHeadKey(execution);
+  const consensusHeadKey = report?.consensus?.localHeadKey || deriveCombinedHeadKey(report);
+  const executionProjection = String(execution?.projection?.fingerprint || '').trim() || null;
+  const consensusProjection = String(report?.projection?.fingerprint || '').trim() || null;
+  if (!consensusHeadKey || !executionHeadKey) {
+    return 'unknown';
+  }
+
+  if (
+    consensusHeadKey === executionHeadKey &&
+    (!executionProjection || !consensusProjection || executionProjection === consensusProjection)
+  ) {
+    return 'agree';
+  }
+
+  const reportedAt = Date.parse(report?.reportedAt || report?.updatedAt || 0);
+  const reportAgeMs = Number.isFinite(reportedAt) ? Math.max(0, Date.now() - reportedAt) : Number.POSITIVE_INFINITY;
+  const executionLedgerCount = Number(execution?.ledger?.transactionCount || 0);
+  const executionEventCount = Number(execution?.systemEvents?.eventCount || 0);
+  const reportLedgerCount = Number(report?.ledger?.transactionCount || 0);
+  const reportEventCount = Number(report?.systemEvents?.eventCount || 0);
+  const behindExecution =
+    reportLedgerCount <= executionLedgerCount &&
+    reportEventCount <= executionEventCount &&
+    (reportLedgerCount < executionLedgerCount || reportEventCount < executionEventCount);
+  const nodeStatus = String(report?.status || '').toLowerCase();
+
+  if (
+    reportAgeMs <= CONSENSUS_UPDATE_GRACE_MS &&
+    (nodeStatus === 'syncing' || nodeStatus === 'starting' || behindExecution)
+  ) {
+    return 'updating';
+  }
+
+  return 'disagree';
+}
+
+function buildExecutionLayerAgreement(canonical) {
+  const ledgerValid = Boolean(canonical?.ledger?.valid);
+  const systemEventsValid = Boolean(canonical?.systemEvents?.valid);
+  const status = ledgerValid && systemEventsValid ? 'agree' : 'disagree';
+
+  return {
+    status,
+    color: status === 'agree' ? 'green' : 'red',
+    rails: {
+      transactions: {
+        valid: ledgerValid,
+        latestHash: canonical?.ledger?.latestHash || null,
+        count: Number(canonical?.ledger?.transactionCount || 0),
+      },
+      systemEvents: {
+        valid: systemEventsValid,
+        latestHash: canonical?.systemEvents?.latestHash || null,
+        count: Number(canonical?.systemEvents?.eventCount || 0),
+      },
+    },
+    projection: canonical?.projection || null,
+    combinedHeadKey: deriveCombinedHeadKey(canonical),
+  };
+}
+
+function pruneNodeObservations(observations) {
+  const cutoff = Date.now() - NODE_HISTORY_WINDOW_MS;
+  return (Array.isArray(observations) ? observations : []).filter((entry) => {
+    const observedAt = Date.parse(entry?.observedAt || 0);
+    return Number.isFinite(observedAt) && observedAt >= cutoff;
+  });
+}
+
+function loadNodeNetworkCache() {
+  if (!fs.existsSync(NODE_NETWORK_CACHE_PATH)) {
+    return { updatedAt: null, nodes: {} };
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(NODE_NETWORK_CACHE_PATH, 'utf8'));
+    return {
+      updatedAt: parsed?.updatedAt || null,
+      nodes: Object.fromEntries(
+        Object.entries(parsed?.nodes || {}).map(([nodeUrl, node]) => [
+          nodeUrl,
+          {
+            ...node,
+            observations: pruneNodeObservations(node?.observations || []),
+          },
+        ])
+      ),
+    };
+  } catch (error) {
+    console.error('Failed to load node network cache:', error);
+    return { updatedAt: null, nodes: {} };
+  }
+}
+
+function loadNodeRegistry() {
+  if (!fs.existsSync(NODE_REGISTRY_PATH)) {
+    return { updatedAt: null, nodes: {} };
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(NODE_REGISTRY_PATH, 'utf8'));
+    return {
+      updatedAt: parsed?.updatedAt || null,
+      nodes: parsed?.nodes || {},
+    };
+  } catch (error) {
+    console.error('Failed to load node registry:', error);
+    try {
+      const corruptPath = `${NODE_REGISTRY_PATH}.corrupt-${Date.now()}`;
+      fs.renameSync(NODE_REGISTRY_PATH, corruptPath);
+      console.warn(`Moved invalid node registry to ${corruptPath}`);
+    } catch (renameError) {
+      console.error('Failed to quarantine invalid node registry:', renameError);
+    }
+    return { updatedAt: null, nodes: {} };
+  }
+}
+
+function saveNodeRegistry(state) {
+  fs.mkdirSync(path.dirname(NODE_REGISTRY_PATH), { recursive: true });
+  const tempPath = `${NODE_REGISTRY_PATH}.tmp`;
+  fs.writeFileSync(
+    tempPath,
+    JSON.stringify(
+      {
+        updatedAt: state?.updatedAt || new Date().toISOString(),
+        nodes: state?.nodes || {},
+      },
+      null,
+      2
+    ),
+    'utf8'
+  );
+  fs.renameSync(tempPath, NODE_REGISTRY_PATH);
+}
+
+function pruneNodeRegistry(state) {
+  const now = Date.now();
+  const nodes = Object.fromEntries(
+    Object.entries(state?.nodes || {}).filter(([, node]) => {
+      const lastSeenAt = Date.parse(node?.lastSeenAt || node?.updatedAt || node?.registeredAt || 0);
+      return Number.isFinite(lastSeenAt) && (now - lastSeenAt) <= NODE_REGISTRY_TTL_MS;
+    })
+  );
+
+  return {
+    updatedAt: state?.updatedAt || null,
+    nodes,
+  };
+}
+
+function buildNodeRegistrySummary() {
+  const pruned = pruneNodeRegistry(loadNodeRegistry());
+  saveNodeRegistry({
+    updatedAt: new Date().toISOString(),
+    nodes: pruned.nodes,
+  });
+
+  const nodes = Object.entries(pruned.nodes || {}).map(([key, node]) => ({
+    registryKey: key,
+    nodeId: node?.nodeId || null,
+    nodeName: node?.nodeName || node?.nodeId || key,
+    nodeUrl: node?.nodeUrl || null,
+    statusUrl: node?.statusUrl || null,
+    role: node?.role || 'verifier',
+    mode: node?.mode || 'parallel-consensus',
+    status: node?.status || 'unknown',
+    lastSeenAt: node?.lastSeenAt || null,
+    firstSeenAt: node?.firstSeenAt || null,
+    heartbeatCount: Number(node?.heartbeatCount || 0),
+    softwareVersion: node?.softwareVersion || null,
+    ledger: node?.ledger || null,
+    systemEvents: node?.systemEvents || null,
+    projection: node?.projection || null,
+    consensus: node?.consensus || null,
+  }));
+
+  const seedNodes = Array.from(new Set(
+    NODE_NETWORK_NODE_URLS
+      .map((entry) => normalizeNodeStatusUrl(entry))
+      .filter(Boolean)
+  ));
+
+  return {
+    generatedAt: new Date().toISOString(),
+    ttlMs: NODE_REGISTRY_TTL_MS,
+    summary: {
+      activeNodes: nodes.length,
+      seedNodes: seedNodes.length,
+    },
+    seedStatusUrls: seedNodes,
+    nodes,
+  };
+}
+
+function getDiscoveryStatusUrls() {
+  const registry = buildNodeRegistrySummary();
+  const discovered = [
+    ...NODE_NETWORK_NODE_URLS.map((entry) => normalizeNodeStatusUrl(entry)).filter(Boolean),
+    ...registry.nodes.map((node) => normalizeNodeStatusUrl(node.statusUrl || node.nodeUrl || '')).filter(Boolean),
+  ];
+  return Array.from(new Set(discovered));
+}
+
+function saveNodeNetworkCache(cache) {
+  fs.mkdirSync(path.dirname(NODE_NETWORK_CACHE_PATH), { recursive: true });
+  fs.writeFileSync(
+    NODE_NETWORK_CACHE_PATH,
+    JSON.stringify(
+      {
+        updatedAt: cache?.updatedAt || new Date().toISOString(),
+        nodes: Object.fromEntries(
+          Object.entries(cache?.nodes || {}).map(([nodeUrl, node]) => [
+            nodeUrl,
+            {
+              ...node,
+              observations: pruneNodeObservations(node?.observations || []),
+            },
+          ])
+        ),
+      },
+      null,
+      2
+    ),
+    'utf8'
+  );
+}
+
+function loadConsensusReports() {
+  if (!fs.existsSync(CONSENSUS_REPORTS_PATH)) {
+    return { updatedAt: null, reports: {} };
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(CONSENSUS_REPORTS_PATH, 'utf8'));
+    return {
+      updatedAt: parsed?.updatedAt || null,
+      reports: parsed?.reports || {},
+    };
+  } catch (error) {
+    console.error('Failed to load consensus reports:', error);
+    return { updatedAt: null, reports: {} };
+  }
+}
+
+function saveConsensusReports(state) {
+  fs.mkdirSync(path.dirname(CONSENSUS_REPORTS_PATH), { recursive: true });
+  fs.writeFileSync(
+    CONSENSUS_REPORTS_PATH,
+    JSON.stringify(
+      {
+        updatedAt: state?.updatedAt || new Date().toISOString(),
+        reports: state?.reports || {},
+      },
+      null,
+      2
+    ),
+    'utf8'
+  );
+}
+
+function pruneConsensusReports(state) {
+  const now = Date.now();
+  const reports = Object.fromEntries(
+    Object.entries(state?.reports || {}).filter(([, report]) => {
+      const reportedAt = Date.parse(report?.reportedAt || report?.updatedAt || 0);
+      return Number.isFinite(reportedAt) && (now - reportedAt) <= CONSENSUS_REPORT_TTL_MS;
+    })
+  );
+
+  return {
+    updatedAt: state?.updatedAt || null,
+    reports,
+  };
+}
+
+const nodeNetworkState = {
+  cache: loadNodeNetworkCache(),
+  refreshPromise: null,
+  lastRefreshAt: 0,
+};
+
+const canonicalExportState = {
+  refreshPromise: null,
+  lastRefreshAt: 0,
+};
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function refreshCanonicalExportFiles({ force = false } = {}) {
+  const now = Date.now();
+  if (!force && canonicalExportState.refreshPromise) {
+    return canonicalExportState.refreshPromise;
+  }
+  if (!force && now - canonicalExportState.lastRefreshAt < CANONICAL_EXPORT_REFRESH_MS) {
+    return null;
+  }
+
+  canonicalExportState.refreshPromise = (async () => {
+    await Promise.all([
+      dbHelpers.exportLedger({ outputPath: CANONICAL_LEDGER_EXPORT_PATH }),
+      dbHelpers.exportSystemEvents({ outputPath: CANONICAL_SYSTEM_EVENTS_EXPORT_PATH }),
+      dbHelpers.exportCombinedActivity({ outputPath: CANONICAL_ACTIVITY_EXPORT_PATH }),
+    ]);
+    canonicalExportState.lastRefreshAt = Date.now();
+  })();
+
+  try {
+    return await canonicalExportState.refreshPromise;
+  } finally {
+    canonicalExportState.refreshPromise = null;
+  }
+}
+
+async function getNodeNetworkSnapshot({ canonical = null, force = false, maxWaitMs = 1500 } = {}) {
+  const resolvedCanonical = canonical || await getCanonicalNetworkHead();
+
+  try {
+    if (force) {
+      return await refreshNodeNetworkCache({ force: true });
+    }
+
+    return await Promise.race([
+      refreshNodeNetworkCache({ force }),
+      wait(maxWaitMs).then(() => summarizeNodeNetwork(nodeNetworkState.cache, resolvedCanonical)),
+    ]);
+  } catch (error) {
+    console.error('Failed to build node network snapshot:', error);
+    return summarizeNodeNetwork(nodeNetworkState.cache, resolvedCanonical);
+  }
+}
+
+async function getCanonicalNetworkHead() {
+  const [ledgerHead, eventsHead] = await Promise.all([
+    dbGet(`SELECT id, timestamp, hash FROM transactions ORDER BY id DESC LIMIT 1`),
+    dbGet(`SELECT id, timestamp, hash FROM system_events ORDER BY id DESC LIMIT 1`),
+  ]);
+  const ledgerIntegrity = await dbHelpers.verifyLedgerIntegrity();
+  const eventIntegrity = await dbHelpers.verifySystemEventIntegrity();
+  const projection = await dbHelpers.getReplayedProjectionFingerprint();
+
+  const canonical = {
+    nodeId: NODE_NETWORK_CANONICAL_ID,
+    nodeName: NODE_NETWORK_CANONICAL_NAME,
+    role: 'canonical',
+    status: ledgerIntegrity.valid && eventIntegrity.valid ? 'healthy' : 'attention',
+    observedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    online: true,
+    inSync: true,
+    lastSeenAt: new Date().toISOString(),
+    ledger: {
+      transactionCount: Number(ledgerIntegrity.transactionCount || 0),
+      latestHash: ledgerIntegrity.latestHash || ledgerHead?.hash || null,
+      valid: Boolean(ledgerIntegrity.valid),
+      latestTransactionId: Number(ledgerHead?.id || 0),
+      latestTimestamp: Number(ledgerHead?.timestamp || 0),
+    },
+    systemEvents: {
+      eventCount: Number(eventIntegrity.eventCount || 0),
+      latestHash: eventIntegrity.latestHash || eventsHead?.hash || null,
+      valid: Boolean(eventIntegrity.valid),
+      latestEventId: Number(eventsHead?.id || 0),
+      latestTimestamp: Number(eventsHead?.timestamp || 0),
+    },
+    projection,
+  };
+
+  canonical.executionLayerAgreement = buildExecutionLayerAgreement(canonical);
+  return canonical;
+}
+
+async function getConsensusBridgeSummary(canonical = null) {
+  const execution = canonical || await getCanonicalNetworkHead();
+  const executionHeadKey = deriveCombinedHeadKey(execution);
+  const prunedState = pruneConsensusReports(loadConsensusReports());
+  saveConsensusReports({
+    updatedAt: new Date().toISOString(),
+    reports: prunedState.reports,
+  });
+
+  const reports = Object.values(prunedState.reports || {});
+  const operatorIdentities = await Promise.all(
+    reports.map((report) => resolveNodeOperator(report?.operatorDiscordId || report?.operator?.discordId || null))
+  );
+
+  const nodes = reports.map((report, index) => {
+    const reportedAt = report?.reportedAt || report?.updatedAt || null;
+    const reportTimestamp = Date.parse(reportedAt || 0);
+    const fresh = Number.isFinite(reportTimestamp)
+      ? (Date.now() - reportTimestamp) <= CONSENSUS_UPDATE_GRACE_MS
+      : false;
+    const executionAgreement = classifyExecutionAgreement(execution, report);
+    const operator = operatorIdentities[index] || null;
+
+    return {
+      nodeId: report?.nodeId || null,
+      nodeName: report?.nodeName || report?.nodeId || 'Unnamed consensus node',
+      nodeUrl: report?.nodeUrl || null,
+      statusUrl: report?.statusUrl || null,
+      reportedAt,
+      role: report?.role || 'consensus',
+      status: report?.status || 'unknown',
+      lastError: report?.lastError || null,
+      conflicts: report?.conflicts || [],
+      consensus: report?.consensus || null,
+      ledger: report?.ledger || null,
+      systemEvents: report?.systemEvents || null,
+      projection: report?.projection || null,
+      operator,
+      fresh,
+      executionAgreement,
+    };
+  });
+
+  const freshNodes = nodes.filter((node) => node.fresh);
+  const agreeCount = freshNodes.filter((node) => node.executionAgreement === 'agree').length;
+  const updatingCount = freshNodes.filter((node) => node.executionAgreement === 'updating').length;
+  const disagreeCount = freshNodes.filter((node) => node.executionAgreement === 'disagree').length;
+  const unknownCount = freshNodes.filter((node) => node.executionAgreement === 'unknown').length;
+  const agreeVotingPower = freshNodes
+    .filter((node) => node.executionAgreement === 'agree')
+    .reduce((sum, node) => sum + Number(node?.operator?.votingPower || 0), 0);
+  const updatingVotingPower = freshNodes
+    .filter((node) => node.executionAgreement === 'updating')
+    .reduce((sum, node) => sum + Number(node?.operator?.votingPower || 0), 0);
+  const disagreeVotingPower = freshNodes
+    .filter((node) => node.executionAgreement === 'disagree')
+    .reduce((sum, node) => sum + Number(node?.operator?.votingPower || 0), 0);
+  const unknownVotingPower = freshNodes
+    .filter((node) => node.executionAgreement === 'unknown')
+    .reduce((sum, node) => sum + Number(node?.operator?.votingPower || 0), 0);
+  const totalVotingPower = agreeVotingPower + updatingVotingPower + disagreeVotingPower + unknownVotingPower;
+  const weightedAgreement = totalVotingPower > 0
+    ? Number(((agreeVotingPower / totalVotingPower) * 100).toFixed(1))
+    : null;
+  const disagreeingOperators = nodes
+    .filter((node) => node.executionAgreement === 'disagree' && node?.operator?.displayName)
+    .map((node) => ({
+      name: node.operator.displayName,
+      votingPower: Number(node.operator.votingPower || 0),
+      nodeName: node.nodeName,
+    }))
+    .sort((left, right) => right.votingPower - left.votingPower || left.name.localeCompare(right.name))
+    .slice(0, 10);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    executionHeadKey,
+    summary: {
+      reportingNodes: nodes.length,
+      freshReportingNodes: freshNodes.length,
+      agreeCount,
+      updatingCount,
+      disagreeCount,
+      unknownCount,
+      agreeVotingPower,
+      updatingVotingPower,
+      disagreeVotingPower,
+      unknownVotingPower,
+      totalVotingPower,
+      weightedAgreement,
+      disagreeingOperators,
+      status: freshNodes.length === 0
+        ? 'unknown'
+        : (disagreeCount > 0 ? 'disagree' : (agreeCount > 0 ? 'agree' : (updatingCount > 0 ? 'updating' : 'unknown'))),
+    },
+    nodes,
+  };
+}
+
+async function fetchRemoteNodeStatus(nodeUrl) {
+  const normalizedUrl = normalizeNodeStatusUrl(nodeUrl);
+  const observedAt = new Date().toISOString();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), NODE_STATUS_FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(normalizedUrl, {
+      signal: controller.signal,
+      headers: VOLT_NODE_AUTH_KEY
+        ? { 'x-volt-node-key': VOLT_NODE_AUTH_KEY }
+        : undefined,
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const payload = await response.json();
+    return {
+      nodeUrl: normalizedUrl,
+      observedAt,
+      online: true,
+      payload,
+    };
+  } catch (error) {
+    return {
+      nodeUrl: normalizedUrl,
+      observedAt,
+      online: false,
+      error: error?.name === 'AbortError'
+        ? `Timed out after ${NODE_STATUS_FETCH_TIMEOUT_MS}ms`
+        : (error.message || String(error)),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function summarizeNodeNetwork(cache, canonical) {
+  const nodeEntries = Object.values(cache?.nodes || {});
+  const registrySummary = buildNodeRegistrySummary();
+  const now = Date.now();
+  const nodes = nodeEntries.map((node) => {
+    const observations = pruneNodeObservations(node?.observations || []);
+    const latestObservation = observations[observations.length - 1] || null;
+    const onlineSamples48h = observations.filter((entry) => entry.online).length;
+    const inSyncSamples48h = observations.filter((entry) => entry.inSync).length;
+    const lastSeenAt = node.lastSeenAt || latestObservation?.lastSeenAt || null;
+    const seenWithin48h = lastSeenAt ? now - Date.parse(lastSeenAt) <= NODE_HISTORY_WINDOW_MS : false;
+    return {
+      nodeUrl: node.nodeUrl,
+      nodeId: node.nodeId || null,
+      nodeName: node.nodeName || node.nodeId || node.nodeUrl,
+      status: node.status || (node.online ? 'healthy' : 'offline'),
+      online: Boolean(node.online),
+      inSync: Boolean(node.inSync),
+      lastSeenAt,
+      observedAt: node.observedAt || null,
+      lastError: node.lastError || null,
+      conflicts: node.conflicts || [],
+      ledger: node.ledger || null,
+      systemEvents: node.systemEvents || null,
+      history48h: {
+        samples: observations.length,
+        onlineSamples: onlineSamples48h,
+        inSyncSamples: inSyncSamples48h,
+        seenWithin48h,
+      },
+    };
+  });
+
+  for (const registryNode of registrySummary.nodes || []) {
+    const key = registryNode.nodeId || registryNode.statusUrl || registryNode.nodeUrl || registryNode.registryKey;
+    const existing = nodes.find((node) =>
+      (node.nodeId && node.nodeId === registryNode.nodeId) ||
+      (node.statusUrl && registryNode.statusUrl && node.statusUrl === registryNode.statusUrl) ||
+      (node.nodeUrl && registryNode.nodeUrl && node.nodeUrl === registryNode.nodeUrl)
+    );
+    if (existing) {
+      if (!existing.lastSeenAt && registryNode.lastSeenAt) existing.lastSeenAt = registryNode.lastSeenAt;
+      continue;
+    }
+
+    const lastSeenAt = registryNode.lastSeenAt || registryNode.updatedAt || null;
+    const seenWithin48h = lastSeenAt ? now - Date.parse(lastSeenAt) <= NODE_HISTORY_WINDOW_MS : false;
+    const executionAgreement =
+      registryNode.consensus?.healthy === true ? 'agree'
+        : (registryNode.consensus ? 'unknown' : 'unknown');
+
+    nodes.push({
+      nodeUrl: registryNode.nodeUrl,
+      statusUrl: registryNode.statusUrl,
+      nodeId: registryNode.nodeId || null,
+      nodeName: registryNode.nodeName || registryNode.nodeId || registryNode.nodeUrl || 'Unnamed node',
+      status: registryNode.status || 'unknown',
+      online: false,
+      inSync: false,
+      executionAgreement,
+      lastSeenAt,
+      observedAt: registryNode.lastSeenAt || null,
+      lastError: null,
+      conflicts: [],
+      ledger: registryNode.ledger || null,
+      systemEvents: registryNode.systemEvents || null,
+      history48h: {
+        samples: 0,
+        onlineSamples: 0,
+        inSyncSamples: 0,
+        seenWithin48h,
+      },
+      discoverySource: 'registry',
+      heartbeatCount: Number(registryNode.heartbeatCount || 0),
+    });
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    pollIntervalMs: NODE_NETWORK_POLL_MS,
+    canonical,
+    nodeRegistry: registrySummary,
+    summary: {
+      configuredNodes: nodes.length,
+      onlineNow: nodes.filter((node) => node.online).length,
+      offlineNow: nodes.filter((node) => !node.online).length,
+      inSyncNow: nodes.filter((node) => node.online && node.inSync).length,
+      disagreeingNow: nodes.filter((node) => node.online && !node.inSync).length,
+      seenLast48Hours: nodes.filter((node) => node.history48h.seenWithin48h).length,
+      reportingLast48Hours: nodes.filter((node) => node.history48h.samples > 0).length,
+    },
+    nodes,
+  };
+}
+
+async function refreshNodeNetworkCache({ force = false } = {}) {
+  const now = Date.now();
+  if (!force && nodeNetworkState.refreshPromise) {
+    return nodeNetworkState.refreshPromise;
+  }
+  if (!force && now - nodeNetworkState.lastRefreshAt < 5000) {
+    return summarizeNodeNetwork(nodeNetworkState.cache, await getCanonicalNetworkHead());
+  }
+
+  nodeNetworkState.refreshPromise = (async () => {
+    const canonical = await getCanonicalNetworkHead();
+    const cache = loadNodeNetworkCache();
+    const peerUrls = getDiscoveryStatusUrls();
+    const peerResults = await Promise.all(peerUrls.map((nodeUrl) => fetchRemoteNodeStatus(nodeUrl)));
+
+    for (const result of peerResults) {
+      const previousNode = cache.nodes[result.nodeUrl] || { nodeUrl: result.nodeUrl, observations: [] };
+      const previousObservations = pruneNodeObservations(previousNode.observations || []);
+
+      if (!result.online) {
+        cache.nodes[result.nodeUrl] = {
+          ...previousNode,
+          nodeUrl: result.nodeUrl,
+          online: false,
+          inSync: false,
+          status: 'offline',
+          observedAt: result.observedAt,
+          lastError: result.error,
+          observations: pruneNodeObservations([
+            ...previousObservations,
+            {
+              observedAt: result.observedAt,
+              online: false,
+              inSync: false,
+              error: result.error,
+            },
+          ]),
+        };
+        continue;
+      }
+
+      const payload = result.payload || {};
+      const ledgerMatch = canonical.ledger.latestHash && payload?.ledger?.latestHash
+        ? canonical.ledger.latestHash === payload.ledger.latestHash
+        : false;
+      const eventsMatch = canonical.systemEvents.latestHash && payload?.systemEvents?.latestHash
+        ? canonical.systemEvents.latestHash === payload.systemEvents.latestHash
+        : false;
+      const inSync = Boolean(payload?.ledger?.valid && payload?.systemEvents?.valid && ledgerMatch && eventsMatch);
+
+      cache.nodes[result.nodeUrl] = {
+        ...previousNode,
+        nodeUrl: result.nodeUrl,
+        nodeId: payload?.nodeId || previousNode.nodeId || null,
+        nodeName: payload?.nodeName || previousNode.nodeName || payload?.nodeId || result.nodeUrl,
+        online: true,
+        inSync,
+        status: payload?.status || 'healthy',
+        observedAt: result.observedAt,
+        lastSeenAt: payload?.updatedAt || result.observedAt,
+        lastError: null,
+        conflicts: payload?.conflicts || [],
+        ledger: payload?.ledger || null,
+        systemEvents: payload?.systemEvents || null,
+        observations: pruneNodeObservations([
+          ...previousObservations,
+          {
+            observedAt: result.observedAt,
+            online: true,
+            inSync,
+            lastSeenAt: payload?.updatedAt || result.observedAt,
+            ledgerHash: payload?.ledger?.latestHash || null,
+            eventHash: payload?.systemEvents?.latestHash || null,
+          },
+        ]),
+      };
+    }
+
+    cache.updatedAt = new Date().toISOString();
+    nodeNetworkState.cache = cache;
+    nodeNetworkState.lastRefreshAt = Date.now();
+    saveNodeNetworkCache(cache);
+
+    return summarizeNodeNetwork(cache, canonical);
+  })();
+
+  try {
+    return await nodeNetworkState.refreshPromise;
+  } finally {
+    nodeNetworkState.refreshPromise = null;
+  }
+}
+
 async function ensureEconomyProfileForDiscordUser(discordId) {
   const normalizedDiscordId = String(discordId || '').trim();
   if (!normalizedDiscordId) return null;
@@ -2242,12 +3304,7 @@ async function ensureEconomyProfileForDiscordUser(discordId) {
   const holder = findHolderByDiscordId(normalizedDiscordId);
   if (!holder) return null;
 
-  await dbRun(
-    `INSERT INTO economy (userID, wallet, bank)
-     VALUES (?, 0, 0)
-     ON CONFLICT(userID) DO NOTHING`,
-    [normalizedDiscordId]
-  );
+  await dbHelpers.initUserEconomy(normalizedDiscordId);
 
   return dbGet(
     `SELECT userID, username FROM economy WHERE userID = ?`,
@@ -2478,46 +3535,506 @@ app.get("/auth/discord/callback", async (req, res) => {
 app.get('/api/volt-balance', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId; // Get user ID from JWT
-    const user = await dbGet(
-      `SELECT wallet, bank FROM economy WHERE userID = ?`,
-      [userId]
-    );
+    const { balance } = await dbHelpers.getBalances(userId);
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
-
-    const { wallet, bank } = user;
-    const totalBalance = wallet + bank;
-
-    res.json({ wallet, bank, totalBalance });
+    res.json({ balance, wallet: balance, bank: 0, totalBalance: balance });
   } catch (error) {
     console.error("❌ Error fetching Volt balance:", error);
     res.status(500).json({ message: "Internal server error." });
   }
 });
 
-const USER_MESSAGE_COUNTS_PATH = path.join(__dirname, '..', 'userMessageCounts.json');
-const RPS_WIN_TRACKER_PATH = path.join(__dirname, '..', 'rpsWinTracker.json');
-
-function getCurrentESTDateString() {
-  const now = new Date();
-  const estTime = new Date(now.getTime() - (5 * 60 * 60 * 1000));
-  return estTime.toISOString().split('T')[0];
-}
-
-function readTrackerEntry(filePath, userId) {
+app.get('/api/node-key', authenticateToken, async (req, res) => {
   try {
-    if (!fs.existsSync(filePath)) return null;
-    const raw = fs.readFileSync(filePath, 'utf8');
-    const rows = raw ? JSON.parse(raw) : [];
-    const trackerMap = new Map(Array.isArray(rows) ? rows : []);
-    return trackerMap.get(userId) || null;
+    const userId = String(req.user?.userId || '').trim();
+    const operator = await assertNodeKeyEligible(userId);
+    const activeKey = await getActiveNodeOperatorKeyForDiscordId(userId);
+    return res.json({
+      eligible: true,
+      operator: {
+        displayName: operator.displayName,
+        votingPower: operator.votingPower,
+        verifiedHolder: operator.verifiedHolder,
+      },
+      key: activeKey ? {
+        createdAt: activeKey.created_at || null,
+        lastUsedAt: activeKey.last_used_at || null,
+        keyLabel: activeKey.key_label || null,
+      } : null,
+    });
   } catch (error) {
-    console.error(`❌ Failed reading tracker file ${filePath}:`, error);
-    return null;
+    return res.status(403).json({ error: error.message || 'Failed to load node key status.' });
   }
+});
+
+app.post('/api/node-key', authenticateToken, async (req, res) => {
+  try {
+    const userId = String(req.user?.userId || '').trim();
+    const operator = await assertNodeKeyEligible(userId);
+    const issued = await issueNodeOperatorKey(userId, req.body?.label || null);
+    return res.json({
+      ok: true,
+      key: issued.key,
+      createdAt: issued.createdAt,
+      operator: {
+        displayName: operator.displayName,
+        votingPower: operator.votingPower,
+        verifiedHolder: operator.verifiedHolder,
+      },
+      message: 'Node key generated. Save it in your node environment now; it will only be shown once.',
+    });
+  } catch (error) {
+    const message = error.message || 'Failed to generate node key.';
+    return res.status(message.includes('only available') ? 403 : 500).json({ error: message });
+  }
+});
+
+app.get('/node/status', authenticateNodeKey, async (req, res) => {
+  try {
+    const canonical = await getCanonicalNetworkHead();
+    const network = await getNodeNetworkSnapshot({ canonical });
+    const consensusBridge = await getConsensusBridgeSummary(canonical);
+    const nodeRegistry = buildNodeRegistrySummary();
+    const activity = await dbHelpers.getCombinedActivity({ limit: 20, offset: 0, order: 'desc' });
+    return res.json({
+      ...canonical,
+      execution: canonical,
+      activity: activity.summary,
+      publicUrl: process.env.VOLT_PUBLIC_URL || null,
+      statusUrl: process.env.VOLT_PUBLIC_URL ? `${String(process.env.VOLT_PUBLIC_URL).replace(/\/+$/, '')}/node/status` : null,
+      peerNetwork: network.summary,
+      nodeRegistry: nodeRegistry.summary,
+      consensusBridge,
+    });
+  } catch (error) {
+    console.error('Failed to build node status:', error);
+    return res.status(500).json({ error: 'Failed to build node status.' });
+  }
+});
+
+app.post('/api/consensus/report', authenticateNodeKey, async (req, res) => {
+  try {
+    const payload = {
+      ...(req.body || {}),
+      operatorDiscordId: req.nodeAuth?.discordId || null,
+    };
+    const nodeId = String(payload.nodeId || '').trim();
+    const statusUrl = normalizeNodeStatusUrl(payload.statusUrl || payload.nodeUrl || '');
+    if (!nodeId && !statusUrl) {
+      return res.status(400).json({ error: 'Consensus report requires nodeId or statusUrl.' });
+    }
+
+    const key = nodeId || statusUrl;
+    const state = pruneConsensusReports(loadConsensusReports());
+    state.reports[key] = {
+      nodeId: nodeId || null,
+      nodeName: String(payload.nodeName || nodeId || statusUrl || 'Consensus Node').trim(),
+      nodeUrl: String(payload.nodeUrl || '').trim() || null,
+      statusUrl,
+      operatorDiscordId: String(payload.operatorDiscordId || payload.operator?.discordId || '').trim() || null,
+      role: 'consensus',
+      reportedAt: new Date().toISOString(),
+      updatedAt: payload.updatedAt || new Date().toISOString(),
+      status: payload.status || 'healthy',
+      lastError: payload.lastError || null,
+      conflicts: Array.isArray(payload.conflicts) ? payload.conflicts.slice(-20) : [],
+      consensus: payload.consensus || null,
+      ledger: payload.ledger || null,
+      systemEvents: payload.systemEvents || null,
+      projection: payload.projection || null,
+    };
+    state.updatedAt = new Date().toISOString();
+    saveConsensusReports(state);
+
+    const operator = await resolveNodeOperator(state.reports[key].operatorDiscordId);
+
+    return res.json({
+      ok: true,
+      storedAs: key,
+      reportedAt: state.reports[key].reportedAt,
+      operator: operator ? {
+        displayName: operator.displayName,
+        votingPower: operator.votingPower,
+        verifiedHolder: operator.verifiedHolder,
+      } : null,
+    });
+  } catch (error) {
+    console.error('Failed to store consensus report:', error);
+    return res.status(500).json({ error: 'Failed to store consensus report.' });
+  }
+});
+
+async function upsertNodeRegistryEntry(payload, source = 'heartbeat') {
+  const nodeId = String(payload.nodeId || '').trim() || null;
+  const statusUrl = normalizeNodeStatusUrl(payload.statusUrl || payload.nodeUrl || '');
+  const nodeUrl = normalizeNodeBaseUrl(payload.nodeUrl || '');
+  const key = nodeId || statusUrl || nodeUrl;
+  if (!key) {
+    throw new Error('Node registration requires nodeId, nodeUrl, or statusUrl.');
+  }
+
+  const registry = pruneNodeRegistry(loadNodeRegistry());
+  const existing = registry.nodes[key] || {};
+  const now = new Date().toISOString();
+
+  registry.nodes[key] = {
+    ...existing,
+    nodeId,
+    nodeName: String(payload.nodeName || existing.nodeName || nodeId || statusUrl || nodeUrl || 'Volt Node').trim(),
+    operatorDiscordId: String(payload.operatorDiscordId || existing.operatorDiscordId || '').trim() || null,
+    nodeUrl: nodeUrl || existing.nodeUrl || null,
+    statusUrl: statusUrl || existing.statusUrl || null,
+    role: String(payload.role || existing.role || 'verifier').trim(),
+    mode: String(payload.mode || existing.mode || 'parallel-consensus').trim(),
+    softwareVersion: String(payload.softwareVersion || existing.softwareVersion || '').trim() || null,
+    status: String(payload.status || existing.status || 'healthy').trim(),
+    ledger: payload.ledger || existing.ledger || null,
+    systemEvents: payload.systemEvents || existing.systemEvents || null,
+    projection: payload.projection || existing.projection || null,
+    consensus: payload.consensus || existing.consensus || null,
+    firstSeenAt: existing.firstSeenAt || now,
+    registeredAt: source === 'register' ? now : (existing.registeredAt || null),
+    lastRegisterAt: source === 'register' ? now : (existing.lastRegisterAt || null),
+    lastHeartbeatAt: source === 'heartbeat' ? now : (existing.lastHeartbeatAt || null),
+    lastSeenAt: now,
+    updatedAt: now,
+    heartbeatCount: Number(existing.heartbeatCount || 0) + (source === 'heartbeat' ? 1 : 0),
+  };
+
+  registry.updatedAt = now;
+  saveNodeRegistry(registry);
+  return { key, entry: registry.nodes[key], operator: await resolveNodeOperator(registry.nodes[key].operatorDiscordId) };
 }
+
+app.post('/api/nodes/register', authenticateNodeKey, async (req, res) => {
+  try {
+    const result = await upsertNodeRegistryEntry({
+      ...(req.body || {}),
+      operatorDiscordId: req.nodeAuth?.discordId || null,
+    }, 'register');
+    return res.json({
+      ok: true,
+      registryKey: result.key,
+      node: result.entry,
+      operator: result.operator ? {
+        displayName: result.operator.displayName,
+        votingPower: result.operator.votingPower,
+        verifiedHolder: result.operator.verifiedHolder,
+      } : null,
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || String(error) });
+  }
+});
+
+app.post('/api/nodes/heartbeat', authenticateNodeKey, async (req, res) => {
+  try {
+    const result = await upsertNodeRegistryEntry({
+      ...(req.body || {}),
+      operatorDiscordId: req.nodeAuth?.discordId || null,
+    }, 'heartbeat');
+    return res.json({
+      ok: true,
+      registryKey: result.key,
+      node: result.entry,
+      operator: result.operator ? {
+        displayName: result.operator.displayName,
+        votingPower: result.operator.votingPower,
+        verifiedHolder: result.operator.verifiedHolder,
+      } : null,
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || String(error) });
+  }
+});
+
+app.get('/api/nodes', authenticateNodeKey, async (req, res) => {
+  try {
+    const registry = buildNodeRegistrySummary();
+    return res.json(registry);
+  } catch (error) {
+    console.error('Failed to load node registry:', error);
+    return res.status(500).json({ error: 'Failed to load node registry.' });
+  }
+});
+
+app.get('/api/consensus/reports', authenticateNodeKey, async (req, res) => {
+  try {
+    const canonical = await getCanonicalNetworkHead();
+    const consensusBridge = await getConsensusBridgeSummary(canonical);
+    const nodeRegistry = buildNodeRegistrySummary();
+    return res.json({
+      ...consensusBridge,
+      nodeRegistry,
+    });
+  } catch (error) {
+    console.error('Failed to load consensus reports:', error);
+    return res.status(500).json({ error: 'Failed to load consensus reports.' });
+  }
+});
+
+app.get('/api/voltscan', authenticateToken, async (req, res) => {
+  try {
+    const rawLimit = Number.parseInt(req.query.limit, 10);
+    const rawOffset = Number.parseInt(req.query.offset, 10);
+    const limit = Number.isFinite(rawLimit) ? Math.max(10, Math.min(rawLimit, 100)) : 25;
+    const offset = Number.isFinite(rawOffset) ? Math.max(0, rawOffset) : 0;
+    const type = String(req.query.type || '').trim();
+    const userId = String(req.query.userId || '').trim();
+    const query = String(req.query.q || '').trim().toLowerCase();
+    const includeIntegrity = req.query.integrity !== '0';
+
+    const where = [];
+    const params = [];
+
+    if (type) {
+      where.push(`LOWER(t.type) = LOWER(?)`);
+      params.push(type);
+    }
+
+    if (userId) {
+      where.push(`(t.from_user_id = ? OR t.to_user_id = ?)`);
+      params.push(userId, userId);
+    }
+
+    if (query) {
+      if (/^\d+$/.test(query)) {
+        where.push(`(
+          t.id = ?
+          OR t.from_user_id LIKE ?
+          OR t.to_user_id LIKE ?
+          OR LOWER(t.type) LIKE ?
+          OR LOWER(t.metadata) LIKE ?
+        )`);
+        params.push(Number(query), `%${query}%`, `%${query}%`, `%${query}%`, `%${query}%`);
+      } else {
+        where.push(`(
+          LOWER(t.type) LIKE ?
+          OR LOWER(COALESCE(t.from_user_id, '')) LIKE ?
+          OR LOWER(COALESCE(t.to_user_id, '')) LIKE ?
+          OR LOWER(t.metadata) LIKE ?
+          OR LOWER(COALESCE(fu.username, '')) LIKE ?
+          OR LOWER(COALESCE(tu.username, '')) LIKE ?
+        )`);
+        params.push(
+          `%${query}%`,
+          `%${query}%`,
+          `%${query}%`,
+          `%${query}%`,
+          `%${query}%`,
+          `%${query}%`
+        );
+      }
+    }
+
+    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const rows = await dbAll(
+      `SELECT
+         t.*,
+         fu.username AS from_username,
+         tu.username AS to_username
+       FROM transactions t
+       LEFT JOIN economy fu ON fu.userID = t.from_user_id
+       LEFT JOIN economy tu ON tu.userID = t.to_user_id
+       ${whereClause}
+       ORDER BY t.id DESC
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+
+    const countRow = await dbGet(
+      `SELECT COUNT(*) AS transactionCount,
+              COALESCE(SUM(t.amount), 0) AS totalVolume
+       FROM transactions t
+       LEFT JOIN economy fu ON fu.userID = t.from_user_id
+       LEFT JOIN economy tu ON tu.userID = t.to_user_id
+       ${whereClause}`,
+      params
+    );
+
+    const headRow = await dbGet(
+      `SELECT id, timestamp, hash
+       FROM transactions
+       ORDER BY id DESC
+       LIMIT 1`
+    );
+
+    const uniqueUserRow = await dbGet(
+      `SELECT COUNT(DISTINCT user_id) AS uniqueUsers
+       FROM (
+         SELECT from_user_id AS user_id FROM transactions WHERE from_user_id IS NOT NULL
+         UNION
+         SELECT to_user_id AS user_id FROM transactions WHERE to_user_id IS NOT NULL
+       )`
+    );
+
+    const canonical = await getCanonicalNetworkHead();
+    const [integrity, network, consensusBridge] = await Promise.all([
+      includeIntegrity ? dbHelpers.verifyLedgerIntegrity() : Promise.resolve(null),
+      getNodeNetworkSnapshot({ canonical, force: true, maxWaitMs: 2500 }).catch((error) => {
+        console.error('Node network refresh failed:', error);
+        return summarizeNodeNetwork(nodeNetworkState.cache, canonical);
+      }),
+      getConsensusBridgeSummary(canonical).catch((error) => {
+        console.error('Consensus bridge refresh failed:', error);
+        return null;
+      }),
+    ]);
+
+    const transactions = (rows || []).map((row) => {
+      const metadata = parseLedgerMetadata(row.metadata);
+      const fromAccount = normalizeLedgerAccount(
+        metadata.fromAccount,
+        { defaultUserAccount: row.from_user_id ? PRIMARY_BALANCE_ACCOUNT : 'system' }
+      );
+      const toAccount = normalizeLedgerAccount(
+        metadata.toAccount,
+        { defaultUserAccount: row.to_user_id ? PRIMARY_BALANCE_ACCOUNT : 'system' }
+      );
+      const fromLabel = buildVoltScanLabel(row.from_user_id, row.from_username, 'System');
+      const toLabel = buildVoltScanLabel(row.to_user_id, row.to_username, 'System');
+
+      let direction = 'transfer';
+      if (!row.from_user_id) direction = 'credit';
+      else if (!row.to_user_id) direction = 'debit';
+      else if (String(row.from_user_id) === String(row.to_user_id)) direction = 'internal';
+
+      return {
+        id: Number(row.id),
+        timestamp: Number(row.timestamp),
+        type: row.type,
+        direction,
+        from_user_id: row.from_user_id || null,
+        to_user_id: row.to_user_id || null,
+        from_username: row.from_username || null,
+        to_username: row.to_username || null,
+        from_label: fromLabel,
+        to_label: toLabel,
+        from_account: fromAccount,
+        to_account: toAccount,
+        amount: Number(row.amount),
+        metadata,
+        previous_hash: row.previous_hash,
+        hash: row.hash,
+      };
+    });
+
+    return res.json({
+      summary: {
+        transactionCount: Number(countRow?.transactionCount || 0),
+        totalVolume: Number(countRow?.totalVolume || 0),
+        uniqueUsers: Number(uniqueUserRow?.uniqueUsers || 0),
+        latestTransactionId: Number(headRow?.id || 0),
+        latestTimestamp: Number(headRow?.timestamp || 0),
+        latestHash: headRow?.hash || null,
+        genesisHash: dbHelpers.ledgerService?.GENESIS_HASH || 'VOLT_LEDGER_GENESIS_V1',
+      },
+      integrity,
+      canonical,
+      nodeRegistry: buildNodeRegistrySummary(),
+      consensusBridge,
+      network,
+      pagination: {
+        limit,
+        offset,
+        hasMore: offset + transactions.length < Number(countRow?.transactionCount || 0),
+      },
+      filters: {
+        type: type || '',
+        userId: userId || '',
+        q: query || '',
+      },
+      transactions,
+    });
+  } catch (error) {
+    console.error('❌ Error loading VoltScan data:', error);
+    return res.status(500).json({ message: 'Failed to load VoltScan data.' });
+  }
+});
+
+app.get('/api/voltscan/network', authenticateToken, async (req, res) => {
+  try {
+    const canonical = await getCanonicalNetworkHead();
+    const [network, consensusBridge] = await Promise.all([
+      getNodeNetworkSnapshot({ canonical, force: true, maxWaitMs: 2500 }),
+      getConsensusBridgeSummary(canonical).catch((error) => {
+        console.error('Consensus bridge refresh failed:', error);
+        return null;
+      }),
+    ]);
+    return res.json({
+      ...network,
+      canonical,
+      nodeRegistry: buildNodeRegistrySummary(),
+      consensusBridge,
+    });
+  } catch (error) {
+    console.error('Failed to load Volt network status:', error);
+    return res.status(500).json({ error: 'Failed to load Volt network status.' });
+  }
+});
+
+app.get('/exports/ledger.json', authenticateNodeKey, async (req, res) => {
+  try {
+    const payload = await dbHelpers.exportLedger();
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).send(JSON.stringify(payload, null, 2));
+  } catch (error) {
+    console.error('Ledger export route failed:', error);
+    res.status(500).json({ error: 'Failed to export ledger.' });
+  }
+});
+
+app.get('/exports/system-events.json', authenticateNodeKey, async (req, res) => {
+  try {
+    const payload = await dbHelpers.exportSystemEvents();
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).send(JSON.stringify(payload, null, 2));
+  } catch (error) {
+    console.error('System events export route failed:', error);
+    res.status(500).json({ error: 'Failed to export system events.' });
+  }
+});
+
+app.get('/exports/activity.json', async (req, res) => {
+  try {
+    const payload = await dbHelpers.exportCombinedActivity();
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).send(JSON.stringify(payload, null, 2));
+  } catch (error) {
+    console.error('Combined activity export route failed:', error);
+    res.status(500).json({ error: 'Failed to export combined activity.' });
+  }
+});
+
+app.get('/api/voltscan/activity', authenticateToken, async (req, res) => {
+  try {
+    const rawLimit = Number.parseInt(req.query.limit, 10);
+    const rawOffset = Number.parseInt(req.query.offset, 10);
+    const limit = Number.isFinite(rawLimit) ? Math.max(10, Math.min(rawLimit, 200)) : 50;
+    const offset = Number.isFinite(rawOffset) ? Math.max(0, rawOffset) : 0;
+    const payload = await dbHelpers.getCombinedActivity({
+      limit,
+      offset,
+      order: String(req.query.order || 'desc'),
+      type: String(req.query.type || ''),
+      userId: String(req.query.userId || ''),
+      kind: String(req.query.kind || ''),
+      domain: String(req.query.domain || ''),
+      actorUserId: String(req.query.actorUserId || ''),
+      q: String(req.query.q || ''),
+    });
+
+    return res.json(redactWalletFields(payload));
+  } catch (error) {
+    console.error('Failed to load combined Volt activity:', error);
+    return res.status(500).json({ error: 'Failed to load combined Volt activity.' });
+  }
+});
 
 app.get('/api/auto-quests/progress', authenticateToken, async (req, res) => {
   try {
@@ -2526,9 +4043,8 @@ app.get('/api/auto-quests/progress', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'No user found for this session.' });
     }
 
-    const today = getCurrentESTDateString();
-    const messageData = readTrackerEntry(USER_MESSAGE_COUNTS_PATH, userId);
-    const rpsData = readTrackerEntry(RPS_WIN_TRACKER_PATH, userId);
+    const today = dbHelpers.getCurrentESTDateString();
+    const activityData = await dbHelpers.getDailyUserActivitySnapshot(userId, today);
     const otherQuestData = await dbGet(
       `SELECT
          COALESCE(MAX(rtp.bonus_10_given), 0) AS raffleBonus10,
@@ -2544,12 +4060,12 @@ app.get('/api/auto-quests/progress', authenticateToken, async (req, res) => {
 
     const messageRewardLimit = Number.parseInt(process.env.MESSAGE_REWARD_LIMIT, 10) || 16;
     const dailyRpsGoal = 3;
-    const messageCount = messageData?.date === today ? Number(messageData.count || 0) : 0;
-    const rpsWins = rpsData?.date === today ? Number(rpsData.wins || 0) : 0;
+    const messageCount = Number(activityData?.count || 0);
+    const rpsWins = Number(activityData?.rpsWins || 0);
 
     return res.json({
       firstMessage: {
-        current: messageData?.date === today && messageData?.firstMessageBonusGiven ? 1 : 0,
+        current: activityData?.firstMessageBonusGiven ? 1 : 0,
         goal: 1,
       },
       roboChatMessages: {
@@ -2557,7 +4073,7 @@ app.get('/api/auto-quests/progress', authenticateToken, async (req, res) => {
         goal: messageRewardLimit,
       },
       announcementReaction: {
-        current: messageData?.date === today && messageData?.reacted ? 1 : 0,
+        current: activityData?.reacted ? 1 : 0,
         goal: 1,
       },
       rpsWins: {
@@ -2604,15 +4120,16 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
       return res.status(409).json({ message: 'That display name is already in use.' });
     }
 
-    await dbRun(
-      `UPDATE economy
-       SET username = ?,
-           profile_about_me = ?,
-           profile_specialties = ?,
-           profile_location = ?
-       WHERE userID = ?`,
-      [username, aboutMe || null, specialties || null, location || null, userId]
-    );
+    await dbHelpers.updateUserProfile(userId, {
+      username,
+      aboutMe: aboutMe || null,
+      specialties: specialties || null,
+      location: location || null,
+      twitterHandle: twitterHandleRaw || null,
+    }, {
+      actorUserId: userId,
+      source: 'web_profile',
+    });
 
     try {
       const roboCheckAccount = roboCheckAccountStore.getAccountByDiscordId(userId, roboCheckAccountStore.readVerifiedEntries());
@@ -2638,7 +4155,7 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
         aboutMe: aboutMe || null,
         specialties: specialties || null,
         location: location || null,
-        twitterHandle: twitterHandleRaw || findHolderByDiscordId(userId)?.twitterHandle || null,
+        twitterHandle: twitterHandleRaw || null,
       },
     });
   } catch (error) {
@@ -2650,18 +4167,25 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
 app.get('/api/profile-map', authenticateToken, async (req, res) => {
   try {
     const rows = await dbAll(
-      `SELECT userID, username, profile_location AS location
+      `SELECT userID
        FROM economy
-       WHERE profile_location IS NOT NULL
-         AND TRIM(profile_location) != ''
-       ORDER BY LOWER(username) ASC`
+       ORDER BY LOWER(COALESCE(username, userID)) ASC`
     );
+    const decodedRows = (await Promise.all(
+      (rows || []).map(async (row) => {
+        const profile = await dbHelpers.getReadableProfileDetails(row.userID, { maskOnFailure: false });
+        if (!profile?.location) {
+          return null;
+        }
+        return {
+          userID: row.userID,
+          username: profile.username || row.userID,
+          location: profile.location,
+        };
+      })
+    )).filter(Boolean);
 
-    return res.json((rows || []).map((row) => ({
-      userID: row.userID,
-      username: row.username || row.userID,
-      location: row.location,
-    })));
+    return res.json(decodedRows);
   } catch (error) {
     console.error('❌ Error loading profile map data:', error);
     return res.status(500).json({ message: 'Failed to load profile map data.' });
@@ -2761,7 +4285,7 @@ app.post('/api/redeem', authenticateToken, async (req, res) => {
         channelName: 'Web UI Inventory',
         channelId: null,
         messageLink: null,
-        commandText: `WEB_UI redeem item="${itemName}" wallet="${walletAddress}"`,
+        commandText: `WEB_UI redeem item="${itemName}" wallet="[redacted]"`,
         inventoryBefore: Number.isFinite(beforeQty) ? beforeQty : null,
         inventoryAfter: Number.isFinite(afterQty) ? afterQty : null,
       });
@@ -2810,7 +4334,9 @@ app.post('/api/redeem', authenticateToken, async (req, res) => {
     return res.json({ message: resultMsg });
   } catch (error) {
     console.error('Error redeeming item via web:', error);
-    return res.status(500).json({ error: error?.toString() || 'Failed to redeem item.' });
+    const message = error?.message || error?.toString() || 'Failed to redeem item.';
+    const statusCode = String(message).startsWith('🚫') ? 400 : 500;
+    return res.status(statusCode).json({ error: message });
   }
 });
 
@@ -2829,93 +4355,25 @@ app.post('/api/buy', authenticateToken, async (req, res) => {
   }
 
   try {
-    db.get(
-      `SELECT * FROM items
-       WHERE name = ? AND isAvailable = 1 AND COALESCE(isHidden, 0) = 0`,
-      [itemName],
-      (err, item) => {
-      if (err) {
-        console.error('Error fetching shop item:', err);
-        return res.status(500).json({ error: 'Database error. Please try again later.' });
-      }
-      if (!item) {
-        return res.status(404).json({ error: 'Item not found or unavailable.' });
-      }
-      if (item.quantity < qty) {
-        return res.status(400).json({ error: `⚠️ Not enough stock. Only ${item.quantity} available.` });
-      }
+    const purchaseResult = await dbHelpers.purchaseShopItem(userId, itemName, qty, {
+      source: 'web',
+      metadata: {
+        route: '/api/buy',
+      },
+    });
 
-      const totalCost = item.price * qty;
+    console.log(`✅ User ${userId} bought ${qty} x "${purchaseResult.item.name}"`);
 
-      db.get(`SELECT wallet FROM economy WHERE userID = ?`, [userId], (err, user) => {
-        if (err) {
-          console.error('Error fetching user balance:', err);
-          return res.status(500).json({ error: 'Database error. Please try again later.' });
-        }
-        if (!user || user.wallet < totalCost) {
-          return res.status(400).json({ error: `⚠️ You don't have enough funds. Total cost: ⚡${totalCost}` });
-        }
-
-        db.serialize(() => {
-          db.run('BEGIN TRANSACTION');
-
-          db.run(`UPDATE economy SET wallet = wallet - ? WHERE userID = ?`, [totalCost, userId], (err) => {
-            if (err) {
-              db.run('ROLLBACK');
-              console.error('Error deducting balance:', err);
-              return res.status(500).json({ error: 'Failed to process payment.' });
-            }
-
-            db.run(`UPDATE items SET quantity = quantity - ? WHERE name = ?`, [qty, itemName], (err) => {
-              if (err) {
-                db.run('ROLLBACK');
-                console.error('Error updating item quantity:', err);
-                return res.status(500).json({ error: 'Failed to update shop stock.' });
-              }
-
-              db.run(
-                `INSERT INTO inventory (userID, itemID, quantity) 
-                 VALUES (?, ?, ?) 
-                 ON CONFLICT(userID, itemID) DO UPDATE SET quantity = quantity + ?`,
-                [userId, item.itemID, qty, qty],
-                (err) => {
-                  if (err) {
-                    db.run('ROLLBACK');
-                    console.error('Error adding item to inventory:', err);
-                    return res.status(500).json({ error: 'Failed to add item to inventory.' });
-                  }
-
-                  db.run('COMMIT', async (commitErr) => {
-                    if (commitErr) {
-                      console.error('Error committing purchase transaction:', commitErr);
-                      return res.status(500).json({ error: 'Failed to finalize purchase.' });
-                    }
-
-                    console.log(`✅ User ${userId} bought ${qty} x "${item.name}"`);
-
-                    let bonusInfo = null;
-                    try {
-                      bonusInfo = await dbHelpers.applyRafflePurchaseBonus(userId, item.name, qty);
-                    } catch (bonusErr) {
-                      console.error('❌ Failed to apply raffle purchase bonus:', bonusErr);
-                    }
-
-                    return res.json({
-                      message: `✅ You bought ${qty} "${item.name}" ticket(s) for ⚡${totalCost}.`,
-                      bonusTickets: bonusInfo?.bonusTickets || 0,
-                      bonusMilestones: bonusInfo?.milestones || [],
-                    });
-                  });
-                }
-              );
-            });
-          });
-        });
-      });
+    return res.json({
+      message: `✅ You bought ${qty} "${purchaseResult.item.name}" ticket(s) for ⚡${purchaseResult.totalCost}.`,
+      bonusTickets: purchaseResult.bonusInfo?.bonusTickets || 0,
+      bonusMilestones: purchaseResult.bonusInfo?.milestones || [],
     });
   } catch (error) {
     console.error('❌ Error in /api/buy route:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    const message = error?.message || 'Internal server error';
+    const statusCode = getClientErrorStatus(message, { allowNotFound: false });
+    res.status(statusCode).json({ error: message });
   }
 });
 
@@ -2960,7 +4418,7 @@ app.post('/api/giveaway/toggle', authenticateToken, async (req, res) => {
 
     if (userEntry) {
       // User is entered → Remove them
-      await db.run(`DELETE FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?`, [giveawayId, userId]);
+      await dbHelpers.removeGiveawayEntry(giveawayId, userId);
       console.log(`🛑 User ${userId} left giveaway ${giveawayId}`);
       return res.json({ success: true, action: "left" });
     } else {
@@ -3073,16 +4531,17 @@ app.post('/api/quit-job', authenticateToken, async (req, res) => {
 
   try {
     console.log(`[CHECK] Fetching active job for user ${userID}`);
-    const activeJob = await dbGet(`SELECT jobID FROM job_assignees WHERE userID = ?`, [userID]);
+    const result = await dbHelpers.quitAssignedJob(userID, {
+      actorUserId: userID,
+      source: 'web_quit_job',
+    });
 
-    if (!activeJob) {
+    if (!result.removed) {
       console.warn(`[WARN] User ${userID} has no active job.`);
       return res.status(400).json({ error: 'You have no active quest to quit.' });
     }
 
-    console.log(`[INFO] Removing job ${activeJob.jobID} for user ${userID}`);
-    
-    await dbRun(`DELETE FROM job_assignees WHERE userID = ?`, [userID]);
+    console.log(`[INFO] Removing job ${result.jobID} for user ${userID}`);
     console.log(`[SUCCESS] User ${userID} quit their job.`);
     return res.json({ success: true, message: 'You have quit your quest.' });
 
@@ -3156,11 +4615,16 @@ const channel = await client.channels.fetch(QUEST_SUBMISSION_CHANNEL_ID);
 
     await channel.send({ embeds: [embed] });
 
-    await dbRun(
-      `INSERT INTO job_submissions (userID, jobID, title, description, image_url) VALUES (?, ?, ?, ?, ?)`,
-      [userID, jobID, title, description, imageUrl]
-    );
-    await dbRun(`DELETE FROM job_assignees WHERE userID = ?`, [userID]);
+    await dbHelpers.submitJobSubmission({
+      userID,
+      jobID,
+      title,
+      description,
+      imageUrl,
+    }, {
+      actorUserId: userID,
+      source: 'web_submit_job',
+    });
 
     console.log("✅ Job submitted successfully!");
     res.json({ message: "Job submitted successfully!" });
@@ -3245,116 +4709,38 @@ app.post('/api/oil/market-buy', authenticateToken, async (req, res) => {
   const ROBOT_OIL_ITEM_ID = 88;
 
   try {
-    // 1) Get the cheapest SELL listing only
-    db.get(`
-      SELECT listing_id, seller_id, quantity, price_per_unit, type
-      FROM robot_oil_market
-      WHERE type IS NULL OR type = 'sale'
-      ORDER BY price_per_unit ASC, created_at ASC
-      LIMIT 1
-    `, async (err, listing) => {
-      if (err) {
-        console.error('Error fetching cheapest sell listing:', err);
-        return res.status(500).json({ error: 'Database error.' });
-      }
-      if (!listing) return res.status(404).json({ error: 'No oil available for sale.' });
+    const listing = await dbGet(
+      `SELECT listing_id, seller_id, quantity, price_per_unit, type
+       FROM robot_oil_market
+       WHERE type IS NULL OR type = 'sale'
+       ORDER BY price_per_unit ASC, created_at ASC
+       LIMIT 1`
+    );
 
-      if (listing.seller_id === buyerId) {
-        return res.status(400).json({ error: 'You cannot buy your own listing.' });
-      }
+    if (!listing) {
+      return res.status(404).json({ error: 'No oil available for sale.' });
+    }
 
-      const price = listing.price_per_unit;
+    await dbHelpers.buyRobotOilFromMarket(buyerId, listing.listing_id, 1);
 
-      // 2) Check buyer wallet
-      const buyer = await dbGet(`SELECT wallet FROM economy WHERE userID = ?`, [buyerId]);
-      if (!buyer) return res.status(400).json({ error: 'Buyer not found in economy.' });
-      if ((buyer.wallet ?? 0) < price) {
-        return res.status(400).json({ error: 'Not enough ⚡ to buy 1 barrel.' });
-      }
+    const after = await dbHelpers.getBalances(buyerId);
+    const inv = await dbGet(
+      `SELECT quantity FROM inventory WHERE userID = ? AND itemID = ?`,
+      [buyerId, ROBOT_OIL_ITEM_ID]
+    );
 
-      db.serialize(() => {
-        // BEGIN IMMEDIATE to avoid race on the same listing
-        db.run('BEGIN IMMEDIATE');
-
-        // 3) Debit buyer
-        db.run(
-          `UPDATE economy SET wallet = wallet - ? WHERE userID = ?`,
-          [price, buyerId],
-          function (e1) {
-            if (e1) { db.run('ROLLBACK'); return res.status(500).json({ error: 'Failed to debit wallet.' }); }
-            if (this.changes !== 1) { db.run('ROLLBACK'); return res.status(400).json({ error: 'Wallet debit failed (user not found).' }); }
-
-            // 4) Credit seller
-            db.run(
-              `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
-              [price, listing.seller_id],
-              function (e2) {
-                if (e2) { db.run('ROLLBACK'); return res.status(500).json({ error: 'Failed to credit seller.' }); }
-                if (this.changes !== 1) { db.run('ROLLBACK'); return res.status(400).json({ error: 'Seller not found for credit.' }); }
-
-                // 5) Give buyer 1 oil
-                db.run(`
-                  INSERT INTO inventory (userID, itemID, quantity)
-                  VALUES (?, ?, 1)
-                  ON CONFLICT(userID, itemID) DO UPDATE SET quantity = quantity + 1
-                `, [buyerId, ROBOT_OIL_ITEM_ID], function (e3) {
-                  if (e3) { db.run('ROLLBACK'); return res.status(500).json({ error: 'Failed to add oil to inventory.' }); }
-
-                  // 6) Reduce or delete the listing (consume 1 unit)
-                  if (listing.quantity > 1) {
-                    db.run(
-                      `UPDATE robot_oil_market SET quantity = quantity - 1 WHERE listing_id = ?`,
-                      [listing.listing_id],
-                      function (e4) {
-                        if (e4) { db.run('ROLLBACK'); return res.status(500).json({ error: 'Failed to decrement listing.' }); }
-                        finalize();
-                      }
-                    );
-                  } else {
-                    db.run(
-                      `DELETE FROM robot_oil_market WHERE listing_id = ?`,
-                      [listing.listing_id],
-                      function (e4) {
-                        if (e4) { db.run('ROLLBACK'); return res.status(500).json({ error: 'Failed to delete listing.' }); }
-                        finalize();
-                      }
-                    );
-                  }
-
-                  function finalize() {
-                    // 7) History
-                    db.run(`
-                      INSERT INTO robot_oil_history (event_type, buyer_id, seller_id, quantity, price_per_unit, total_price)
-                      VALUES ('market_buy', ?, ?, 1, ?, ?)
-                    `, [buyerId, listing.seller_id, price, price], async function (e5) {
-                      if (e5) { db.run('ROLLBACK'); return res.status(500).json({ error: 'Failed to log history.' }); }
-
-                      db.run('COMMIT', async (e6) => {
-                        if (e6) { return res.status(500).json({ error: 'Commit failed.' }); }
-
-                        // Return fresh balances so the client can reflect immediately
-                        const after = await dbGet(`SELECT wallet FROM economy WHERE userID = ?`, [buyerId]);
-                        const inv = await dbGet(`SELECT quantity FROM inventory WHERE userID = ? AND itemID = ?`, [buyerId, ROBOT_OIL_ITEM_ID]);
-
-                        res.json({
-                          success: true,
-                          message: `✅ Bought 1 barrel for ⚡${price}.`,
-                          wallet: after?.wallet ?? null,
-                          oilQuantity: inv?.quantity ?? 0,
-                        });
-                      });
-                    });
-                  }
-                });
-              }
-            );
-          }
-        );
-      });
+    res.json({
+      success: true,
+      message: `✅ Bought 1 barrel for ⚡${listing.price_per_unit}.`,
+      balance: after.balance,
+      wallet: after.balance,
+      oilQuantity: inv?.quantity ?? 0,
     });
   } catch (error) {
     console.error('Error in /api/oil/market-buy:', error);
-    res.status(500).json({ error: 'Internal server error.' });
+    const message = error?.message || 'Internal server error.';
+    const statusCode = getClientErrorStatus(message);
+    res.status(statusCode).json({ error: message });
   }
 });
 
@@ -3368,36 +4754,12 @@ app.post('/api/oil/offer-sale', authenticateToken, async (req, res) => {
   }
 
   try {
-    // 1. Check if user has enough Robot Oil
-    const robotOil = await dbGet(`SELECT quantity FROM inventory WHERE userID = ? AND itemID = 88`, [userId]);
-
-    if (!robotOil || robotOil.quantity < quantity) {
-      return res.status(400).json({ error: 'Not enough Robot Oil in inventory.' });
-    }
-
-    db.serialize(() => {
-      db.run('BEGIN TRANSACTION');
-
-      // 2. Subtract Robot Oil from inventory
-      db.run(`UPDATE inventory SET quantity = quantity - ? WHERE userID = ? AND itemID = 88`, [quantity, userId]);
-
-      // 3. Remove rows where quantity hits 0
-      db.run(`DELETE FROM inventory WHERE userID = ? AND itemID = 88 AND quantity <= 0`, [userId]);
-
-      // 4. Insert listing into market
-      db.run(`
-        INSERT INTO robot_oil_market (seller_id, quantity, price_per_unit)
-        VALUES (?, ?, ?)
-      `, [userId, quantity, price_per_unit]);
-
-      db.run('COMMIT');
-
-      res.json({ success: true, message: `Listed ${quantity} Robot Oil for ⚡${price_per_unit} each!` });
-    });
-
+    const message = await dbHelpers.listRobotOilForSale(userId, quantity, price_per_unit);
+    res.json({ success: true, message });
   } catch (error) {
     console.error('Error in /api/oil/offer-sale:', error);
-    res.status(500).json({ error: 'Internal server error.' });
+    const message = error?.message || 'Internal server error.';
+    res.status(getClientErrorStatus(message, { allowNotFound: false })).json({ error: message });
   }
 });
 
@@ -3410,68 +4772,25 @@ app.post('/api/oil/cancel', authenticateToken, async (req, res) => {
   }
 
   try {
-    // Fetch the listing
-    db.get(`
-      SELECT * FROM robot_oil_market WHERE listing_id = ?
-    `, [listing_id], (err, listing) => {
-      if (err) {
-        console.error('Database error fetching listing:', err);
-        return res.status(500).json({ error: 'Database error.' });
-      }
+    const listing = await dbGet(`SELECT * FROM robot_oil_market WHERE listing_id = ?`, [listing_id]);
+    if (!listing) {
+      return res.status(404).json({ error: 'Listing not found.' });
+    }
+    if (listing.type !== type) {
+      return res.status(400).json({ error: 'Listing type mismatch.' });
+    }
 
-      if (!listing) {
-        return res.status(404).json({ error: 'Listing not found.' });
-      }
-
-      if (listing.seller_id !== userId) {
-        return res.status(403).json({ error: 'You do not own this listing.' });
-      }
-
-      db.serialize(() => {
-        db.run('BEGIN TRANSACTION');
-
-        if (type === 'sale') {
-          // Return oil to user
-          db.run(`
-            INSERT INTO inventory (userID, itemID, quantity)
-            VALUES (?, ?, ?)
-            ON CONFLICT(userID, itemID) DO UPDATE SET quantity = quantity + excluded.quantity
-          `, [userId, 88, listing.quantity]);
-        } else if (type === 'purchase') {
-          // Refund Volts
-          const refundAmount = listing.quantity * listing.price_per_unit;
-
-          db.run(`
-            UPDATE economy SET wallet = wallet + ? WHERE userID = ?
-          `, [refundAmount, userId]);
-        } else {
-          db.run('ROLLBACK');
-          return res.status(400).json({ error: 'Invalid listing type.' });
-        }
-
-        // Delete the listing
-        db.run(`
-          DELETE FROM robot_oil_market WHERE listing_id = ?
-        `, [listing_id]);
-
-        // Log to history
-        db.run(`
-          INSERT INTO robot_oil_history (event_type, buyer_id, seller_id, quantity, price_per_unit, total_price)
-          VALUES ('cancel', ?, ?, ?, ?, ?)
-        `, [userId, userId, listing.quantity, listing.price_per_unit, listing.quantity * listing.price_per_unit]);
-
-        db.run('COMMIT');
-        res.json({ success: true, message: `✅ Listing canceled and refund issued.` });
-      });
-    });
-
+    const message = await dbHelpers.cancelRobotOilListing(userId, listing_id);
+    res.json({ success: true, message });
   } catch (error) {
     console.error('Error canceling listing:', error);
-    res.status(500).json({ error: 'Internal server error.' });
+    const message = error?.message || 'Internal server error.';
+    const statusCode = getClientErrorStatus(message);
+    res.status(statusCode).json({ error: message });
   }
 });
 
-app.post('/api/oil/offer-buy', authenticateToken, (req, res) => {
+app.post('/api/oil/offer-buy', authenticateToken, async (req, res) => {
   const buyerId = req.user.userId;
   const { quantity, price_per_unit } = req.body;
 
@@ -3479,113 +4798,71 @@ app.post('/api/oil/offer-buy', authenticateToken, (req, res) => {
     return res.status(400).json({ error: 'Invalid quantity or price.' });
   }
 
-  const totalCost = quantity * price_per_unit;
-
-  db.serialize(() => {
-    db.get(`SELECT wallet FROM economy WHERE userID = ?`, [buyerId], (err, user) => {
-      if (err) {
-        console.error('❌ Database error:', err);
-        return res.status(500).json({ error: 'Database error.' });
-      }
-
-      if (!user || user.wallet < totalCost) {
-        return res.status(400).json({ error: 'Not enough ⚡ to create purchase offer.' });
-      }
-
-      db.run('BEGIN TRANSACTION');
-
-      db.run(`UPDATE economy SET wallet = wallet - ? WHERE userID = ?`, [totalCost, buyerId]);
-
-      db.run(`
-        INSERT INTO robot_oil_market (seller_id, quantity, price_per_unit, type)
-        VALUES (?, ?, ?, 'purchase')
-      `, [buyerId, quantity, price_per_unit], function (insertErr) {
-        if (insertErr) {
-          console.error('❌ Failed to insert purchase offer:', insertErr);
-          db.run('ROLLBACK');
-          return res.status(500).json({ error: 'Failed to insert offer.' });
-        }
-
-        db.run('COMMIT');
-        res.json({ success: true, message: `✅ Bid placed for ⚡${price_per_unit} x ${quantity}` });
-      });
-    });
-  });
+  try {
+    const message = await dbHelpers.placeRobotOilBid(buyerId, quantity, price_per_unit);
+    res.json({ success: true, message });
+  } catch (error) {
+    console.error('❌ Failed to create purchase offer:', error);
+    const message = error?.message || 'Failed to insert offer.';
+    res.status(getClientErrorStatus(message, { allowNotFound: false })).json({ error: message });
+  }
 });
 
 app.post('/api/oil/market-sell', authenticateToken, async (req, res) => {
   const sellerId = req.user.userId;
 
   try {
-    // 1. Find the highest buy offer
-    db.get(`
-      SELECT * FROM robot_oil_market 
-      WHERE type = 'purchase' 
-      ORDER BY price_per_unit DESC 
-      LIMIT 1
-    `, async (err, offer) => {
-      if (err) {
-        console.error('Error fetching highest buy offer:', err);
-        return res.status(500).json({ error: 'Database error.' });
-      }
+    const offer = await dbGet(
+      `SELECT * FROM robot_oil_market
+       WHERE type = 'purchase'
+       ORDER BY price_per_unit DESC, created_at ASC
+       LIMIT 1`
+    );
 
-      if (!offer) {
-        return res.status(404).json({ error: 'No buy offers available.' });
-      }
+    if (!offer) {
+      return res.status(404).json({ error: 'No buy offers available.' });
+    }
 
-      const buyerId = offer.seller_id;
-      const price = offer.price_per_unit;
-      const availableQuantity = offer.quantity;
-
-      // 2. Check seller inventory
-      const robotOil = await dbGet(`SELECT quantity FROM inventory WHERE userID = ? AND itemID = 88`, [sellerId]);
-      if (!robotOil || robotOil.quantity < 1) {
-        return res.status(400).json({ error: 'Not enough Robot Oil to sell.' });
-      }
-
-      db.serialize(() => {
-        db.run('BEGIN TRANSACTION');
-
-        // 3. Transfer 1 Robot Oil from seller
-        db.run(`UPDATE inventory SET quantity = quantity - 1 WHERE userID = ? AND itemID = 88`, [sellerId]);
-        db.run(`DELETE FROM inventory WHERE userID = ? AND itemID = 88 AND quantity <= 0`, [sellerId]);
-
-        // 4. Transfer 1 Robot Oil to buyer
-        db.run(`
-          INSERT INTO inventory (userID, itemID, quantity)
-          VALUES (?, 88, 1)
-          ON CONFLICT(userID, itemID) DO UPDATE SET quantity = quantity + 1
-        `, [buyerId]);
-
-        // 5. Pay seller
-        db.run(`UPDATE economy SET wallet = wallet + ? WHERE userID = ?`, [price, sellerId]);
-
-        // 6. Update or remove the buy listing
-        if (availableQuantity > 1) {
-          db.run(`UPDATE robot_oil_market SET quantity = quantity - 1 WHERE listing_id = ?`, [offer.listing_id]);
-        } else {
-          db.run(`DELETE FROM robot_oil_market WHERE listing_id = ?`, [offer.listing_id]);
-        }
-
-        // 7. Log it
-        db.run(`
-          INSERT INTO robot_oil_history (event_type, buyer_id, seller_id, quantity, price_per_unit, total_price)
-          VALUES ('market_sell', ?, ?, 1, ?, ?)
-        `, [buyerId, sellerId, price, price]);
-
-        db.run('COMMIT');
-        res.json({ success: true, message: `✅ Sold 1 barrel for ⚡${price}.` });
-      });
-    });
+    await dbHelpers.buyRobotOilFromMarket(sellerId, offer.listing_id, 1);
+    res.json({ success: true, message: `✅ Sold 1 barrel for ⚡${offer.price_per_unit}.` });
   } catch (error) {
     console.error('Error in /api/oil/market-sell:', error);
-    res.status(500).json({ error: 'Internal server error.' });
+    const message = error?.message || 'Internal server error.';
+    const statusCode = getClientErrorStatus(message);
+    res.status(statusCode).json({ error: message });
   }
 });
 
 
 
+if (!TEST_MODE) {
+  setInterval(() => {
+    refreshCanonicalExportFiles().catch((error) => {
+      console.error('Background canonical export refresh failed:', error);
+    });
+  }, CANONICAL_EXPORT_REFRESH_MS);
+
+  refreshCanonicalExportFiles({ force: true }).catch((error) => {
+    console.error('Initial canonical export refresh failed:', error);
+  });
+
+  setInterval(() => {
+    refreshNodeNetworkCache().catch((error) => {
+      console.error('Background node network refresh failed:', error);
+    });
+  }, NODE_NETWORK_POLL_MS);
+
+  refreshNodeNetworkCache().catch((error) => {
+    console.error('Initial node network refresh failed:', error);
+  });
+}
+
+dbHelpers.ensureRecoverableProjectionMaintenance().catch((error) => {
+  console.error('Initial recoverable projection maintenance failed:', error);
+});
+
 // Start the server
-app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+app.listen(PORT, HOST, () => {
+  const prettyHost = HOST === '0.0.0.0' ? '0.0.0.0 (LAN enabled)' : HOST;
+  console.log(`Server running at http://${prettyHost}:${PORT}`);
 });

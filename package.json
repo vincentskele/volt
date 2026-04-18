@@ -4,7 +4,17 @@
   "main": "index.js",
   "scripts": {
     "start": "concurrently \"node bot.js\" \"node website/server.js\"",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "ledger:verify": "node scripts/ledger-cli.js verify",
+    "events:verify": "node scripts/ledger-cli.js verify-events",
+    "events:snapshot": "node scripts/ledger-cli.js snapshot-events",
+    "ledger:migrate": "node scripts/ledger-cli.js migrate",
+    "ledger:replay": "node scripts/ledger-cli.js replay",
+    "ledger:export": "node scripts/ledger-cli.js export",
+    "events:export": "node scripts/ledger-cli.js export-events",
+    "consensus:test-tamper": "node scripts/consensus-tamper-test.js",
+    "smoke:test:flows": "node scripts/flow-smoke-test.js",
+    "smoke:test:ancillary": "node scripts/ancillary-db-smoke-test.js"
   },
   "keywords": [],
   "author": "",

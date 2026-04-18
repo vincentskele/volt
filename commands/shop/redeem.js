@@ -127,7 +127,7 @@ module.exports = {
       }
       const beforeQty = ownedItem.quantity;
       const afterQty = Math.max(beforeQty - 1, 0);
-      const commandText = `/redeem item="${itemName}" wallet="${walletAddress}"`;
+      const commandText = `/redeem item="${itemName}" wallet="[redacted]"`;
 
       try {
         await logItemRedemption({

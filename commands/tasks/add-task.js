@@ -56,9 +56,6 @@ module.exports = {
         throw new Error('Job could not be added to the database.');
       }
 
-      // Renumber jobs to maintain sequential IDs
-      await renumberJobs();
-
       return interaction.reply({
         content: `✅ **Job Added Successfully!**
 **Job ID:** ${result.jobID}
@@ -75,24 +72,3 @@ module.exports = {
     }
   },
 };
-
-// Helper function to renumber jobs in the database
-async function renumberJobs() {
-  try {
-    const jobs = await db.getAllJobs(); // Fetch all jobs from the database
-    if (!jobs || jobs.length === 0) return;
-
-    // Sort jobs by current ID
-    jobs.sort((a, b) => a.jobID - b.jobID);
-
-    // Reassign IDs starting from 1
-    for (let i = 0; i < jobs.length; i++) {
-      const newID = i + 1;
-      if (jobs[i].jobID !== newID) {
-        await db.updateJobID(jobs[i].jobID, newID); // Update the job ID in the database
-      }
-    }
-  } catch (error) {
-    console.error('Error renumbering jobs:', error);
-  }
-}

@@ -356,6 +356,119 @@
   <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
 </div>
 
+<!-- VoltScan Section -->
+<div id="voltScanSection" class="content" style="display: none;">
+  <div class="voltscan-hero">
+    <div class="voltscan-hero-copy">
+      <div class="voltscan-kicker">VOLTSCAN</div>
+      <h2>Explore The Volt Chain</h2>
+      <p>Follow every transaction and system event, including giveaways, raffles, trivia, shop activity, and admin actions.</p>
+      <div id="voltscanAgreementBar" class="voltscan-network-badges">
+        <span id="voltscanAgreementBadge" class="voltscan-network-badge warn">CHECKING CONSENSUS</span>
+      </div>
+    </div>
+    <div class="voltscan-head-card">
+      <div class="voltscan-head-label">Chain Head</div>
+      <div id="voltscanHeadHash" class="voltscan-head-hash">Loading...</div>
+      <div id="voltscanHeadMeta" class="voltscan-head-meta">Preparing ledger view...</div>
+    </div>
+  </div>
+
+  <div class="voltscan-tabs" role="tablist" aria-label="VoltScan panels">
+    <a id="voltscanTabChain" class="voltscan-tab is-active" href="#voltscan" data-tab="chain" role="tab" aria-selected="true">Chain</a>
+    <a id="voltscanTabNetwork" class="voltscan-tab" href="#voltscan/network" data-tab="network" role="tab" aria-selected="false">Network</a>
+    <a id="voltscanTabNodeKey" class="voltscan-tab" href="#voltscan/node-key" data-tab="node-key" role="tab" aria-selected="false">Node Key</a>
+  </div>
+
+  <div id="voltscanPanelChain" class="voltscan-panel is-active" data-panel="chain" role="tabpanel">
+    <div class="voltscan-toolbar">
+      <label class="voltscan-filter">
+        <span>Search</span>
+        <input id="voltscanSearchInput" class="profile-input voltscan-input" type="text" placeholder="id, user, type, event, metadata" />
+      </label>
+      <label class="voltscan-filter">
+        <span>Type</span>
+        <select id="voltscanTypeSelect" class="profile-input voltscan-input">
+          <option value="">All Types</option>
+          <option value="transaction">Transactions</option>
+          <option value="trivia.ask">Trivia Asked</option>
+          <option value="giveaways.create">Giveaway Created</option>
+          <option value="title_giveaways.create">Title Giveaway Created</option>
+          <option value="raffles.create">Raffle Created</option>
+          <option value="shop.create_item">Shop Item Created</option>
+          <option value="reward">Reward</option>
+          <option value="transfer">Transfer</option>
+          <option value="deposit">Deposit</option>
+          <option value="withdraw">Withdraw</option>
+          <option value="shop_purchase">Shop Purchase</option>
+          <option value="wager">Wager</option>
+          <option value="raffle_reward">Raffle Reward</option>
+          <option value="quest_reward">Quest Reward</option>
+          <option value="admin">Admin</option>
+        </select>
+      </label>
+      <label class="voltscan-filter">
+        <span>User ID</span>
+        <input id="voltscanUserInput" class="profile-input voltscan-input" type="text" placeholder="Filter by actor, sender, recipient" />
+      </label>
+      <div class="voltscan-actions">
+        <button id="voltscanApplyButton" class="btn text-sm font-bold"><span class="btn-icon-content"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span>Search</span></span></button>
+        <button id="voltscanResetButton" class="btn text-sm font-bold"><span class="btn-icon-content"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i><span>Reset</span></span></button>
+      </div>
+    </div>
+
+    <div id="voltscanSummaryGrid" class="voltscan-summary-grid"></div>
+    <div id="voltscanStatus" class="profile-status voltscan-status">Loading chain activity...</div>
+    <div id="voltscanTransactionList" class="voltscan-list"></div>
+    <div class="voltscan-footer">
+      <button id="voltscanLoadMoreButton" class="btn text-sm font-bold" style="display: none;"><span class="btn-icon-content"><i class="fa-solid fa-arrow-down" aria-hidden="true"></i><span>Load More</span></span></button>
+    </div>
+  </div>
+
+  <div id="voltscanPanelNetwork" class="voltscan-panel" data-panel="network" role="tabpanel" hidden>
+    <div class="voltscan-network-shell">
+      <div class="voltscan-network-header">
+        <div>
+          <div class="voltscan-kicker">NODE NETWORK</div>
+          <h3>Mirror Health</h3>
+        </div>
+        <div id="voltscanNetworkMeta" class="voltscan-head-meta">Checking mirrors...</div>
+      </div>
+      <div id="voltscanNetworkGrid" class="voltscan-summary-grid voltscan-network-grid"></div>
+      <div id="voltscanNetworkList" class="voltscan-network-list"></div>
+    </div>
+  </div>
+
+  <div id="voltscanPanelNodeKey" class="voltscan-panel" data-panel="node-key" role="tabpanel" hidden>
+    <div class="voltscan-network-shell">
+      <div class="voltscan-network-header">
+        <div>
+          <div class="voltscan-kicker">NODE AUTH</div>
+          <h3>Operator Key</h3>
+        </div>
+        <div id="voltscanNodeKeyMeta" class="voltscan-head-meta">Check your eligibility and issue a node key for first boot.</div>
+      </div>
+      <div id="voltscanNodeKeyCard" class="voltscan-nodekey-card">
+        <div class="voltscan-nodekey-copy">
+          <h4>Generate a holder-bound node key</h4>
+          <p>This key is tied to your logged-in Discord account and Robo-Check holder identity. Paste it into <code>volt-node</code> on first start and the node will save it into its local <code>.env</code>.</p>
+          <div class="voltscan-actions">
+            <button id="voltscanGenerateNodeKeyButton" class="btn text-sm font-bold"><span class="btn-icon-content"><i class="fa-solid fa-key" aria-hidden="true"></i><span>Generate Node Key</span></span></button>
+          </div>
+        </div>
+        <div id="voltscanNodeKeyStatus" class="voltscan-nodekey-status">
+          <div class="voltscan-mini-card">
+            <div class="voltscan-mini-label">Eligibility</div>
+            <div class="voltscan-mini-value">Checking account status...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
+</div>
+
 
 
   <!-- Shop Section -->
