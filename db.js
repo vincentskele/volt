@@ -373,11 +373,28 @@ db.run(`
         prize TEXT NOT NULL,
         winners INTEGER NOT NULL,
         giveaway_name TEXT NOT NULL DEFAULT 'Untitled Giveaway',
-        repeat INTEGER DEFAULT 0
+        repeat INTEGER DEFAULT 0,
+        is_completed INTEGER DEFAULT 0
       )
     `, (err) => {
       if (err) console.error('❌ Error creating giveaways table:', err);
       else console.log('✅ Giveaways table is ready.');
+    });
+
+    db.all('PRAGMA table_info(giveaways)', (err, columns) => {
+      if (err) {
+        console.error('❌ Failed to inspect giveaways table:', err);
+        return;
+      }
+
+      const hasIsCompleted = (columns || []).some(col => col.name === 'is_completed');
+      if (!hasIsCompleted) {
+        console.log("➕ Adding missing 'is_completed' column to giveaways...");
+        db.run('ALTER TABLE giveaways ADD COLUMN is_completed INTEGER DEFAULT 0', (alterErr) => {
+          if (alterErr) console.error("❌ Error adding 'is_completed' to giveaways:", alterErr);
+          else console.log("✅ 'is_completed' column added to giveaways.");
+        });
+      }
     });
 
     // Giveaway Entries
@@ -1698,8 +1715,8 @@ function logItemRedemption({
 async function saveGiveaway(discordMessageId, channelId, endTime, prize, winners, name, repeat) {
   return new Promise((resolve, reject) => {
     db.run(
-      `INSERT INTO giveaways (message_id, channel_id, end_time, prize, winners, giveaway_name, repeat)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO giveaways (message_id, channel_id, end_time, prize, winners, giveaway_name, repeat, is_completed)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
       [discordMessageId, channelId, endTime, prize, winners, name, repeat],
       function(err) {
         if (err) return reject(err);
@@ -1716,7 +1733,7 @@ async function saveGiveaway(discordMessageId, channelId, endTime, prize, winners
 async function getActiveGiveaways() {
   return new Promise((resolve, reject) => {
     db.all(
-      'SELECT * FROM giveaways WHERE end_time > ?',
+      'SELECT * FROM giveaways WHERE end_time > ? AND is_completed = 0',
       [Date.now()],
       (err, rows) => {
         if (err) reject(err);
@@ -1844,6 +1861,24 @@ async function clearGiveawayEntries(giveawayId) {
       function (err) {
         if (err) reject(err);
         else resolve();
+      }
+    );
+  });
+}
+
+/**
+ * Prevent double-awarding.
+ * Returns true if it successfully marked the giveaway complete,
+ * false if it was already completed.
+ */
+async function markGiveawayCompleted(giveawayId) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'UPDATE giveaways SET is_completed = 1 WHERE id = ? AND is_completed = 0',
+      [giveawayId],
+      function (err) {
+        if (err) return reject(err);
+        resolve(this.changes === 1);
       }
     );
   });
@@ -3303,6 +3338,7 @@ module.exports = {
   getGiveawayEntries,
   removeGiveawayEntry,
   clearGiveawayEntries,
+  markGiveawayCompleted,
 
 
   // Title Giveaway

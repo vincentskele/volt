@@ -3,6 +3,8 @@ const path = require('path');
 const fs = require('fs');
 const {
   saveGiveaway,
+  deleteGiveaway,
+  markGiveawayCompleted,
   updateWallet,
   getPrizeShopItemByName,
   getAllShopItems,
@@ -134,6 +136,12 @@ module.exports = {
       // Timer to conclude the giveaway after durationMs.
       setTimeout(async () => {
         try {
+          const locked = await markGiveawayCompleted(giveawayId);
+          if (!locked) {
+            console.warn(`[WARN] Giveaway ${giveawayId} already completed. Skipping duplicate command timer.`);
+            return;
+          }
+
           const participantIDs = await getGiveawayEntries(giveawayId);
           console.log(`[INFO] Found ${participantIDs.length} entries for giveaway "${giveawayName}" (ID: ${giveawayId})`);
 
@@ -177,6 +185,9 @@ module.exports = {
         } catch (error) {
           console.error(`[ERROR] Error concluding giveaway "${giveawayName}":`, error);
         } finally {
+          await deleteGiveaway(giveawayMessage.id).catch((cleanupError) => {
+            console.error(`[ERROR] Failed to delete giveaway record for "${giveawayName}":`, cleanupError);
+          });
           if (repeatCount > 0) {
             startGiveaway(repeatCount - 1);
           }

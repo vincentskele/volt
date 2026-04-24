@@ -42,6 +42,7 @@ const {
   getActiveGiveaways,
   getGiveawayEntries,
   deleteGiveaway,
+  markGiveawayCompleted,
   updateWallet,
   updateDaoCallRewardTimestamp,
   recordDaoCallAttendance,
@@ -339,6 +340,12 @@ client.on('messageReactionRemove', async (reaction, user) => {
 async function concludeGiveaway(giveaway) {
   try {
     console.log(`⏳ DEBUG: Starting conclusion for giveaway ${giveaway.id}`);
+    const locked = await markGiveawayCompleted(giveaway.id);
+    if (!locked) {
+      console.warn(`[WARN] Giveaway ${giveaway.id} already completed. Skipping.`);
+      return;
+    }
+
     const giveawayName = giveaway.giveaway_name || giveaway.name || 'Giveaway';
     const webUiChannelId = process.env.WEBUI_GIVEAWAY_CHANNELID;
     const messageId = String(giveaway.message_id || '');
