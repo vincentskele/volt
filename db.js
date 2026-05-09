@@ -392,7 +392,17 @@ db.run(`
         console.log("➕ Adding missing 'is_completed' column to giveaways...");
         db.run('ALTER TABLE giveaways ADD COLUMN is_completed INTEGER DEFAULT 0', (alterErr) => {
           if (alterErr) console.error("❌ Error adding 'is_completed' to giveaways:", alterErr);
-          else console.log("✅ 'is_completed' column added to giveaways.");
+          else {
+            console.log("✅ 'is_completed' column added to giveaways.");
+            db.run(
+              'UPDATE giveaways SET is_completed = 1 WHERE end_time <= ?',
+              [Date.now()],
+              (backfillErr) => {
+                if (backfillErr) console.error("❌ Error marking old giveaways completed:", backfillErr);
+                else console.log("✅ Existing expired giveaways marked completed.");
+              }
+            );
+          }
         });
       }
     });
@@ -1735,6 +1745,19 @@ async function getActiveGiveaways() {
     db.all(
       'SELECT * FROM giveaways WHERE end_time > ? AND is_completed = 0',
       [Date.now()],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      }
+    );
+  });
+}
+
+// Get all giveaways that have not been completed yet, including expired ones.
+async function getPendingGiveaways() {
+  return new Promise((resolve, reject) => {
+    db.all(
+      'SELECT * FROM giveaways WHERE is_completed = 0',
       (err, rows) => {
         if (err) reject(err);
         else resolve(rows);
@@ -3332,6 +3355,7 @@ module.exports = {
   initializeDatabase,
   saveGiveaway,
   getActiveGiveaways,
+  getPendingGiveaways,
   deleteGiveaway,
   getGiveawayByMessageId,
   addGiveawayEntry,

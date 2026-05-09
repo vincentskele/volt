@@ -16,6 +16,7 @@ module.exports = {
         .setName('item')
         .setDescription('The name of the item to transfer.')
         .setRequired(true)
+        .setAutocomplete(true)
     )
     .addIntegerOption(option =>
       option
@@ -40,9 +41,9 @@ module.exports = {
 
     try {
       // 1. Look up the item details from the shop.
-      const shopItem = await db.getShopItemByName(itemName);
+      const shopItem = await db.getAnyShopItemByName(itemName);
       if (!shopItem) {
-        return interaction.reply({ content: `Item "${itemName}" does not exist in the shop.`, ephemeral: true });
+        return interaction.reply({ content: `Item "${itemName}" does not exist.`, ephemeral: true });
       }
 
       // 2. Check the sender's inventory for that item using the raw SQLite instance.
@@ -103,6 +104,28 @@ module.exports = {
         content: `Error transferring item: ${error.message}`,
         ephemeral: true,
       });
+    }
+  },
+
+  async autocomplete(interaction) {
+    const userId = interaction.user.id;
+    const focusedValue = interaction.options.getFocused() || '';
+    const normalizedFocusedValue = focusedValue.toLowerCase();
+
+    try {
+      const inventory = await db.getInventory(userId);
+      const filteredItems = inventory
+        .filter(item => item.name.toLowerCase().includes(normalizedFocusedValue))
+        .slice(0, 25)
+        .map(item => ({
+          name: `${item.name} (x${item.quantity})`.slice(0, 100),
+          value: item.name,
+        }));
+
+      return interaction.respond(filteredItems);
+    } catch (error) {
+      console.error('Error fetching inventory for transfer-item autocomplete:', error);
+      return interaction.respond([]);
     }
   },
 };

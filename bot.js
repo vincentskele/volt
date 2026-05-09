@@ -39,7 +39,7 @@ console.error = function (...args) {
 
 // Import the required database functions (adjust to your actual db.js exports).
 const {
-  getActiveGiveaways,
+  getPendingGiveaways,
   getGiveawayEntries,
   deleteGiveaway,
   markGiveawayCompleted,
@@ -340,6 +340,8 @@ client.on('messageReactionRemove', async (reaction, user) => {
 async function concludeGiveaway(giveaway) {
   try {
     console.log(`⏳ DEBUG: Starting conclusion for giveaway ${giveaway.id}`);
+    await syncGiveawayEntries(giveaway);
+
     const locked = await markGiveawayCompleted(giveaway.id);
     if (!locked) {
       console.warn(`[WARN] Giveaway ${giveaway.id} already completed. Skipping.`);
@@ -385,16 +387,18 @@ async function concludeGiveaway(giveaway) {
 
     console.log(`🏆 DEBUG: Winners selected for giveaway ${giveaway.id}:`, winners);
 
-    // ✅ Award prizes
+    // ✅ Award prizes before announcing. A Discord outage should not prevent the prize award.
     for (const winnerId of winners) {
       if (!isNaN(giveaway.prize)) {
         const prizeAmount = parseInt(giveaway.prize, 10);
+        await updateWallet(winnerId, prizeAmount);
         if (channel) {
           await channel.send(
             `🎉 Congrats <@${winnerId}>! You won **${giveawayName}** and received **${prizeAmount}${points.symbol}**.`
-          );
+          ).catch((announceError) => {
+            console.error(`⚠️ Prize awarded, but failed to announce giveaway ${giveaway.id} winner ${winnerId}:`, announceError);
+          });
         }
-        await updateWallet(winnerId, prizeAmount);
       } else {
         const shopItem = await getPrizeShopItemByName(giveaway.prize);
         if (!shopItem || !shopItem.itemID) {
@@ -404,12 +408,14 @@ async function concludeGiveaway(giveaway) {
           }
           continue;
         }
+        await addItemToInventory(winnerId, shopItem.itemID);
         if (channel) {
           await channel.send(
             `🎉 Congrats <@${winnerId}>! You won **${giveawayName}** and received **${shopItem.name}**.`
-          );
+          ).catch((announceError) => {
+            console.error(`⚠️ Prize awarded, but failed to announce giveaway ${giveaway.id} winner ${winnerId}:`, announceError);
+          });
         }
-        await addItemToInventory(winnerId, shopItem.itemID);
       }
     }
 
@@ -461,8 +467,8 @@ const { concludeRaffle } = require('./commands/giveaway/raffle.js');
 client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
   
-  const activeGiveaways = await getActiveGiveaways();
-  console.log(`🚦 Restoring ${activeGiveaways.length} active giveaways...`);
+  const activeGiveaways = await getPendingGiveaways();
+  console.log(`🚦 Restoring ${activeGiveaways.length} pending giveaways...`);
 
   for (const giveaway of activeGiveaways) {
     await syncGiveawayEntries(giveaway);
@@ -590,7 +596,7 @@ client.once('ready', async () => {
 setInterval(async () => {
   try {
     const [activeGiveaways, activeRaffles] = await Promise.all([
-      getActiveGiveaways(),
+      getPendingGiveaways(),
       getActiveRaffles(),
     ]);
 

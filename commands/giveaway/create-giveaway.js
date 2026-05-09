@@ -165,9 +165,12 @@ module.exports = {
           if (!isNaN(prizeInput)) {
             const prizeAmount = parseInt(prizeInput, 10);
             for (const winnerId of selectedWinners) {
-              await interaction.channel.send(`🎉 Congrats <@${winnerId}>! You won **${giveawayName}** and received **${prizeAmount}${POINTS_SYMBOL}**.`);
               await updateWallet(winnerId, prizeAmount);
               console.log(`[SUCCESS] Awarded ${prizeAmount}${POINTS_SYMBOL} to ${winnerId}`);
+              await interaction.channel.send(`🎉 Congrats <@${winnerId}>! You won **${giveawayName}** and received **${prizeAmount}${POINTS_SYMBOL}**.`)
+                .catch((announceError) => {
+                  console.error(`[WARN] Prize awarded, but failed to announce giveaway "${giveawayName}" winner ${winnerId}:`, announceError);
+                });
             }
           } else {
             const shopItem = await getPrizeShopItemByName(prizeInput);
@@ -176,9 +179,12 @@ module.exports = {
               await interaction.channel.send(`Error: Shop item "**${prizeInput}**" not found. Prize distribution failed.`);
             } else {
               for (const winnerId of selectedWinners) {
-                await interaction.channel.send(`🎉 Congrats <@${winnerId}>! You won **${giveawayName}** and received **${shopItem.name}**.`);
                 await addItemToInventory(winnerId, shopItem.itemID);
                 console.log(`[SUCCESS] Added "${shopItem.name}" to ${winnerId}`);
+                await interaction.channel.send(`🎉 Congrats <@${winnerId}>! You won **${giveawayName}** and received **${shopItem.name}**.`)
+                  .catch((announceError) => {
+                    console.error(`[WARN] Prize awarded, but failed to announce giveaway "${giveawayName}" winner ${winnerId}:`, announceError);
+                  });
               }
             }
           }
