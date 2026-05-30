@@ -233,9 +233,11 @@ async function concludeRaffle(raffleId) {
     console.log(`🎟️ Selected ${winners.length} winners from ${entries.length} total entries`);
 
     // Award prizes
+    let awardedPrizeLabel = raffle.prize;
     if (!isNaN(raffle.prize)) {
       // Prize is currency
       const prizeAmount = parseInt(raffle.prize, 10);
+      awardedPrizeLabel = formatCurrency(prizeAmount);
       for (const winnerId of winners) {
         await db.updateWallet(winnerId, prizeAmount);
         console.log(`💰 User ${winnerId} won ${prizeAmount} coins`);
@@ -254,6 +256,7 @@ async function concludeRaffle(raffleId) {
         }
         return;
       }
+      awardedPrizeLabel = shopItem.name;
       
       // Award the item to winners
       for (const winnerId of winners) {
@@ -290,7 +293,12 @@ try {
     try {
       const channel = await client.channels.fetch(raffle.channel_id);
       const winnerMentions = winners.map(id => `<@${id}>`).join(', ');
-      await channel.send(`🎉 Congratulations to the winners: ${winnerMentions}!`);
+      const winnerLabel = winners.length === 1 ? 'Winner' : 'Winners';
+      await channel.send(
+        `🎉 The **${raffle.name}** raffle has ended!\n` +
+        `${winnerLabel}: ${winnerMentions}\n` +
+        `Prize: **${awardedPrizeLabel}**`
+      );
     } catch (err) {
       console.error('❌ Could not announce winners:', err);
     }
