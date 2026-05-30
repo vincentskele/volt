@@ -47,6 +47,7 @@ const {
   updateDaoCallRewardTimestamp,
   recordDaoCallAttendance,
   getActiveRaffles,
+  getPendingRaffles,
   getPrizeShopItemByName,
   addItemToInventory,
   getGiveawayByMessageId,
@@ -479,8 +480,8 @@ client.once('ready', async () => {
 client.once('ready', async () => {
   console.log('🔄 Checking active raffles on startup...');
 
-  const activeRaffles = await getActiveRaffles();
-  console.log(`🔄 Restoring ${activeRaffles.length} active raffles...`);
+  const activeRaffles = await getPendingRaffles();
+  console.log(`🔄 Restoring ${activeRaffles.length} pending raffles...`);
 
   for (const raffle of activeRaffles) {
     scheduleRaffleConclusion(raffle, 'startup');
@@ -597,7 +598,7 @@ setInterval(async () => {
   try {
     const [activeGiveaways, activeRaffles] = await Promise.all([
       getPendingGiveaways(),
-      getActiveRaffles(),
+      getPendingRaffles(),
     ]);
 
     for (const giveaway of activeGiveaways) {

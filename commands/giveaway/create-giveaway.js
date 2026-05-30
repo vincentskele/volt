@@ -3,13 +3,8 @@ const path = require('path');
 const fs = require('fs');
 const {
   saveGiveaway,
-  deleteGiveaway,
-  markGiveawayCompleted,
-  updateWallet,
   getPrizeShopItemByName,
   getAllShopItems,
-  addItemToInventory,
-  getGiveawayEntries,
 } = require('../../db'); 
 require('dotenv').config();
 
@@ -133,72 +128,7 @@ module.exports = {
       // Add a reaction for entries.
       await giveawayMessage.react('🎉');
 
-      // Timer to conclude the giveaway after durationMs.
-      setTimeout(async () => {
-        try {
-          const locked = await markGiveawayCompleted(giveawayId);
-          if (!locked) {
-            console.warn(`[WARN] Giveaway ${giveawayId} already completed. Skipping duplicate command timer.`);
-            return;
-          }
-
-          const participantIDs = await getGiveawayEntries(giveawayId);
-          console.log(`[INFO] Found ${participantIDs.length} entries for giveaway "${giveawayName}" (ID: ${giveawayId})`);
-
-          if (participantIDs.length === 0) {
-            await interaction.channel.send(`Giveaway "${giveawayName}" ended with no valid participants.`);
-            return;
-          }
-
-          // Randomly select winners.
-          const pool = [...participantIDs];
-          const selectedWinners = [];
-          while (selectedWinners.length < Math.min(winners, pool.length)) {
-            const randomIndex = Math.floor(Math.random() * pool.length);
-            const winnerId = pool.splice(randomIndex, 1)[0];
-            selectedWinners.push(winnerId);
-          }
-
-          console.log(`[INFO] Winners selected for "${giveawayName}": ${selectedWinners.join(', ')}`);
-
-          // Award prizes based on prize type.
-          if (!isNaN(prizeInput)) {
-            const prizeAmount = parseInt(prizeInput, 10);
-            for (const winnerId of selectedWinners) {
-              await updateWallet(winnerId, prizeAmount);
-              console.log(`[SUCCESS] Awarded ${prizeAmount}${POINTS_SYMBOL} to ${winnerId}`);
-              await interaction.channel.send(`🎉 Congrats <@${winnerId}>! You won **${giveawayName}** and received **${prizeAmount}${POINTS_SYMBOL}**.`)
-                .catch((announceError) => {
-                  console.error(`[WARN] Prize awarded, but failed to announce giveaway "${giveawayName}" winner ${winnerId}:`, announceError);
-                });
-            }
-          } else {
-            const shopItem = await getPrizeShopItemByName(prizeInput);
-            if (!shopItem || !shopItem.itemID) {
-              console.error(`[ERROR] Shop item "${prizeInput}" not found or missing itemID.`);
-              await interaction.channel.send(`Error: Shop item "**${prizeInput}**" not found. Prize distribution failed.`);
-            } else {
-              for (const winnerId of selectedWinners) {
-                await addItemToInventory(winnerId, shopItem.itemID);
-                console.log(`[SUCCESS] Added "${shopItem.name}" to ${winnerId}`);
-                await interaction.channel.send(`🎉 Congrats <@${winnerId}>! You won **${giveawayName}** and received **${shopItem.name}**.`)
-                  .catch((announceError) => {
-                    console.error(`[WARN] Prize awarded, but failed to announce giveaway "${giveawayName}" winner ${winnerId}:`, announceError);
-                  });
-              }
-            }
-          }
-        } catch (error) {
-          console.error(`[ERROR] Error concluding giveaway "${giveawayName}":`, error);
-        } finally {
-          await deleteGiveaway(giveawayMessage.id).catch((cleanupError) => {
-            console.error(`[ERROR] Failed to delete giveaway record for "${giveawayName}":`, cleanupError);
-          });
-          if (repeatCount > 0) {
-            startGiveaway(repeatCount - 1);
-          }
-        }
-      }, durationMs);
+      console.log(`[INFO] Giveaway "${giveawayName}" saved with ID ${giveawayId}. Bot scheduler will conclude it.`);
     };
 
     // Start the first giveaway.

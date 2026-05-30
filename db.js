@@ -430,11 +430,28 @@ db.run(`
         cost INTEGER NOT NULL,
         quantity INTEGER NOT NULL,
         winners INTEGER NOT NULL,
-        end_time INTEGER NOT NULL
+        end_time INTEGER NOT NULL,
+        is_completed INTEGER DEFAULT 0
       )
     `, (err) => {
       if (err) console.error('❌ Error creating raffles table:', err);
       else console.log('✅ Raffles table is ready.');
+    });
+
+    db.all('PRAGMA table_info(raffles)', (err, columns) => {
+      if (err) {
+        console.error('❌ Failed to inspect raffles table:', err);
+        return;
+      }
+
+      const hasIsCompleted = (columns || []).some(col => col.name === 'is_completed');
+      if (!hasIsCompleted) {
+        console.log("➕ Adding missing 'is_completed' column to raffles...");
+        db.run('ALTER TABLE raffles ADD COLUMN is_completed INTEGER DEFAULT 0', (alterErr) => {
+          if (alterErr) console.error("❌ Error adding 'is_completed' to raffles:", alterErr);
+          else console.log("✅ 'is_completed' column added to raffles.");
+        });
+      }
     });
 
     // Raffle Entries Table
@@ -2369,8 +2386,8 @@ const { format } = require('date-fns'); // ✅ Import date-fns for formatting
 async function createRaffle(channelId, name, prize, cost, quantity, winners, endTime) {
   return new Promise((resolve, reject) => {
     db.run(
-      `INSERT INTO raffles (channel_id, name, prize, cost, quantity, winners, end_time)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO raffles (channel_id, name, prize, cost, quantity, winners, end_time, is_completed)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
       [channelId, name, prize, cost, quantity, winners, endTime],
       function (err) {
         if (err) return reject(err);
@@ -2583,6 +2600,19 @@ async function getRaffleById(raffle_id) {
   });
 }
 
+async function markRaffleCompleted(raffleId) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'UPDATE raffles SET is_completed = 1 WHERE id = ? AND COALESCE(is_completed, 0) = 0',
+      [raffleId],
+      function (err) {
+        if (err) return reject(err);
+        resolve(this.changes === 1);
+      }
+    );
+  });
+}
+
 /**
  * getActiveRaffles()
  * Returns all raffles that haven't ended yet (end_time > now).
@@ -2592,8 +2622,23 @@ async function getActiveRaffles() {
     db.all(
       `SELECT *
        FROM raffles
-       WHERE end_time > ?`,
+       WHERE end_time > ?
+       AND COALESCE(is_completed, 0) = 0`,
       [Date.now()],
+      (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows || []);
+      }
+    );
+  });
+}
+
+async function getPendingRaffles() {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT *
+       FROM raffles
+       WHERE COALESCE(is_completed, 0) = 0`,
       (err, rows) => {
         if (err) return reject(err);
         resolve(rows || []);
@@ -3323,12 +3368,15 @@ module.exports = {
   upsertShopItem,
   clearRaffleEntries,
   getActiveRaffles,
+  getPendingRaffles,
   createRaffle,
   getRaffleByName,
   getRaffleById,
+  markRaffleCompleted,
   getUserTickets,
   getInventoryByItemID,
   getActiveRaffles,
+  getPendingRaffles,
   autoEnterRaffle,
   removeRaffleShopItem,
   concludeRaffle,

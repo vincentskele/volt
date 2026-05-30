@@ -133,14 +133,7 @@ module.exports = {
 
       await interaction.reply({ embeds: [embed], files });
 
-      // Schedule raffle conclusion
-      setTimeout(async () => {
-        try {
-          await concludeRaffle(raffleId);
-        } catch (err) {
-          console.error('⚠️ Error concluding raffle:', err);
-        }
-      }, durationMs);
+      console.log(`🎟️ Raffle "${raffleName}" saved with ID ${raffleId}. Bot scheduler will conclude it.`);
 
     } catch (err) {
       console.error('⚠️ Raffle Creation Error:', err);
@@ -185,6 +178,12 @@ async function concludeRaffle(raffleId) {
 
     if (!client) {
       console.error('❌ Discord client not initialized in raffle module');
+      return;
+    }
+
+    const locked = await db.markRaffleCompleted(raffle.id);
+    if (!locked) {
+      console.warn(`[WARN] Raffle ${raffle.id} already completed. Skipping.`);
       return;
     }
 
