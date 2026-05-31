@@ -26,6 +26,7 @@
     adminRafflesPanel: 'raffles',
     adminJoblistPanel: 'quest-list',
     adminShopItemsPanel: 'shop-items',
+    adminUnclaimedItemsPanel: 'unclaimed-items',
     adminRedemptionsPanel: 'item-redemptions',
     adminCallAttendancePanel: 'call-attendance',
   };
@@ -227,6 +228,7 @@
     if (targetId === 'adminJoblistPanel') loadAdminJoblist();
     if (targetId === 'adminRedemptionsPanel') loadAdminRedemptions();
     if (targetId === 'adminShopItemsPanel') loadAdminShopItems();
+    if (targetId === 'adminUnclaimedItemsPanel') loadAdminUnclaimedItems();
     if (targetId === 'adminCallAttendancePanel') loadAdminCallAttendance();
   }
 
@@ -2678,6 +2680,72 @@ async function loadAdminRedemptions() {
   }
 }
 
+async function loadAdminUnclaimedItems() {
+  const token = localStorage.getItem('token');
+  const list = document.getElementById('adminUnclaimedItemsList');
+  if (!token || !list) return;
+  list.innerHTML = '';
+
+  try {
+    const res = await fetch('/api/admin/unclaimed-items', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const items = await res.json();
+
+    if (!res.ok) {
+      throw new Error(items?.message || 'Failed to load unclaimed items.');
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      list.innerHTML = '<div class="admin-item">No unclaimed items found.</div>';
+      return;
+    }
+
+    items.forEach((item) => {
+      const details = document.createElement('details');
+      details.className = 'admin-item';
+
+      const summary = document.createElement('summary');
+      const holderCount = Number(item.holderCount) || 0;
+      const totalQuantity = Number(item.totalQuantity) || 0;
+      summary.textContent = `${item.name}: ${totalQuantity} in inventory | ${holderCount} user${holderCount === 1 ? '' : 's'}`;
+      details.appendChild(summary);
+
+      const holders = Array.isArray(item.holders) ? item.holders : [];
+      const holdersWrap = document.createElement('div');
+      holdersWrap.style.marginTop = '10px';
+      holdersWrap.style.display = 'grid';
+      holdersWrap.style.gap = '8px';
+
+      if (!holders.length) {
+        const empty = document.createElement('div');
+        empty.className = 'admin-item';
+        empty.textContent = 'No users have this item.';
+        holdersWrap.appendChild(empty);
+      } else {
+        holders.forEach((holder) => {
+          const holderRow = document.createElement('div');
+          holderRow.className = 'admin-item';
+          const who = holder.userTag
+            ? `${holder.userTag} (${holder.userID})`
+            : holder.userID;
+          holderRow.innerHTML = `
+            <div><strong>User:</strong> ${escapeHtml(who)}</div>
+            <div><strong>Qty:</strong> ${escapeHtml(holder.quantity ?? 0)}</div>
+          `;
+          holdersWrap.appendChild(holderRow);
+        });
+      }
+
+      details.appendChild(holdersWrap);
+      list.appendChild(details);
+    });
+  } catch (error) {
+    console.error('❌ Failed to load unclaimed items:', error);
+    list.innerHTML = '<div class="admin-item">Failed to load unclaimed items.</div>';
+  }
+}
+
 async function loadAdminCallAttendance() {
   const token = localStorage.getItem('token');
   const list = document.getElementById('adminCallAttendanceList');
@@ -3053,6 +3121,7 @@ function startAdminPolling() {
     if (document.getElementById('adminJoblistPanel')?.style.display === 'block') loadAdminJoblist();
     if (document.getElementById('adminRedemptionsPanel')?.style.display === 'block') loadAdminRedemptions();
     if (document.getElementById('adminShopItemsPanel')?.style.display === 'block') loadAdminShopItems();
+    if (document.getElementById('adminUnclaimedItemsPanel')?.style.display === 'block') loadAdminUnclaimedItems();
     if (document.getElementById('adminCallAttendancePanel')?.style.display === 'block') loadAdminCallAttendance();
   }, 15000);
 }

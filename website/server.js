@@ -1118,6 +1118,81 @@ app.get('/api/admin/shop-items', authenticateToken, requireAdmin, async (req, re
   }
 });
 
+app.get('/api/admin/unclaimed-items', authenticateToken, requireAdmin, async (req, res) => {
+  const targets = [
+    { label: 'Solarian', aliases: ['solarian'] },
+    { label: 'Food Party Voucher', aliases: ['food party voucher'] },
+    { label: 'Collector coupons', aliases: ['collector coupon', 'collector coupons'] },
+  ];
+  const aliasToLabel = new Map(
+    targets.flatMap((target) => target.aliases.map((alias) => [alias, target.label]))
+  );
+  const aliases = Array.from(aliasToLabel.keys());
+  const placeholders = aliases.map(() => '?').join(', ');
+
+  try {
+    const rows = await dbAll(
+      `SELECT LOWER(i.name) AS item_key,
+              i.name AS item_name,
+              inv.userID,
+              e.username,
+              SUM(inv.quantity) AS quantity
+       FROM inventory inv
+       JOIN items i ON inv.itemID = i.itemID
+       LEFT JOIN economy e ON e.userID = inv.userID
+       WHERE LOWER(i.name) IN (${placeholders})
+         AND inv.quantity > 0
+       GROUP BY LOWER(i.name), inv.userID
+       ORDER BY LOWER(i.name), quantity DESC, LOWER(COALESCE(e.username, inv.userID)) ASC`,
+      aliases
+    );
+
+    const byLabel = new Map(targets.map((target) => [
+      target.label,
+      { name: target.label, totalQuantity: 0, holderCount: 0, holders: [] },
+    ]));
+
+    await Promise.all((rows || []).map(async (row) => {
+      const label = aliasToLabel.get(row.item_key) || row.item_name;
+      if (!byLabel.has(label)) {
+        byLabel.set(label, { name: label, totalQuantity: 0, holderCount: 0, holders: [] });
+      }
+
+      const item = byLabel.get(label);
+      const quantity = Number(row.quantity) || 0;
+      const userTag = row.username || await resolveUsername(row.userID);
+      item.totalQuantity += quantity;
+      const existingHolder = item.holders.find((holder) => holder.userID === row.userID);
+      if (existingHolder) {
+        existingHolder.quantity += quantity;
+        if (!existingHolder.userTag && userTag) existingHolder.userTag = userTag;
+      } else {
+        item.holders.push({
+          userID: row.userID,
+          userTag,
+          quantity,
+        });
+      }
+    }));
+
+    const payload = targets.map((target) => {
+      const item = byLabel.get(target.label);
+      item.holders.sort((left, right) => {
+        const quantityDiff = Number(right.quantity || 0) - Number(left.quantity || 0);
+        if (quantityDiff !== 0) return quantityDiff;
+        return String(left.userTag || left.userID).localeCompare(String(right.userTag || right.userID));
+      });
+      item.holderCount = item.holders.length;
+      return item;
+    });
+
+    return res.json(payload);
+  } catch (err) {
+    console.error('Error in /api/admin/unclaimed-items:', err);
+    return res.status(500).json({ message: 'Failed to load unclaimed items.' });
+  }
+});
+
 app.post('/api/admin/shop-items/create', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const rawName = String(req.body?.name || '').trim();
