@@ -1121,7 +1121,7 @@ app.get('/api/admin/shop-items', authenticateToken, requireAdmin, async (req, re
 app.get('/api/admin/unclaimed-items', authenticateToken, requireAdmin, async (req, res) => {
   const targets = [
     { label: 'Solarian', aliases: ['solarian'] },
-    { label: 'Food Party Voucher', aliases: ['food party voucher'] },
+    { label: 'Food Party Voucher', aliases: ['food party', 'food party voucher'] },
     { label: 'Collector coupons', aliases: ['collector coupon', 'collector coupons'] },
   ];
   const aliasToLabel = new Map(
