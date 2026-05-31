@@ -2684,6 +2684,11 @@ async function loadAdminUnclaimedItems() {
   const token = localStorage.getItem('token');
   const list = document.getElementById('adminUnclaimedItemsList');
   if (!token || !list) return;
+  const openItems = new Set(
+    Array.from(list.querySelectorAll('details[open][data-item-name]'))
+      .map((details) => details.dataset.itemName)
+      .filter(Boolean)
+  );
   list.innerHTML = '';
 
   try {
@@ -2704,6 +2709,10 @@ async function loadAdminUnclaimedItems() {
     items.forEach((item) => {
       const details = document.createElement('details');
       details.className = 'admin-item';
+      details.dataset.itemName = item.name || '';
+      if (openItems.has(details.dataset.itemName)) {
+        details.open = true;
+      }
 
       const summary = document.createElement('summary');
       const holderCount = Number(item.holderCount) || 0;
