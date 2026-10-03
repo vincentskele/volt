@@ -1,0 +1,25 @@
+{
+  "mode": "mirror",
+  "createdAt": "2026-04-12T01:03:41.448Z",
+  "dbPath": "/home/vincent/volt/.volt-node/node.db",
+  "ledgerExportPath": "/home/vincent/volt/.volt-node/ledger-export.json",
+  "eventsExportPath": "/home/vincent/volt/.volt-node/system-events-export.json",
+  "baseUrl": null,
+  "ledgerSource": "./ledger-export.json",
+  "eventsSource": "./system-events-export.json",
+  "syncIntervalMs": 5000,
+  "notes": "Run `npm run node:start` to initialize, sync, and keep this mirror updated.",
+  "lastSyncedAt": "2026-04-12T01:03:47.062Z",
+  "latestTransactionHash": "07b59672ef3f9aa1f92b3b7554ea441172edf82d544b5800dd43ab6cc209373a",
+  "latestEventHash": "7b3bc143953ffc214d9dc411bf5f1e2243a1ec6d7d378705dd727fb58412ea16",
+  "transactionCount": 97,
+  "eventCount": 1154,
+  "nodeId": "local-mirror",
+  "nodeName": "Local Mirror",
+  "publicUrl": null,
+  "statusPort": 8788,
+  "peers": [
+    "http://127.0.0.1:65530/node/status"
+  ],
+  "statusHost": "127.0.0.1"
+}

@@ -1,0 +1,106 @@
+{
+  "updatedAt": "2026-04-18T16:45:47.718Z",
+  "nodes": {
+    "vincent-main": {
+      "nodeId": "vincent-main",
+      "nodeName": "vincent-main",
+      "operatorDiscordId": "800488427023761449",
+      "nodeUrl": "http://192.168.1.42:8788",
+      "statusUrl": "http://192.168.1.42:8788/node/status",
+      "role": "verifier",
+      "mode": "parallel-consensus",
+      "softwareVersion": "0.1.0",
+      "status": "healthy",
+      "ledger": {
+        "transactionCount": 623,
+        "latestHash": "435ee93a2931f42535c6398f9034413ad7b8658d1b4ae27af8a849eb1f8b619a",
+        "valid": true
+      },
+      "systemEvents": {
+        "eventCount": 2620,
+        "latestHash": "7ad79dcf3c685a1875abd3b4c049398d7e95fb81570efa0304e36dde54ee909c",
+        "valid": true
+      },
+      "projection": {
+        "dbPath": "/home/vincent/volt-node/.volt-node/points.db",
+        "backupPath": "/home/vincent/volt-node/.volt-node/backups/points-latest.db",
+        "fingerprint": "ccea14c34e612f68c6f1d9d6cc252664907e831924c290888083f2c380035454",
+        "counts": {
+          "economy": 74,
+          "items": 7,
+          "inventory": 8,
+          "dailyUserActivity": 141,
+          "rpsGames": 0,
+          "giveaways": 1,
+          "giveawayEntries": 2,
+          "titleGiveaways": 0,
+          "titleGiveawayEntries": 0,
+          "raffles": 171,
+          "raffleEntries": 108,
+          "raffleTicketPurchases": 7
+        },
+        "accountCount": 71,
+        "richestAccounts": [
+          {
+            "userId": "800488427023761449",
+            "total": 492532413
+          },
+          {
+            "userId": "1328106383320678551",
+            "total": 17664
+          },
+          {
+            "userId": "817233315085680641",
+            "total": 10704
+          },
+          {
+            "userId": "1337840550283575468",
+            "total": 9689
+          },
+          {
+            "userId": "799043434865623070",
+            "total": 4025
+          },
+          {
+            "userId": "1336886333653778513",
+            "total": 3840
+          },
+          {
+            "userId": "843393872456318977",
+            "total": 3184
+          },
+          {
+            "userId": "938601505324417095",
+            "total": 3152
+          },
+          {
+            "userId": "752792327755530262",
+            "total": 3000
+          },
+          {
+            "userId": "318080211163938833",
+            "total": 2612
+          }
+        ]
+      },
+      "consensus": {
+        "checkedAt": "2026-04-18T16:45:41.042Z",
+        "canonicalHeadKey": "623:435ee93a2931f42535c6398f9034413ad7b8658d1b4ae27af8a849eb1f8b619a:2620:7ad79dcf3c685a1875abd3b4c049398d7e95fb81570efa0304e36dde54ee909c",
+        "localHeadKey": "623:435ee93a2931f42535c6398f9034413ad7b8658d1b4ae27af8a849eb1f8b619a:2620:7ad79dcf3c685a1875abd3b4c049398d7e95fb81570efa0304e36dde54ee909c",
+        "healthy": true,
+        "witnessCount": 1,
+        "trustedBy": [
+          "http://127.0.0.1:3003/node/status"
+        ],
+        "syncSource": "http://127.0.0.1:3003"
+      },
+      "firstSeenAt": "2026-04-18T16:16:00.460Z",
+      "registeredAt": "2026-04-18T16:16:00.460Z",
+      "lastRegisterAt": "2026-04-18T16:16:00.460Z",
+      "lastHeartbeatAt": "2026-04-18T16:45:44.775Z",
+      "lastSeenAt": "2026-04-18T16:45:44.775Z",
+      "updatedAt": "2026-04-18T16:45:44.775Z",
+      "heartbeatCount": 347
+    }
+  }
+}

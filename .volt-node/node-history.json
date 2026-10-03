@@ -1,0 +1,142 @@
+{
+  "self": [
+    {
+      "observedAt": "2026-04-12T01:03:23.781Z",
+      "status": "starting",
+      "running": true,
+      "conflictDetected": false,
+      "transactionCount": 0,
+      "eventCount": 0,
+      "ledgerHash": null,
+      "eventHash": null
+    },
+    {
+      "observedAt": "2026-04-12T01:03:23.781Z",
+      "status": "syncing",
+      "running": true,
+      "conflictDetected": false,
+      "transactionCount": 0,
+      "eventCount": 0,
+      "ledgerHash": null,
+      "eventHash": null
+    },
+    {
+      "observedAt": "2026-04-12T01:03:41.451Z",
+      "status": "starting",
+      "running": true,
+      "conflictDetected": false,
+      "transactionCount": 0,
+      "eventCount": 0,
+      "ledgerHash": null,
+      "eventHash": null
+    },
+    {
+      "observedAt": "2026-04-12T01:03:41.451Z",
+      "status": "syncing",
+      "running": true,
+      "conflictDetected": false,
+      "transactionCount": 0,
+      "eventCount": 0,
+      "ledgerHash": null,
+      "eventHash": null
+    },
+    {
+      "observedAt": "2026-04-12T01:03:41.740Z",
+      "status": "healthy",
+      "running": false,
+      "conflictDetected": false,
+      "transactionCount": 97,
+      "eventCount": 1154,
+      "ledgerHash": "07b59672ef3f9aa1f92b3b7554ea441172edf82d544b5800dd43ab6cc209373a",
+      "eventHash": "7b3bc143953ffc214d9dc411bf5f1e2243a1ec6d7d378705dd727fb58412ea16"
+    },
+    {
+      "observedAt": "2026-04-12T01:03:41.762Z",
+      "status": "healthy",
+      "running": false,
+      "conflictDetected": false,
+      "transactionCount": 97,
+      "eventCount": 1154,
+      "ledgerHash": "07b59672ef3f9aa1f92b3b7554ea441172edf82d544b5800dd43ab6cc209373a",
+      "eventHash": "7b3bc143953ffc214d9dc411bf5f1e2243a1ec6d7d378705dd727fb58412ea16"
+    },
+    {
+      "observedAt": "2026-04-12T01:03:41.762Z",
+      "status": "healthy",
+      "running": true,
+      "conflictDetected": false,
+      "transactionCount": 97,
+      "eventCount": 1154,
+      "ledgerHash": "07b59672ef3f9aa1f92b3b7554ea441172edf82d544b5800dd43ab6cc209373a",
+      "eventHash": "7b3bc143953ffc214d9dc411bf5f1e2243a1ec6d7d378705dd727fb58412ea16"
+    },
+    {
+      "observedAt": "2026-04-12T01:03:46.767Z",
+      "status": "syncing",
+      "running": true,
+      "conflictDetected": false,
+      "transactionCount": 97,
+      "eventCount": 1154,
+      "ledgerHash": "07b59672ef3f9aa1f92b3b7554ea441172edf82d544b5800dd43ab6cc209373a",
+      "eventHash": "7b3bc143953ffc214d9dc411bf5f1e2243a1ec6d7d378705dd727fb58412ea16"
+    },
+    {
+      "observedAt": "2026-04-12T01:03:47.062Z",
+      "status": "healthy",
+      "running": false,
+      "conflictDetected": false,
+      "transactionCount": 97,
+      "eventCount": 1154,
+      "ledgerHash": "07b59672ef3f9aa1f92b3b7554ea441172edf82d544b5800dd43ab6cc209373a",
+      "eventHash": "7b3bc143953ffc214d9dc411bf5f1e2243a1ec6d7d378705dd727fb58412ea16"
+    },
+    {
+      "observedAt": "2026-04-12T01:03:47.064Z",
+      "status": "healthy",
+      "running": false,
+      "conflictDetected": false,
+      "transactionCount": 97,
+      "eventCount": 1154,
+      "ledgerHash": "07b59672ef3f9aa1f92b3b7554ea441172edf82d544b5800dd43ab6cc209373a",
+      "eventHash": "7b3bc143953ffc214d9dc411bf5f1e2243a1ec6d7d378705dd727fb58412ea16"
+    },
+    {
+      "observedAt": "2026-04-12T01:03:47.064Z",
+      "status": "healthy",
+      "running": true,
+      "conflictDetected": false,
+      "transactionCount": 97,
+      "eventCount": 1154,
+      "ledgerHash": "07b59672ef3f9aa1f92b3b7554ea441172edf82d544b5800dd43ab6cc209373a",
+      "eventHash": "7b3bc143953ffc214d9dc411bf5f1e2243a1ec6d7d378705dd727fb58412ea16"
+    },
+    {
+      "observedAt": "2026-04-12T01:03:48.295Z",
+      "status": "stopped",
+      "running": false,
+      "conflictDetected": false,
+      "transactionCount": 97,
+      "eventCount": 1154,
+      "ledgerHash": "07b59672ef3f9aa1f92b3b7554ea441172edf82d544b5800dd43ab6cc209373a",
+      "eventHash": "7b3bc143953ffc214d9dc411bf5f1e2243a1ec6d7d378705dd727fb58412ea16"
+    }
+  ],
+  "peers": {
+    "http://127.0.0.1:65530/node/status": [
+      {
+        "peerUrl": "http://127.0.0.1:65530/node/status",
+        "observedAt": "2026-04-12T01:03:41.740Z",
+        "online": false,
+        "error": "fetch failed",
+        "lastSeenAt": null
+      },
+      {
+        "peerUrl": "http://127.0.0.1:65530/node/status",
+        "observedAt": "2026-04-12T01:03:47.062Z",
+        "online": false,
+        "error": "fetch failed",
+        "lastSeenAt": null
+      }
+    ]
+  }
+}

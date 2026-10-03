@@ -1,0 +1,74 @@
+{
+  "updatedAt": "2026-04-12T01:03:47.064Z",
+  "nodeId": "local-mirror",
+  "nodeName": "Local Mirror",
+  "publicUrl": null,
+  "statusUrl": null,
+  "statusPort": 8788,
+  "statusHost": "127.0.0.1",
+  "nodeDir": "/home/vincent/volt/.volt-node",
+  "mode": "mirror",
+  "running": false,
+  "status": "stopped",
+  "dbPath": "/home/vincent/volt/.volt-node/node.db",
+  "lastSyncedAt": "2026-04-12T01:03:47.064Z",
+  "conflictDetected": false,
+  "conflicts": [],
+  "lastErrorAt": null,
+  "lastError": null,
+  "history": {
+    "windowHours": 48,
+    "self": {
+      "samples48h": 10,
+      "runningSamples48h": 6,
+      "healthySamples48h": 5,
+      "lastObservedAt": "2026-04-12T01:03:47.064Z"
+    },
+    "peers": {
+      "trackedPeers": 1,
+      "seenPeers48h": 0,
+      "peerSummaries": [
+        {
+          "peerUrl": "http://127.0.0.1:65530/node/status",
+          "samples48h": 2,
+          "onlineSamples48h": 0,
+          "lastObservedAt": "2026-04-12T01:03:47.062Z",
+          "lastSeenAt": null,
+          "lastOnline": false,
+          "latestNodeId": null,
+          "latestNodeName": null
+        }
+      ]
+    }
+  },
+  "peerNetwork": {
+    "checkedAt": "2026-04-12T01:03:47.063Z",
+    "totalPeers": 1,
+    "onlinePeers": 0,
+    "offlinePeers": 1,
+    "inSyncPeers": 0,
+    "disagreeingPeers": 0,
+    "peers": [
+      {
+        "peerUrl": "http://127.0.0.1:65530/node/status",
+        "online": false,
+        "inSync": false,
+        "status": "offline",
+        "lastSeenAt": null,
+        "error": "fetch failed"
+      }
+    ]
+  },
+  "ledger": {
+    "transactionCount": 97,
+    "latestHash": "07b59672ef3f9aa1f92b3b7554ea441172edf82d544b5800dd43ab6cc209373a",
+    "valid": true
+  },
+  "systemEvents": {
+    "eventCount": 1154,
+    "latestHash": "7b3bc143953ffc214d9dc411bf5f1e2243a1ec6d7d378705dd727fb58412ea16",
+    "valid": true
+  },
+  "stoppedAt": "2026-04-12T01:03:48.294Z",
+  "stopSignal": "SIGTERM"
+}

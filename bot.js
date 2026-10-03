@@ -4,6 +4,7 @@ const { Client, GatewayIntentBits, Partials, Collection } = require('discord.js'
 const fs = require('fs');
 const path = require('path');
 const { points } = require('./points');
+const { createTriviaTimeout, parseTriviaTimeoutHours } = require('./utils/triviaTimeout');
 const TEST_MODE = process.env.VOLT_TEST_MODE === '1';
 
 /**
@@ -1092,6 +1093,11 @@ setInterval(async () => {
 // ==========================
 const triviaQuestions = require('./questions.json');
 const MS_IN_24_HOURS = 86400000;
+const triviaTimeoutHours = parseTriviaTimeoutHours(process.env.TRIVIA_TIMEOUT_HOURS);
+const triviaTimeout = createTriviaTimeout({
+  hours: triviaTimeoutHours,
+  getSystemEvents,
+});
 const triviaAskedToday = new Set();
 let triviaCountToday = 0;
 let activeCollector = null;
@@ -1212,23 +1218,38 @@ async function askTriviaQuestion() {
 
   activeCollector = collector;
   let answerResolved = false;
+  let answerResolutionChain = Promise.resolve();
 
-  collector.on('collect', async msg => {
+  collector.on('collect', msg => {
     if (answerResolved) return;
 
     const userAnswer = msg.content.toLowerCase().trim();
     const acceptedAnswers = trivia.answers || [trivia.answer];
     const isCorrect = acceptedAnswers.some(ans => userAnswer.includes(ans.toLowerCase()));
+    if (!isCorrect) return;
 
-    if (isCorrect) {
-      answerResolved = true;
+    // Serialize correct attempts so a timed-out user's attempt cannot hide a
+    // near-simultaneous eligible answer, and two users cannot both win.
+    answerResolutionChain = answerResolutionChain.then(async () => {
+      if (answerResolved) return;
 
       try {
+        if (await triviaTimeout.isTimedOut(msg.author.id)) {
+          return;
+        }
+      } catch (error) {
+        console.error(`❌ Failed to check trivia timeout for ${msg.author.tag}:`, error);
+        return;
+      }
+
+      try {
+        answerResolved = true;
         await updateWallet(msg.author.id, rewardAmount, {
           type: 'trivia_reward',
           source: 'trivia',
           question: trivia.question,
         });
+        triviaTimeout.recordWin(msg.author.id);
         await appendSystemEvent({
           domain: 'trivia',
           action: 'answer_correct',
@@ -1268,7 +1289,9 @@ async function askTriviaQuestion() {
         }
         await channel.send(`⚠️ ${msg.author}, you got the right answer, but the reward failed to process. Please contact an admin.`);
       }
-    }
+    }).catch(error => {
+      console.error(`❌ Unexpected trivia answer error for ${msg.author.tag}:`, error);
+    });
   });
 
   collector.on('end', async (_, reason) => {
