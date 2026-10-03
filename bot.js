@@ -1080,10 +1080,40 @@ setInterval(async () => {
 // ==========================
 const triviaQuestions = require('./questions.json');
 const MS_IN_24_HOURS = 86400000;
+const MS_IN_HOUR = 60 * 60 * 1000;
+const configuredTriviaTimeoutHours = process.env.TRIVIA_TIMEOUT_HOURS?.trim() ?? '';
+const parsedTriviaTimeoutHours = Number(configuredTriviaTimeoutHours || 0);
+const isTriviaTimeoutValid = Number.isFinite(parsedTriviaTimeoutHours) && parsedTriviaTimeoutHours >= 0;
+const triviaTimeoutHours = isTriviaTimeoutValid
+  ? parsedTriviaTimeoutHours
+  : 0;
+const triviaTimeoutMs = triviaTimeoutHours * MS_IN_HOUR;
 const triviaAskedToday = new Set();
+const triviaUserTimeouts = new Map();
 let triviaCountToday = 0;
 let activeCollector = null;
 let triviaInProgress = false; // NEW: track if a question is active
+
+if (!isTriviaTimeoutValid) {
+  console.warn('⚠️ TRIVIA_TIMEOUT_HOURS must be zero or a positive number; trivia user timeout is disabled.');
+}
+
+/**
+ * Check whether a user is still waiting before they can answer trivia again.
+ */
+function isTriviaUserTimedOut(userId) {
+  if (triviaTimeoutMs === 0) return false;
+
+  const timeoutEndsAt = triviaUserTimeouts.get(userId);
+  if (!timeoutEndsAt) return false;
+
+  if (Date.now() >= timeoutEndsAt) {
+    triviaUserTimeouts.delete(userId);
+    return false;
+  }
+
+  return true;
+}
 
 /**
  * Get ms until next midnight EST
@@ -1174,7 +1204,7 @@ async function askTriviaQuestion() {
   console.log(`🧠 Trivia #${triviaCountToday} asked: ${trivia.question}`);
 
   const collector = channel.createMessageCollector({
-    filter: msg => !msg.author.bot,
+    filter: msg => !msg.author.bot && !isTriviaUserTimedOut(msg.author.id),
     // You might want something like 10–15 minutes here instead of 24h:
     // time: 15 * 60 * 1000,
     time: MS_IN_24_HOURS,
@@ -1188,6 +1218,9 @@ async function askTriviaQuestion() {
     const isCorrect = acceptedAnswers.some(ans => userAnswer.includes(ans.toLowerCase()));
 
     if (isCorrect) {
+      if (triviaTimeoutMs > 0) {
+        triviaUserTimeouts.set(msg.author.id, Date.now() + triviaTimeoutMs);
+      }
       collector.stop('answered');
       await updateWallet(msg.author.id, rewardAmount);
       await channel.send(`✅ Correct! ${msg.author} wins ${rewardAmount} Volts!`);
