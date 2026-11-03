@@ -1195,6 +1195,66 @@ function getPendingJobSubmissions(userID) {
 }
 
 /**
+ * Creates a pending quest submission from a Discord interaction.
+ * A user may only have one pending submission for the same quest.
+ */
+function createJobSubmission(userID, jobID, title, description, imageUrl = null) {
+  return new Promise((resolve, reject) => {
+    const normalizedJobID = Number(jobID);
+    if (!userID || !Number.isInteger(normalizedJobID) || normalizedJobID <= 0) {
+      return reject(new Error('Invalid user or job ID.'));
+    }
+    if (!title || !description) {
+      return reject(new Error('Title and description are required.'));
+    }
+
+    db.run(
+      `INSERT INTO job_submissions (userID, jobID, title, description, image_url)
+       SELECT ?, ?, ?, ?, ?
+       WHERE NOT EXISTS (
+         SELECT 1
+         FROM job_submissions
+         WHERE userID = ? AND jobID = ? AND status = 'pending'
+       )`,
+      [userID, normalizedJobID, title, description, imageUrl, userID, normalizedJobID],
+      function (err) {
+        if (err) return reject(new Error('Failed to create quest submission.'));
+        if (!this.changes) {
+          return resolve({ created: false, submissionId: null });
+        }
+        return resolve({ created: true, submissionId: this.lastID });
+      }
+    );
+  });
+}
+
+function deleteJobSubmission(submissionID) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `DELETE FROM job_submissions WHERE submission_id = ? AND status = 'pending'`,
+      [submissionID],
+      function (err) {
+        if (err) return reject(new Error('Failed to remove quest submission.'));
+        return resolve({ deleted: this.changes || 0 });
+      }
+    );
+  });
+}
+
+function clearJobAssignment(userID, jobID) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `DELETE FROM job_assignees WHERE userID = ? AND jobID = ?`,
+      [userID, jobID],
+      function (err) {
+        if (err) return reject(new Error('Failed to clear quest assignment.'));
+        return resolve({ deleted: this.changes || 0 });
+      }
+    );
+  });
+}
+
+/**
  * Retrieves users with pending quest submissions, newest submitter first.
  */
 function getPendingQuestUsers() {
@@ -3416,6 +3476,9 @@ module.exports = {
   completeJob,
   markLatestSubmissionCompleted,
   getPendingJobSubmissions,
+  createJobSubmission,
+  deleteJobSubmission,
+  clearJobAssignment,
   getPendingQuestUsers,
   completePendingJobSubmissions,
   renumberJobs,

@@ -1,109 +1,187 @@
-const { Events, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
+const {
+  Events,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  StringSelectMenuBuilder,
+} = require('discord.js');
 const db = require('../db');
 
+function buildCooldownText(quest) {
+  if (!quest.cooldown_value || !quest.cooldown_unit) return 'None';
+  const amount = Number(quest.cooldown_value);
+  return `${amount} ${quest.cooldown_unit}${amount === 1 ? '' : 's'}`;
+}
+
+function buildQuestListPayload(jobList) {
+  const questsToShow = jobList.slice(0, 25);
+  const embed = new EmbedBuilder()
+    .setTitle('📋 Quest List')
+    .setDescription('Select a quest to view its details. You will confirm before it is assigned.')
+    .setColor(0x00AE86)
+    .setTimestamp();
+
+  if (jobList.length > questsToShow.length) {
+    embed.setFooter({ text: `Showing the first ${questsToShow.length} of ${jobList.length} quests.` });
+  }
+
+  const selectMenu = new StringSelectMenuBuilder()
+    .setCustomId('questlist')
+    .setPlaceholder('Choose a quest...')
+    .addOptions(
+      questsToShow.map((quest) => ({
+        label: `Quest #${quest.jobID}`,
+        description: quest.description && quest.description.length > 100
+          ? `${quest.description.substring(0, 97)}...`
+          : quest.description || 'No description available',
+        value: `quest_${quest.jobID}`,
+      }))
+    );
+
+  return {
+    content: null,
+    embeds: [embed],
+    components: [new ActionRowBuilder().addComponents(selectMenu)],
+  };
+}
+
+async function showQuestDetails(interaction) {
+  const selectedQuestID = interaction.values[0].replace('quest_', '');
+  const [jobList, assignedJob] = await Promise.all([
+    db.getJobList(),
+    db.getAssignedJob(interaction.user.id),
+  ]);
+  const selectedQuest = jobList.find((quest) => String(quest.jobID) === selectedQuestID);
+
+  if (!selectedQuest) {
+    return interaction.update({
+      content: '🚫 That quest is no longer available.',
+      embeds: [],
+      components: [],
+    });
+  }
+
+  const assignees = Array.isArray(selectedQuest.assignees) && selectedQuest.assignees.length
+    ? selectedQuest.assignees.map((id) => `<@${id}>`).join(', ')
+    : 'Nobody yet';
+  const embed = new EmbedBuilder()
+    .setTitle(`📜 Quest #${selectedQuest.jobID}`)
+    .setDescription(selectedQuest.description || 'No description available')
+    .addFields(
+      { name: 'Assigned to', value: assignees, inline: true },
+      { name: 'Cooldown', value: buildCooldownText(selectedQuest), inline: true }
+    )
+    .setColor(0x00AE86)
+    .setTimestamp();
+
+  if (assignedJob) {
+    embed.addFields({
+      name: 'Your active quest',
+      value: `You already have Quest #${assignedJob.jobID}: ${assignedJob.description}`,
+    });
+  }
+
+  const actions = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`quest_claim:${selectedQuest.jobID}`)
+      .setLabel(assignedJob ? 'You already have a quest' : 'Claim Quest')
+      .setEmoji('⚡')
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(Boolean(assignedJob)),
+    new ButtonBuilder()
+      .setCustomId('quest_back')
+      .setLabel('Back to Quests')
+      .setStyle(ButtonStyle.Secondary)
+  );
+
+  return interaction.update({ content: null, embeds: [embed], components: [actions] });
+}
+
+async function claimQuest(interaction) {
+  const jobID = interaction.customId.split(':')[1];
+  try {
+    const assignedQuest = await db.assignJobById(interaction.user.id, jobID);
+    const embed = new EmbedBuilder()
+      .setTitle('⚡ Quest Assigned')
+      .setDescription(assignedQuest.description)
+      .addFields(
+        { name: 'Quest', value: `#${assignedQuest.jobID}`, inline: true },
+        { name: 'Cooldown', value: buildCooldownText(assignedQuest), inline: true },
+        {
+          name: 'Next step',
+          value: 'Complete the quest, then use **Submit Quest** below or `/submit-quest` to send proof for review.',
+        }
+      )
+      .setColor(0x22c55e)
+      .setTimestamp();
+
+    const actions = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`quest_submit:${assignedQuest.jobID}`)
+        .setLabel('Submit Quest')
+        .setEmoji('📤')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('quest_back')
+        .setLabel('Browse Quests')
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    return interaction.update({ content: null, embeds: [embed], components: [actions] });
+  } catch (error) {
+    const message = error?.message || String(error);
+    return interaction.update({
+      content: `🚫 Could not claim this quest: ${message}`,
+      embeds: [],
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('quest_back')
+            .setLabel('Back to Quests')
+            .setStyle(ButtonStyle.Secondary)
+        ),
+      ],
+    });
+  }
+}
+
+async function openSubmissionModal(interaction) {
+  const submitCommand = interaction.client.commands.get('submit-quest');
+  if (!submitCommand || typeof submitCommand.showSubmissionModal !== 'function') {
+    return interaction.reply({
+      content: '🚫 Quest submission is temporarily unavailable. Try `/submit-quest`.',
+      ephemeral: true,
+    });
+  }
+  return submitCommand.showSubmissionModal(interaction);
+}
+
 module.exports = {
-  name: 'interactionCreate', // Must match the Discord event name exactly.
+  name: Events.InteractionCreate,
   async execute(interaction) {
-    // Process only select menu interactions with customId "questlist"
-    if (!interaction.isStringSelectMenu() || interaction.customId !== 'questlist') return;
-    
+    const isQuestSelect = interaction.isStringSelectMenu() && interaction.customId === 'questlist';
+    const isQuestButton = interaction.isButton() && (
+      interaction.customId === 'quest_back'
+      || interaction.customId.startsWith('quest_claim:')
+      || interaction.customId.startsWith('quest_submit:')
+    );
+    if (!isQuestSelect && !isQuestButton) return;
+
     try {
-      const userID = interaction.user.id;
-      
-      console.log(`[INFO] User ${userID} selected a quest from the dropdown.`);
-      
-      // Get the selected quest ID from the dropdown.
-      const selectedQuestID = interaction.values[0].replace('quest_', ''); // Ensure ID matches database format
-      console.log(`[DEBUG] Selected Quest ID: ${selectedQuestID}`);
+      if (isQuestSelect) return await showQuestDetails(interaction);
+      if (interaction.customId.startsWith('quest_claim:')) return await claimQuest(interaction);
+      if (interaction.customId.startsWith('quest_submit:')) return await openSubmissionModal(interaction);
 
-      // Fetch the latest job list
       const jobList = await db.getJobList();
-      console.log(`[DEBUG] Available job IDs:`, jobList.map(q => q.jobID));
-
-      // Find the selected quest
-      const selectedQuest = jobList.find(task => task.jobID.toString() === selectedQuestID);
-      
-      if (!selectedQuest) {
-        return interaction.reply({ content: '🚫 Selected quest not found.', ephemeral: true });
+      if (!jobList.length) {
+        return interaction.update({ content: '🚫 No quests are available right now.', embeds: [], components: [] });
       }
-
-      // Check if the user already has a quest
-      const existingJob = await db.getUserJob(userID);
-      if (existingJob) {
-        return interaction.reply({ content: '🚫 You already have a quest!', ephemeral: true });
-      }
-
-      // Assign the quest to the user
-      const assignedQuest = await db.assignJobById(userID, selectedQuestID);
-      if (!assignedQuest) {
-        return interaction.reply({ content: `🚫 Failed to assign quest with ID ${selectedQuestID}`, ephemeral: true });
-      }
-
-      // Log and announce in the channel.
-      console.log(`[INFO] User ${userID} assigned quest: ${assignedQuest.description}`);
-      await interaction.channel.send(
-        `✅ Quest assigned: <@${userID}> is now assigned to **${assignedQuest.description}** (Quest #${assignedQuest.jobID}).`
-      );
-
-      // Re-fetch updated quest list
-      const updatedJobList = await db.getJobList();
-      if (!updatedJobList || updatedJobList.length === 0) {
-        return interaction.update({ content: '🚫 No quests available at this time.', components: [] });
-      }
-
-      const MAX_QUESTS_PER_PAGE = 10;
-      const questsToShow = updatedJobList.slice(0, MAX_QUESTS_PER_PAGE);
-      const totalQuests = updatedJobList.length;
-
-      // Rebuild the quest list embed
-      const embed = new EmbedBuilder()
-        .setTitle('📋 Quest List')
-        .setDescription('Select a quest from the dropdown below. (Message refreshes on selection)')
-        .setColor(0x00AE86)
-        .setTimestamp();
-
-      questsToShow.forEach(questItem => {
-        let assignment = (questItem.assignees && questItem.assignees.length > 0)
-          ? questItem.assignees.map(id => `<@${id}>`).join(', ')
-          : 'Not assigned';
-        embed.addFields({
-          name: `Quest #${questItem.jobID}`,
-          value: `${questItem.description || 'No description available'}\nAssigned to: ${assignment}`,
-          inline: false,
-        });
-      });
-
-      if (totalQuests > MAX_QUESTS_PER_PAGE) {
-        embed.setFooter({ text: `Showing ${MAX_QUESTS_PER_PAGE} of ${totalQuests} quests.` });
-      }
-
-      // Rebuild the dropdown with all quests
-      const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId('questlist')
-        .setPlaceholder('Choose a quest...')
-        .addOptions(
-          updatedJobList.map(questItem => ({
-            label: `Quest #${questItem.jobID}`,
-            description: questItem.description && questItem.description.length > 100
-              ? questItem.description.substring(0, 97) + '...'
-              : questItem.description || 'No description available',
-            value: `quest_${questItem.jobID}` // Ensure IDs are correctly formatted
-          }))
-        );
-
-      const row = new ActionRowBuilder().addComponents(selectMenu);
-
-      // Update the public quest list message
-      return interaction.update({ embeds: [embed], components: [row] });
-
+      return interaction.update(buildQuestListPayload(jobList));
     } catch (error) {
-      console.error(`[ERROR] questlist-handler: ${error}`);
-      const message = error?.message || error;
-      const isCooldown = typeof message === 'string' && message.toLowerCase().includes('cooldown');
-      const payload = { content: `🚫 An error occurred: ${message}`, ephemeral: !isCooldown };
-      if (interaction.replied || interaction.deferred) {
-        return interaction.followUp(payload);
-      }
+      console.error('[ERROR] Quest interaction handler:', error);
+      const payload = { content: `🚫 Quest action failed: ${error?.message || error}`, ephemeral: true };
+      if (interaction.replied || interaction.deferred) return interaction.followUp(payload);
       return interaction.reply(payload);
     }
   },
