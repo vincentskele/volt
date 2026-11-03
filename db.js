@@ -1195,6 +1195,31 @@ function getPendingJobSubmissions(userID) {
 }
 
 /**
+ * Retrieves users with pending quest submissions, newest submitter first.
+ */
+function getPendingQuestUsers() {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT js.userID, e.username, COUNT(*) AS pending_count,
+              MAX(js.created_at) AS last_submitted_at,
+              MAX(js.submission_id) AS latest_submission_id
+       FROM job_submissions js
+       LEFT JOIN economy e ON e.userID = js.userID
+       WHERE js.status = 'pending'
+       GROUP BY js.userID, e.username
+       ORDER BY last_submitted_at DESC, latest_submission_id DESC`,
+      [],
+      (err, rows) => {
+        if (err) {
+          return reject('Failed to retrieve users with pending quest submissions.');
+        }
+        resolve(rows || []);
+      }
+    );
+  });
+}
+
+/**
  * Marks a set of pending submissions complete and applies the same reward to each one.
  */
 function completePendingJobSubmissions(userID, submissionIDs, rewardPerSubmission) {
@@ -3391,6 +3416,7 @@ module.exports = {
   completeJob,
   markLatestSubmissionCompleted,
   getPendingJobSubmissions,
+  getPendingQuestUsers,
   completePendingJobSubmissions,
   renumberJobs,
   getCurrentJobIndex,

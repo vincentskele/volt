@@ -161,16 +161,60 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('complete-quest')
     .setDescription('Complete a quest and charge up a user’s Solarian (Admin Only).')
-    .addUserOption(option =>
+    .addStringOption(option =>
       option.setName('user')
-        .setDescription('The user to charge up')
+        .setDescription('Select a user with a pending quest')
         .setRequired(true)
+        .setAutocomplete(true)
     )
     .addIntegerOption(option =>
       option.setName('reward')
         .setDescription('The total amount of Volts to award across all quests')
         .setRequired(true)
     ),
+
+  async autocomplete(interaction) {
+    try {
+      if (!(await ensureAdmin(interaction))) {
+        return interaction.respond([]);
+      }
+
+      const focused = interaction.options.getFocused(true);
+      if (focused.name !== 'user') {
+        return interaction.respond([]);
+      }
+
+      const search = String(focused.value || '').trim().toLowerCase();
+      const pendingUsers = await db.getPendingQuestUsers();
+      const choices = pendingUsers
+        .map((pendingUser) => {
+          const member = interaction.guild?.members?.cache?.get(pendingUser.userID);
+          const discordUser = member?.user || interaction.client.users.cache.get(pendingUser.userID);
+          const displayName = member?.displayName
+            || discordUser?.globalName
+            || discordUser?.username
+            || pendingUser.username
+            || pendingUser.userID;
+          const pendingCount = Number(pendingUser.pending_count) || 0;
+
+          return {
+            name: `${displayName} — ${pendingCount} pending`.slice(0, 100),
+            value: String(pendingUser.userID),
+            searchText: `${displayName} ${pendingUser.username || ''} ${pendingUser.userID}`.toLowerCase(),
+          };
+        })
+        .filter((choice) => !search || choice.searchText.includes(search))
+        .slice(0, 25)
+        .map(({ name, value }) => ({ name, value }));
+
+      return interaction.respond(choices);
+    } catch (err) {
+      console.error('Complete Quest Autocomplete Error:', err);
+      if (!interaction.responded) {
+        await interaction.respond([]);
+      }
+    }
+  },
 
   async execute(interaction) {
     const { options } = interaction;
@@ -180,18 +224,18 @@ module.exports = {
         return interaction.reply({ content: '🚫 Only bot admins or server administrators can complete quests.', ephemeral: true });
       }
 
-      const targetUser = options.getUser('user');
+      const targetUserID = options.getString('user');
       const totalRewardAmount = options.getInteger('reward');
 
-      if (!targetUser) {
-        return interaction.reply({ content: '🚫 A user must be specified.', ephemeral: true });
+      if (!/^\d{17,20}$/.test(targetUserID || '')) {
+        return interaction.reply({ content: '🚫 Please select a user from the pending quest list.', ephemeral: true });
       }
 
-      const { pendingQuests, assignedQuest } = await loadQuestTargets(targetUser.id);
+      const { pendingQuests, assignedQuest } = await loadQuestTargets(targetUserID);
       const questsToComplete = pendingQuests.length ? pendingQuests : (assignedQuest ? [assignedQuest] : []);
 
       if (!questsToComplete.length) {
-        return interaction.reply({ content: `🚫 <@${targetUser.id}> does not have an active quest to complete.`, ephemeral: true });
+        return interaction.reply({ content: `🚫 <@${targetUserID}> does not have an active quest to complete.`, ephemeral: true });
       }
 
       if (pendingQuests.length > 1) {
@@ -199,7 +243,7 @@ module.exports = {
           .setCustomId('questSummary')
           .setLabel(`Submitted quests: ${pendingQuests.length}`)
           .setStyle(TextInputStyle.Paragraph)
-          .setValue(formatQuestSummary(pendingQuests, targetUser.id))
+          .setValue(formatQuestSummary(pendingQuests, targetUserID))
           .setRequired(false);
 
         const rewardInput = new TextInputBuilder()
@@ -210,7 +254,7 @@ module.exports = {
           .setRequired(true);
 
         const modal = new ModalBuilder()
-          .setCustomId(`${QUEST_MODAL_PREFIX}:${targetUser.id}`)
+          .setCustomId(`${QUEST_MODAL_PREFIX}:${targetUserID}`)
           .setTitle('Complete Multiple Quests')
           .addComponents(
             new ActionRowBuilder().addComponents(questSummaryInput),
@@ -220,7 +264,7 @@ module.exports = {
         return interaction.showModal(modal);
       }
 
-      return completeQuestTargets(interaction, targetUser.id, totalRewardAmount, questsToComplete);
+      return completeQuestTargets(interaction, targetUserID, totalRewardAmount, questsToComplete);
     } catch (err) {
       console.error('Complete Job Slash Error:', err);
       return interaction.reply({ content: `🚫 Complete quest failed: ${err.message || err}`, ephemeral: true });

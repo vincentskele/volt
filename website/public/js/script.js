@@ -967,34 +967,20 @@ async function quitJob() {
   }
 }
 
-// ✅ Keep the original modal open/close functionality
-document.addEventListener("click", (event) => {
-  const modal = document.getElementById("jobSubmissionModal");
+let isQuestSubmissionInFlight = false;
 
-  if (event.target && event.target.id === "submitJobButton") {
-    console.log("✅ Submit Quest button clicked!");
-    
-    if (modal) {
-      modal.style.display = "flex"; // Show the modal
-      console.log("📌 Submission modal is now visible.");
-    } else {
-      console.error("❌ Submission modal not found!");
-    }
-  }
+function createQuestSubmissionRequestId() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
 
-  // Handle closing the modal
-  if (event.target && event.target.id === "cancelSubmissionButton") {
-    if (modal) {
-      modal.style.display = "none"; // Hide the modal
-      console.log("❌ Submission modal closed.");
-    }
-  }
-});
+function setQuestSubmissionInFlight(isInFlight) {
+  isQuestSubmissionInFlight = isInFlight;
+  const submitButton = document.getElementById("sendSubmissionButton");
+  if (submitButton) submitButton.disabled = isInFlight;
+}
 
-// ✅ Ensure the event listener for submission is correctly attached
 document.addEventListener("click", async (event) => {
-  console.log(`🖱️ Click detected on element:`, event.target);
-
   const modal = document.getElementById("jobSubmissionModal");
   const jobDescriptionElement = document.getElementById("jobSubmissionText");
 
@@ -1006,7 +992,7 @@ document.addEventListener("click", async (event) => {
   }
 
   // ✅ Open modal when clicking "Submit Task" button
-  if (event.target.id === "submitJobButton") {
+  if (event.target.closest("#submitJobButton")) {
     console.log("✅ Submit Quest button clicked!");
     if (modal) {
       modal.style.display = "flex";
@@ -1021,7 +1007,7 @@ document.addEventListener("click", async (event) => {
   }
 
   // ✅ Close modal when clicking "Cancel"
-  if (event.target.id === "cancelSubmissionButton") {
+  if (event.target.closest("#cancelSubmissionButton")) {
     if (modal) {
       modal.style.display = "none";
       console.log("❌ Submission modal closed.");
@@ -1029,8 +1015,10 @@ document.addEventListener("click", async (event) => {
   }
 
   // ✅ Handle job submission
-  if (event.target.id === "sendSubmissionButton") {
+  if (event.target.closest("#sendSubmissionButton")) {
     console.log("🚀 Confirm job submission button clicked!");
+
+    if (isQuestSubmissionInFlight) return;
 
     const selectedJobID = localStorage.getItem("selectedJobID");
     if (!selectedJobID) {
@@ -1073,42 +1061,57 @@ document.addEventListener("click", async (event) => {
       image: jobImage ? jobImage.name : "No image uploaded"
     });
 
-    const formData = new FormData();
-    formData.append("title", job.description);
-    formData.append("description", jobDescription);
-    formData.append("jobID", selectedJobID);
-    if (jobImage) {
-      formData.append("image", jobImage);
-    }
+    const requestId = createQuestSubmissionRequestId();
+    setQuestSubmissionInFlight(true);
 
-    for (let [key, value] of formData.entries()) {
-      console.log(`📤 FormData -> ${key}:`, value);
-    }
+    const sendQuestSubmission = async (confirmedDuplicate = false) => {
+      const formData = new FormData();
+      formData.append("title", job.description);
+      formData.append("description", jobDescription);
+      formData.append("jobID", selectedJobID);
+      formData.append("requestId", requestId);
+      formData.append("confirmedDuplicate", String(confirmedDuplicate));
+      if (jobImage) formData.append("image", jobImage);
 
-    try {
-      const response = await fetch("/api/submit-job", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${localStorage.getItem("token")}`,
-          "x-user-id": userId,
-        },
-        body: formData,
-      });
+      try {
+        const response = await fetch("/api/submit-job", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${localStorage.getItem("token")}`,
+          },
+          body: formData,
+        });
 
-      const result = await response.json();
-      console.log("📥 Server response:", result);
+        const result = await response.json();
+        console.log("📥 Server response:", result);
 
-      if (response.ok) {
-        showStyledAlert("✅ Quest submitted successfully!", 3000);
-        modal.style.display = "none";
-        fetchQuestStatus();
-      } else {
-        showStyledAlert(`❌ Submission failed: ${result.error}`, 3000);
+        if (response.status === 409 && result.confirmationRequired) {
+          customConfirm(
+            "Are you sure you want to beep boop the same quest twice?",
+            () => sendQuestSubmission(true),
+            () => setQuestSubmissionInFlight(false)
+          );
+          return;
+        }
+
+        setQuestSubmissionInFlight(false);
+        if (response.ok) {
+          showStyledAlert(result.duplicateRequest
+            ? "✅ This quest submission was already received."
+            : "✅ Quest submitted successfully!", 3000);
+          modal.style.display = "none";
+          fetchQuestStatus();
+        } else {
+          showStyledAlert(`❌ Submission failed: ${result.error}`, 3000);
+        }
+      } catch (error) {
+        setQuestSubmissionInFlight(false);
+        console.error("❌ Error submitting job:", error);
+        showStyledAlert("❌ Failed to submit quest.", 3000);
       }
-    } catch (error) {
-      console.error("❌ Error submitting job:", error);
-      showStyledAlert("❌ Failed to submit quest.", 3000);
-    }
+    };
+
+    sendQuestSubmission();
   }
 });
 
@@ -6033,7 +6036,7 @@ if (marketSellButton) marketSellButton.addEventListener("click", prepareMarketSe
 if (offerSaleButton) offerSaleButton.addEventListener("click", () => showOfferModal('sale'));
 if (offerPurchaseButton) offerPurchaseButton.addEventListener("click", () => showOfferModal('purchase'));
 
-function customConfirm(message, onConfirm) {
+function customConfirm(message, onConfirm, onCancel) {
   const modalOverlay = document.createElement("div");
   modalOverlay.className = "modal-overlay";
 
@@ -6060,6 +6063,7 @@ function customConfirm(message, onConfirm) {
   });
 
   noButton.addEventListener("click", () => {
+    if (onCancel) onCancel();
     modalOverlay.remove();
   });
 }

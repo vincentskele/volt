@@ -252,27 +252,44 @@ db.all(`PRAGMA table_info(items)`, (err, columns) => {
 });
 
 function ensureJobSubmissionColumn(columnName, ddl) {
-  db.all(`PRAGMA table_info(job_submissions)`, (err, columns) => {
-    if (err) {
-      console.error('❌ Error checking job_submissions schema:', err);
-      return;
-    }
-    const exists = columns.some((col) => col.name === columnName);
-    if (!exists) {
+  return new Promise((resolve, reject) => {
+    db.all(`PRAGMA table_info(job_submissions)`, (err, columns) => {
+      if (err) {
+        console.error('❌ Error checking job_submissions schema:', err);
+        return reject(err);
+      }
+      const exists = columns.some((col) => col.name === columnName);
+      if (exists) return resolve();
+
       db.run(`ALTER TABLE job_submissions ADD COLUMN ${ddl}`, (alterErr) => {
         if (alterErr) {
           console.error(`❌ Failed adding ${columnName} to job_submissions:`, alterErr);
-        } else {
-          console.log(`✅ Added ${columnName} to job_submissions.`);
+          return reject(alterErr);
         }
+        console.log(`✅ Added ${columnName} to job_submissions.`);
+        return resolve();
       });
-    }
+    });
   });
 }
 
-ensureJobSubmissionColumn('reward_amount', 'reward_amount INTEGER DEFAULT 0');
-ensureJobSubmissionColumn('completed_at', 'completed_at INTEGER');
-ensureJobSubmissionColumn('jobID', 'jobID INTEGER');
+let jobSubmissionSchemaError = null;
+const jobSubmissionSchemaReady = Promise.all([
+  ensureJobSubmissionColumn('reward_amount', 'reward_amount INTEGER DEFAULT 0'),
+  ensureJobSubmissionColumn('completed_at', 'completed_at INTEGER'),
+  ensureJobSubmissionColumn('jobID', 'jobID INTEGER'),
+  ensureJobSubmissionColumn('request_id', 'request_id TEXT'),
+]).then(() => new Promise((resolve, reject) => {
+  db.run(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_job_submissions_request_id
+     ON job_submissions(request_id)
+     WHERE request_id IS NOT NULL`,
+    (err) => (err ? reject(err) : resolve())
+  );
+})).catch((err) => {
+  jobSubmissionSchemaError = err;
+  console.error('❌ Failed preparing quest-submission uniqueness safeguards:', err);
+});
 
 function ensureJoblistColumn(columnName, ddl) {
   db.all(`PRAGMA table_info(joblist)`, (err, columns) => {
@@ -2304,6 +2321,15 @@ const dbRun = util.promisify(db.run).bind(db);
 const dbGet = util.promisify(db.get).bind(db);
 const dbAll = util.promisify(db.all).bind(db);
 
+function dbRunWithChanges(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function onRun(err) {
+      if (err) return reject(err);
+      return resolve({ changes: this.changes, lastID: this.lastID });
+    });
+  });
+}
+
 async function ensureEconomyProfileForDiscordUser(discordId) {
   const normalizedDiscordId = String(discordId || '').trim();
   if (!normalizedDiscordId) return null;
@@ -3189,19 +3215,89 @@ const upload = multer({ storage });
 app.use("/uploads", express.static(uploadDir));
 
 // ✅ Job Submission API
-app.post("/api/submit-job", upload.single("image"), async (req, res) => {
+app.post("/api/submit-job", authenticateToken, upload.single("image"), async (req, res) => {
   console.log("📥 Received job submission:", req.body, req.file);
 
-  const userID = req.headers["x-user-id"];
-  if (!userID) return res.status(400).json({ error: "User ID is missing. Please log in again." });
+  const discardUploadedFile = async () => {
+    if (!req.file?.path) return;
+    try {
+      await fs.promises.unlink(req.file.path);
+    } catch (err) {
+      if (err.code !== 'ENOENT') console.warn('⚠️ Failed to discard unused quest upload:', err.message);
+    }
+  };
 
-  const { title, description, jobID } = req.body;
-  if (!title || !description) return res.status(400).json({ error: "Title and description are required." });
-  if (!jobID) return res.status(400).json({ error: "Job ID is required." });
+  const userID = req.user?.userId;
+  if (!userID) {
+    await discardUploadedFile();
+    return res.status(401).json({ error: "User is not authenticated. Please log in again." });
+  }
+
+  const { title, description, jobID, requestId } = req.body;
+  const normalizedJobID = Number(jobID);
+  const confirmedDuplicate = req.body.confirmedDuplicate === 'true';
+  if (!title || !description) {
+    await discardUploadedFile();
+    return res.status(400).json({ error: "Title and description are required." });
+  }
+  if (!Number.isInteger(normalizedJobID) || normalizedJobID <= 0) {
+    await discardUploadedFile();
+    return res.status(400).json({ error: "A valid Job ID is required." });
+  }
+  if (!/^[A-Za-z0-9_-]{16,100}$/.test(String(requestId || ''))) {
+    await discardUploadedFile();
+    return res.status(400).json({ error: "A valid submission request ID is required." });
+  }
 
   try {
-const channel = await client.channels.fetch(QUEST_SUBMISSION_CHANNEL_ID);
-      if (!channel) return res.status(500).json({ error: "Quest submission channel not found." });
+    await jobSubmissionSchemaReady;
+    if (jobSubmissionSchemaError) throw jobSubmissionSchemaError;
+
+    const imageUrl = req.file
+      ? `https://volt.solarians.world/uploads/${encodeURIComponent(req.file.filename)}`
+      : null;
+
+    let insertResult;
+    try {
+      insertResult = await dbRunWithChanges(
+        `INSERT INTO job_submissions
+           (userID, jobID, title, description, image_url, request_id)
+         SELECT ?, ?, ?, ?, ?, ?
+         WHERE ? = 1
+            OR NOT EXISTS (
+              SELECT 1 FROM job_submissions WHERE userID = ? AND jobID = ?
+            )`,
+        [
+          userID,
+          normalizedJobID,
+          title,
+          description,
+          imageUrl,
+          requestId,
+          confirmedDuplicate ? 1 : 0,
+          userID,
+          normalizedJobID,
+        ]
+      );
+    } catch (insertError) {
+      if (insertError.code === 'SQLITE_CONSTRAINT') {
+        await discardUploadedFile();
+        return res.json({ message: "Quest submission already received.", duplicateRequest: true });
+      }
+      throw insertError;
+    }
+
+    if (insertResult.changes === 0) {
+      await discardUploadedFile();
+      return res.status(409).json({
+        error: "This quest has already been submitted.",
+        code: "DUPLICATE_QUEST_CONFIRMATION_REQUIRED",
+        confirmationRequired: true,
+      });
+    }
+
+    const channel = await client.channels.fetch(QUEST_SUBMISSION_CHANNEL_ID);
+    if (!channel) throw new Error("Quest submission channel not found.");
 
     // ✅ Try to resolve user tag
     let footerText = `Submitted by: <@${userID}>`; // fallback
@@ -3221,9 +3317,6 @@ const channel = await client.channels.fetch(QUEST_SUBMISSION_CHANNEL_ID);
       .setTimestamp();
 
     // ✅ Attach image URL in embed as a field
-    const imageUrl = req.file
-      ? `https://volt.solarians.world/uploads/${encodeURIComponent(req.file.filename)}`
-      : null;
     if (imageUrl) {
       console.log("🖼️ Image URL for embed:", imageUrl);
       embed.addFields({ name: "📷 Image URL", value: `[Click to View](${imageUrl})` });
@@ -3231,16 +3324,24 @@ const channel = await client.channels.fetch(QUEST_SUBMISSION_CHANNEL_ID);
 
     await channel.send({ embeds: [embed] });
 
-    await dbRun(
-      `INSERT INTO job_submissions (userID, jobID, title, description, image_url) VALUES (?, ?, ?, ?, ?)`,
-      [userID, jobID, title, description, imageUrl]
-    );
-    await dbRun(`DELETE FROM job_assignees WHERE userID = ?`, [userID]);
+    try {
+      await dbRun(`DELETE FROM job_assignees WHERE userID = ?`, [userID]);
+    } catch (assignmentError) {
+      // The submission and Discord notification already succeeded. Do not turn a
+      // harmless assignment-cleanup failure into a retry that could notify twice.
+      console.error('❌ Failed to clear completed quest assignment:', assignmentError);
+    }
 
     console.log("✅ Job submitted successfully!");
     res.json({ message: "Job submitted successfully!" });
   } catch (error) {
     console.error("❌ ERROR DETAILS:", error);
+    try {
+      await dbRun(`DELETE FROM job_submissions WHERE request_id = ?`, [requestId]);
+    } catch (cleanupError) {
+      console.error('❌ Failed to roll back quest submission:', cleanupError);
+    }
+    await discardUploadedFile();
     res.status(500).json({ error: `Failed to send job submission. Reason: ${error.message}` });
   }
 });

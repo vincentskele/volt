@@ -1166,10 +1166,6 @@ function scheduleNextTriviaQuestion() {
   const maxDelay = avgGap * 1.5;
   const delay = Math.floor(minDelay + Math.random() * (maxDelay - minDelay));
 
-  console.log(
-    `📅 Scheduling trivia #${triviaCountToday + 1} in ~${Math.floor(delay / 60000)} minutes.`
-  );
-
   setTimeout(() => askTriviaQuestion(), delay);
 }
 
