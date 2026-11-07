@@ -7,6 +7,7 @@ const {
   TextInputBuilder,
   TextInputStyle,
 } = require('discord.js');
+const db = require('../../db');
 
 const QUEST_SUBMISSION_CHANNEL_ID = process.env.QUEST_SUBMISSION_CHANNEL_ID || process.env.SUBMISSION_CHANNEL_ID;
 const SUBMISSION_COLOR = 0x000000;
@@ -68,6 +69,7 @@ async function handleModalSubmit(interaction) {
   if (!interaction.customId.startsWith('submit-x:')) return false;
 
   await interaction.deferReply({ ephemeral: true });
+  let submissionID = null;
   try {
     const action = interaction.fields.getStringSelectValues('xAction')[0];
     const tweetUrl = normalizeTweetUrl(interaction.fields.getTextInputValue('tweetLink'));
@@ -83,6 +85,9 @@ async function handleModalSubmit(interaction) {
     if (!QUEST_SUBMISSION_CHANNEL_ID) {
       throw new Error('Quest submission channel is not configured.');
     }
+
+    const createResult = await db.createXQuestSubmission(interaction.user.id, action, tweetUrl);
+    submissionID = createResult.submissionId;
 
     const channel = await interaction.client.channels.fetch(QUEST_SUBMISSION_CHANNEL_ID);
     if (!channel || !channel.isTextBased()) {
@@ -104,6 +109,13 @@ async function handleModalSubmit(interaction) {
     return true;
   } catch (error) {
     console.error('❌ Discord X quest submission failed:', error);
+    if (submissionID) {
+      try {
+        await db.deleteXQuestSubmission(submissionID);
+      } catch (rollbackError) {
+        console.error('❌ Failed to roll back Discord X quest submission:', rollbackError);
+      }
+    }
     await interaction.editReply(`🚫 X quest submission failed: ${error?.message || error}`);
     return true;
   }

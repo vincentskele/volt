@@ -2141,6 +2141,25 @@ code {
   max-width: 400px;
 }
 
+#xQuestCompletionModal .modal-box {
+  width: min(700px, 92vw);
+  max-width: 700px;
+  max-height: 88vh;
+  overflow-y: auto;
+}
+
+#xQuestCompletionModal #xQuestTotalRewardInput {
+  width: 100%;
+  margin: 8px 0 14px;
+  padding: 10px;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  background: #1c1e29;
+  color: var(--text-primary);
+  font: inherit;
+  text-transform: none;
+}
+
 .redeem-modal-box {
   max-width: min(520px, 92vw);
 }

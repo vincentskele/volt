@@ -21,6 +21,7 @@
   };
   const ADMIN_PANEL_HASHES = {
     adminSubmissionsPanel: 'quest-submissions',
+    adminXSubmissionsPanel: 'x-quest-submissions',
     adminUserPanel: 'users',
     adminTitleGiveawaysPanel: 'title-giveaways',
     adminGiveawaysPanel: 'giveaways',
@@ -222,6 +223,7 @@
 
   function loadAdminPanelData(targetId) {
     if (targetId === 'adminSubmissionsPanel') loadAdminPage();
+    if (targetId === 'adminXSubmissionsPanel') loadAdminXSubmissions();
     if (targetId === 'adminUserPanel') loadAdminUsers();
     if (targetId === 'adminTitleGiveawaysPanel') loadAdminTitleGiveaways();
     if (targetId === 'adminGiveawaysPanel') loadAdminGiveaways();
@@ -1713,6 +1715,156 @@ async function loadAdminPage() {
   }
 }
 
+async function loadAdminXSubmissions() {
+  const token = localStorage.getItem('token');
+  const list = document.getElementById('adminXSubmissionsList');
+  const emptyState = document.getElementById('adminXSubmissionsEmpty');
+  if (!token || !list) return;
+
+  list.innerHTML = '';
+  if (emptyState) emptyState.style.display = 'none';
+
+  try {
+    const response = await fetch('/api/admin/x-submissions', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error('Failed to load X quest submissions.');
+    const submissions = await response.json();
+
+    if (!Array.isArray(submissions) || !submissions.length) {
+      if (emptyState) emptyState.style.display = 'block';
+      return;
+    }
+
+    const grouped = submissions.reduce((groups, submission) => {
+      if (!groups[submission.userID]) {
+        groups[submission.userID] = {
+          userID: submission.userID,
+          username: submission.username,
+          items: [],
+        };
+      }
+      groups[submission.userID].items.push(submission);
+      return groups;
+    }, {});
+
+    Object.values(grouped).forEach((group) => {
+      const container = document.createElement('div');
+      container.className = 'admin-item';
+
+      const header = document.createElement('div');
+      header.className = 'admin-actions';
+      const title = document.createElement('p');
+      title.textContent = `${group.username || group.userID} — ${group.items.length} pending`;
+      const reviewButton = document.createElement('button');
+      reviewButton.className = 'btn';
+      reviewButton.textContent = 'Review & Complete';
+      reviewButton.addEventListener('click', () => showXQuestCompletionModal(group));
+      header.append(title, reviewButton);
+
+      const links = document.createElement('div');
+      group.items.forEach((submission) => {
+        const row = document.createElement('p');
+        const link = document.createElement('a');
+        link.href = submission.tweet_url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = `${submission.action}: ${submission.tweet_url}`;
+        row.appendChild(link);
+        links.appendChild(row);
+      });
+
+      container.append(header, links);
+      list.appendChild(container);
+    });
+  } catch (error) {
+    console.error('❌ Failed to load X quest submissions:', error);
+    list.innerHTML = '<div class="admin-item">Failed to load X quest submissions.</div>';
+  }
+}
+
+function showXQuestCompletionModal(group) {
+  document.getElementById('xQuestCompletionModal')?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'xQuestCompletionModal';
+  const modal = document.createElement('div');
+  modal.className = 'modal-box';
+
+  const heading = document.createElement('h2');
+  heading.textContent = 'Complete X Quests';
+  const user = document.createElement('p');
+  user.textContent = `${group.username || group.userID} — ${group.items.length} pending`;
+  const submissions = document.createElement('div');
+  submissions.className = 'admin-list';
+
+  group.items.forEach((submission, index) => {
+    const item = document.createElement('div');
+    item.className = 'admin-item';
+    const action = document.createElement('p');
+    action.textContent = `${index + 1}. ${submission.action}`;
+    const link = document.createElement('a');
+    link.href = submission.tweet_url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = submission.tweet_url;
+    item.append(action, link);
+    submissions.appendChild(item);
+  });
+
+  const rewardLabel = document.createElement('label');
+  rewardLabel.htmlFor = 'xQuestTotalRewardInput';
+  rewardLabel.textContent = 'Total Volts to award';
+  const rewardInput = document.createElement('input');
+  rewardInput.id = 'xQuestTotalRewardInput';
+  rewardInput.type = 'number';
+  rewardInput.min = '0';
+  rewardInput.step = '1';
+  rewardInput.placeholder = 'Total Volts';
+
+  const buttons = document.createElement('div');
+  buttons.className = 'modal-buttons';
+  const confirm = document.createElement('button');
+  confirm.className = 'confirm-button';
+  confirm.textContent = 'Complete All';
+  const cancel = document.createElement('button');
+  cancel.className = 'cancel-button';
+  cancel.textContent = 'Cancel';
+  buttons.append(confirm, cancel);
+  modal.append(heading, user, submissions, rewardLabel, rewardInput, buttons);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  cancel.addEventListener('click', () => overlay.remove());
+  confirm.addEventListener('click', async () => {
+    const totalReward = Number(rewardInput.value);
+    if (!Number.isInteger(totalReward) || totalReward < 0) {
+      showConfirmationPopup('❌ Enter a valid whole-number Volt amount.');
+      return;
+    }
+
+    confirm.disabled = true;
+    const token = localStorage.getItem('token');
+    const result = await adminActionRequest(
+      `/api/admin/x-submissions/${encodeURIComponent(group.userID)}/complete`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ totalReward }),
+      }
+    );
+    confirm.disabled = false;
+    if (result.ok) {
+      overlay.remove();
+      loadAdminXSubmissions();
+    }
+  });
+}
+
 function confirmTwice(message, onConfirm) {
   customConfirm(message, () => {
     customConfirm('Are you REALLY sure?', onConfirm);
@@ -3172,6 +3324,7 @@ function startAdminPolling() {
     const adminPage = document.getElementById('adminPage');
     if (!adminPage || adminPage.style.display !== 'block') return;
     if (document.getElementById('adminSubmissionsPanel')?.style.display === 'block') loadAdminPage();
+    if (document.getElementById('adminXSubmissionsPanel')?.style.display === 'block') loadAdminXSubmissions();
     if (document.getElementById('adminUserPanel')?.style.display === 'block') loadAdminUsers();
     if (document.getElementById('adminTitleGiveawaysPanel')?.style.display === 'block') loadAdminTitleGiveaways();
     if (document.getElementById('adminGiveawaysPanel')?.style.display === 'block') loadAdminGiveaways();

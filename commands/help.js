@@ -58,6 +58,7 @@ module.exports = {
               `💻🔑 **add-task <description>**: Add to the task list.\n` +
               `💻🔑 **remove-task <JobID>**: Remove from the task list.\n` +
               `💻🔑 **complete-task @user <amount>**: Mark users task as complete and gives Volts.\n` +
+              `💻🔑 **complete-xquest**: Review and complete a user's pending X quests.\n` +
               `💻🔑 **remove-item <name>**: Remove shop item.\n` +
               `💻🔑 **add-item <price> <name> - <desc>**: Add a shop item.`,
             inline: false,

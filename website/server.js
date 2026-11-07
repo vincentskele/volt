@@ -165,6 +165,32 @@ db.run(
   }
 );
 
+db.run(
+  `CREATE TABLE IF NOT EXISTS x_quest_submissions (
+    submission_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    userID TEXT NOT NULL,
+    action TEXT NOT NULL,
+    tweet_url TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    reward_amount INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER DEFAULT (strftime('%s', 'now')),
+    completed_at INTEGER,
+    completed_by TEXT
+  )`,
+  (err) => {
+    if (err) console.error('❌ Error creating X quest submissions table:', err);
+    else console.log('✅ X quest submissions table is ready.');
+  }
+);
+
+db.run(
+  `CREATE INDEX IF NOT EXISTS idx_x_quest_submissions_pending
+   ON x_quest_submissions(status, userID, created_at)`,
+  (err) => {
+    if (err) console.error('❌ Error creating X quest submissions index:', err);
+  }
+);
+
 // ✅ Job system tables (used by admin + quest list)
 db.run(
   `CREATE TABLE IF NOT EXISTS joblist (
@@ -791,6 +817,23 @@ app.get('/api/admin/submissions', authenticateToken, requireAdmin, async (req, r
   } catch (err) {
     console.error('Error in /api/admin/submissions:', err);
     return res.status(500).json({ message: 'Failed to load submissions.' });
+  }
+});
+
+app.get('/api/admin/x-submissions', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT x.submission_id, x.userID, e.username, x.action, x.tweet_url,
+              x.status, x.created_at
+       FROM x_quest_submissions x
+       LEFT JOIN economy e ON e.userID = x.userID
+       WHERE x.status = 'pending'
+       ORDER BY x.created_at DESC, x.submission_id DESC`
+    );
+    return res.json(rows || []);
+  } catch (err) {
+    console.error('Error in /api/admin/x-submissions:', err);
+    return res.status(500).json({ message: 'Failed to load X quest submissions.' });
   }
 });
 
@@ -1567,6 +1610,65 @@ app.post('/api/admin/submissions/:submissionId/complete', authenticateToken, req
   } catch (err) {
     console.error('Error completing submission:', err);
     return res.status(500).json({ message: 'Failed to complete submission.' });
+  }
+});
+
+app.post('/api/admin/x-submissions/:userID/complete', authenticateToken, requireAdmin, async (req, res) => {
+  const userID = String(req.params.userID || '').trim();
+  const totalReward = Number(req.body?.totalReward);
+
+  if (!/^\d{17,20}$/.test(userID)) {
+    return res.status(400).json({ message: 'Invalid Discord user ID.' });
+  }
+  if (!Number.isInteger(totalReward) || totalReward < 0) {
+    return res.status(400).json({ message: 'Enter a valid whole-number Volt amount.' });
+  }
+
+  try {
+    const submissions = await dbHelpers.getPendingXQuestSubmissions(userID);
+    if (!submissions.length) {
+      return res.status(404).json({ message: 'No pending X quests found for this user.' });
+    }
+
+    const result = await dbHelpers.completePendingXQuestSubmissions(userID, totalReward, req.user.userId);
+    if (!result.success) {
+      return res.status(400).json({ message: 'These X quests were already processed.' });
+    }
+
+    try {
+      if (QUEST_SUBMISSION_CHANNEL_ID) {
+        const [userTag, adminTag] = await Promise.all([
+          resolveUsername(userID),
+          resolveUsername(req.user.userId),
+        ]);
+        const links = submissions
+          .map((submission, index) => `• ${submission.action} — [View Tweet ${index + 1}](${submission.tweet_url})`)
+          .join('\n')
+          .slice(0, 1024);
+        const embed = new EmbedBuilder()
+          .setTitle('✅ X Quests Marked Complete')
+          .setColor(SUBMISSION_EMBED_COLORS.questComplete)
+          .addFields(
+            { name: 'User', value: userTag, inline: true },
+            { name: 'Marked By', value: adminTag, inline: true },
+            { name: 'Total Volts Awarded', value: String(result.totalReward), inline: true },
+            { name: 'Completed X Quests', value: links || '—' }
+          )
+          .setTimestamp();
+        await sendVoltBotMessage(QUEST_SUBMISSION_CHANNEL_ID, { embeds: [embed] });
+      }
+    } catch (notifyErr) {
+      console.error('❌ Failed to send X quest completion message:', notifyErr);
+    }
+
+    return res.json({
+      message: `Completed ${result.completedCount} X quest(s).`,
+      completedCount: result.completedCount,
+      totalReward: result.totalReward,
+    });
+  } catch (err) {
+    console.error('Error completing X quest submissions:', err);
+    return res.status(500).json({ message: 'Failed to complete X quest submissions.' });
   }
 });
 
@@ -3381,7 +3483,10 @@ app.post('/api/submit-x', authenticateToken, async (req, res) => {
     return res.status(500).json({ error: 'Quest submission channel is not configured.' });
   }
 
+  let submissionID = null;
   try {
+    const createResult = await dbHelpers.createXQuestSubmission(userID, action, tweetUrl);
+    submissionID = createResult.submissionId;
     const userTag = await resolveUsername(userID);
     const embed = new EmbedBuilder()
       .setTitle('𝕏 New X Quest Submission!')
@@ -3397,6 +3502,13 @@ app.post('/api/submit-x', authenticateToken, async (req, res) => {
     return res.json({ message: 'X quest submitted successfully.' });
   } catch (error) {
     console.error('❌ Web X quest submission failed:', error);
+    if (submissionID) {
+      try {
+        await dbHelpers.deleteXQuestSubmission(submissionID);
+      } catch (rollbackError) {
+        console.error('❌ Failed to roll back web X quest submission:', rollbackError);
+      }
+    }
     return res.status(500).json({ error: `Failed to send X quest submission. Reason: ${error.message}` });
   }
 });

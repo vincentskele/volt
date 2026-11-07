@@ -267,6 +267,7 @@
   <h2>🛠️ Admin Dashboard</h2>
   <div class="admin-sections">
     <button class="btn admin-toggle" data-target="adminSubmissionsPanel"><span class="btn-icon-content"><i class="fa-solid fa-clipboard-check" aria-hidden="true"></i><span>Quest Submissions</span></span></button>
+    <button class="btn admin-toggle" data-target="adminXSubmissionsPanel"><span class="btn-icon-content"><i class="fa-brands fa-x-twitter" aria-hidden="true"></i><span>X Quest Submission</span></span></button>
     <button class="btn admin-toggle" data-target="adminUserPanel"><span class="btn-icon-content"><i class="fa-solid fa-users" aria-hidden="true"></i><span>User List</span></span></button>
     <button class="btn admin-toggle" data-target="adminTitleGiveawaysPanel"><span class="btn-icon-content"><i class="fa-solid fa-award" aria-hidden="true"></i><span>Title Giveaways</span></span></button>
     <button class="btn admin-toggle" data-target="adminGiveawaysPanel"><span class="btn-icon-content"><i class="fa-solid fa-gift" aria-hidden="true"></i><span>Giveaways</span></span></button>
@@ -283,6 +284,14 @@
     <div id="adminSubmissionsList" class="admin-list"></div>
     <div id="adminSubmissionsEmpty" class="empty-state" style="display: none;">
       No pending submissions.
+    </div>
+  </div>
+
+  <div id="adminXSubmissionsPanel" class="admin-panel" style="display: none;">
+    <h3>𝕏 Pending X Quest Submissions</h3>
+    <div id="adminXSubmissionsList" class="admin-list"></div>
+    <div id="adminXSubmissionsEmpty" class="empty-state" style="display: none;">
+      No pending X quest submissions.
     </div>
   </div>
 

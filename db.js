@@ -500,6 +500,32 @@ db.run(`
       else console.log('✅ DAO call attendance table is ready.');
     });
 
+    // X quest submissions awaiting admin review.
+    db.run(`
+      CREATE TABLE IF NOT EXISTS x_quest_submissions (
+        submission_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userID TEXT NOT NULL,
+        action TEXT NOT NULL,
+        tweet_url TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        reward_amount INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER DEFAULT (strftime('%s', 'now')),
+        completed_at INTEGER,
+        completed_by TEXT
+      )
+    `, (err) => {
+      if (err) console.error('❌ Error creating X quest submissions table:', err);
+      else console.log('✅ X quest submissions table is ready.');
+    });
+
+    db.run(
+      `CREATE INDEX IF NOT EXISTS idx_x_quest_submissions_pending
+       ON x_quest_submissions(status, userID, created_at)`,
+      (err) => {
+        if (err) console.error('❌ Error creating X quest submissions index:', err);
+      }
+    );
+
     console.log('✅ Database initialization complete.');
   });
 }
@@ -1345,6 +1371,156 @@ function completePendingJobSubmissions(userID, submissionIDs, rewardPerSubmissio
           );
         }
       );
+    });
+  });
+}
+
+function createXQuestSubmission(userID, action, tweetUrl) {
+  return new Promise((resolve, reject) => {
+    if (!userID || !action || !tweetUrl) {
+      return reject(new Error('User, action, and tweet URL are required.'));
+    }
+    db.run(
+      `INSERT INTO x_quest_submissions (userID, action, tweet_url)
+       VALUES (?, ?, ?)`,
+      [userID, action, tweetUrl],
+      function (err) {
+        if (err) return reject(new Error('Failed to create X quest submission.'));
+        return resolve({ created: true, submissionId: this.lastID });
+      }
+    );
+  });
+}
+
+function deleteXQuestSubmission(submissionID) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `DELETE FROM x_quest_submissions WHERE submission_id = ? AND status = 'pending'`,
+      [submissionID],
+      function (err) {
+        if (err) return reject(new Error('Failed to remove X quest submission.'));
+        return resolve({ deleted: this.changes || 0 });
+      }
+    );
+  });
+}
+
+function getPendingXQuestSubmissions(userID) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT submission_id, userID, action, tweet_url, created_at
+       FROM x_quest_submissions
+       WHERE userID = ? AND status = 'pending'
+       ORDER BY created_at ASC, submission_id ASC`,
+      [userID],
+      (err, rows) => {
+        if (err) return reject(new Error('Failed to retrieve pending X quest submissions.'));
+        return resolve(rows || []);
+      }
+    );
+  });
+}
+
+function getPendingXQuestUsers() {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT x.userID, e.username, COUNT(*) AS pending_count,
+              MAX(x.created_at) AS last_submitted_at,
+              MAX(x.submission_id) AS latest_submission_id
+       FROM x_quest_submissions x
+       LEFT JOIN economy e ON e.userID = x.userID
+       WHERE x.status = 'pending'
+       GROUP BY x.userID, e.username
+       ORDER BY last_submitted_at DESC, latest_submission_id DESC`,
+      [],
+      (err, rows) => {
+        if (err) return reject(new Error('Failed to retrieve users with pending X quests.'));
+        return resolve(rows || []);
+      }
+    );
+  });
+}
+
+function completePendingXQuestSubmissions(userID, totalReward, completedBy) {
+  return new Promise((resolve, reject) => {
+    const rewardAmount = Number(totalReward);
+    if (!userID || !Number.isInteger(rewardAmount) || rewardAmount < 0) {
+      return reject(new Error('Invalid user or total reward amount.'));
+    }
+
+    db.serialize(() => {
+      db.run('BEGIN IMMEDIATE TRANSACTION', (beginErr) => {
+        if (beginErr) return reject(new Error('Failed to begin X quest completion.'));
+
+        db.all(
+          `SELECT submission_id FROM x_quest_submissions
+           WHERE userID = ? AND status = 'pending'
+           ORDER BY created_at ASC, submission_id ASC`,
+          [userID],
+          (selectErr, rows) => {
+            if (selectErr) {
+              return db.run('ROLLBACK', () => reject(new Error('Failed to load pending X quests.')));
+            }
+            if (!rows.length) {
+              return db.run('ROLLBACK', () => resolve({ success: false, completedCount: 0, totalReward: 0 }));
+            }
+
+            const baseReward = Math.floor(rewardAmount / rows.length);
+            let remainder = rewardAmount % rows.length;
+            const rewards = rows.map((row) => ({
+              id: row.submission_id,
+              reward: baseReward + (remainder-- > 0 ? 1 : 0),
+            }));
+            const caseSql = rewards.map(() => 'WHEN ? THEN ?').join(' ');
+            const idsSql = rewards.map(() => '?').join(', ');
+            const caseParams = rewards.flatMap((entry) => [entry.id, entry.reward]);
+            const ids = rewards.map((entry) => entry.id);
+
+            db.run(
+              `UPDATE x_quest_submissions
+               SET status = 'completed',
+                   reward_amount = CASE submission_id ${caseSql} END,
+                   completed_at = strftime('%s', 'now'),
+                   completed_by = ?
+               WHERE userID = ? AND status = 'pending'
+                 AND submission_id IN (${idsSql})`,
+              [...caseParams, completedBy || null, userID, ...ids],
+              function (updateErr) {
+                if (updateErr || this.changes !== rows.length) {
+                  return db.run('ROLLBACK', () => reject(new Error('Failed to complete all pending X quests.')));
+                }
+
+                db.run(
+                  `INSERT OR IGNORE INTO economy (userID, wallet, bank) VALUES (?, 0, 0)`,
+                  [userID],
+                  (insertErr) => {
+                    if (insertErr) {
+                      return db.run('ROLLBACK', () => reject(new Error('Failed to initialize user economy.')));
+                    }
+                    db.run(
+                      `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
+                      [rewardAmount, userID],
+                      (walletErr) => {
+                        if (walletErr) {
+                          return db.run('ROLLBACK', () => reject(new Error('Failed to award X quest Volts.')));
+                        }
+                        db.run('COMMIT', (commitErr) => {
+                          if (commitErr) return reject(new Error('Failed to commit X quest completion.'));
+                          return resolve({
+                            success: true,
+                            completedCount: rows.length,
+                            totalReward: rewardAmount,
+                          });
+                        });
+                      }
+                    );
+                  }
+                );
+              }
+            );
+          }
+        );
+      });
     });
   });
 }
@@ -3481,6 +3657,11 @@ module.exports = {
   clearJobAssignment,
   getPendingQuestUsers,
   completePendingJobSubmissions,
+  createXQuestSubmission,
+  deleteXQuestSubmission,
+  getPendingXQuestSubmissions,
+  getPendingXQuestUsers,
+  completePendingXQuestSubmissions,
   renumberJobs,
   getCurrentJobIndex,
   setCurrentJobIndex,
