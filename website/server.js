@@ -22,6 +22,22 @@ const SUBMISSION_EMBED_COLORS = {
 const QUEST_SUBMISSION_CHANNEL_ID = process.env.QUEST_SUBMISSION_CHANNEL_ID || process.env.SUBMISSION_CHANNEL_ID;
 const WEB_ADMIN_EDITS_CHANNEL_ID = process.env.WEB_ADMIN_EDITS_CHANNEL_ID || process.env.SUBMISSION_CHANNEL_ID;
 const ITEM_REDEMPTION_CHANNEL_ID = process.env.ITEM_REDEMPTION_CHANNEL_ID || process.env.SUBMISSION_CHANNEL_ID;
+const X_SUBMISSION_ACTIONS = new Set(['posted', 'comment', 'retweet', 'like']);
+
+function normalizeTweetUrl(value) {
+  try {
+    const url = new URL(String(value || '').trim());
+    const hostname = url.hostname.toLowerCase().replace(/^www\./, '');
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
+    if (!['x.com', 'twitter.com'].includes(hostname)) return null;
+    if (!/^\/[^/]+\/status\/\d+(?:\/|$)/i.test(url.pathname)) return null;
+    url.search = '';
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
 
 function getSolanaExplorerUrl(walletAddress) {
   if (!walletAddress) return null;
@@ -3343,6 +3359,45 @@ app.post("/api/submit-job", authenticateToken, upload.single("image"), async (re
     }
     await discardUploadedFile();
     res.status(500).json({ error: `Failed to send job submission. Reason: ${error.message}` });
+  }
+});
+
+// Broadcast an X quest submission to the same channel used by quest submissions.
+app.post('/api/submit-x', authenticateToken, async (req, res) => {
+  const userID = req.user?.userId;
+  const action = String(req.body?.action || '').trim().toLowerCase();
+  const tweetUrl = normalizeTweetUrl(req.body?.tweetLink);
+
+  if (!userID) {
+    return res.status(401).json({ error: 'User is not authenticated. Please log in again.' });
+  }
+  if (!X_SUBMISSION_ACTIONS.has(action)) {
+    return res.status(400).json({ error: 'Please select a valid submission type.' });
+  }
+  if (!tweetUrl) {
+    return res.status(400).json({ error: 'Please provide a valid x.com or twitter.com tweet link.' });
+  }
+  if (!QUEST_SUBMISSION_CHANNEL_ID) {
+    return res.status(500).json({ error: 'Quest submission channel is not configured.' });
+  }
+
+  try {
+    const userTag = await resolveUsername(userID);
+    const embed = new EmbedBuilder()
+      .setTitle('𝕏 New X Quest Submission!')
+      .setColor(0x000000)
+      .addFields(
+        { name: 'Submission Type', value: action, inline: true },
+        { name: 'Tweet Link', value: `[View Tweet](${tweetUrl})` }
+      )
+      .setFooter({ text: `Submitted by: ${userTag} (${userID})` })
+      .setTimestamp();
+
+    await sendVoltBotMessage(QUEST_SUBMISSION_CHANNEL_ID, { embeds: [embed] });
+    return res.json({ message: 'X quest submitted successfully.' });
+  } catch (error) {
+    console.error('❌ Web X quest submission failed:', error);
+    return res.status(500).json({ error: `Failed to send X quest submission. Reason: ${error.message}` });
   }
 });
 

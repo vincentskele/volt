@@ -8,6 +8,7 @@
     shop: 'shop',
     dailyTasksPage: 'auto-quests',
     jobList: 'quests',
+    xQuestsSection: 'x-quests',
     robotOilSection: 'robot-oil',
     leaderboard: 'leaderboard',
     adminList: 'admin-list',
@@ -921,6 +922,51 @@ if (showJobListButton) {
   showJobListButton.addEventListener('click', () => {
     fetchJobs();
     showSection('jobList');
+  });
+}
+
+const showXQuestsButton = document.getElementById('showXQuestsButton');
+const xQuestSubmissionForm = document.getElementById('xQuestSubmissionForm');
+const submitXQuestButton = document.getElementById('submitXQuestButton');
+
+if (showXQuestsButton) {
+  showXQuestsButton.addEventListener('click', () => showSection('xQuestsSection'));
+}
+
+if (xQuestSubmissionForm) {
+  xQuestSubmissionForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const token = getAuthToken();
+    if (!token) {
+      showStyledAlert('⚠️ Please log in before submitting an X quest.', 3000);
+      return;
+    }
+
+    const action = document.getElementById('xQuestAction')?.value;
+    const tweetLink = document.getElementById('xQuestTweetLink')?.value.trim();
+    if (!tweetLink) {
+      showStyledAlert('⚠️ Please paste a tweet link.', 3000);
+      return;
+    }
+
+    if (submitXQuestButton) submitXQuestButton.disabled = true;
+    try {
+      const response = await fetch('/api/submit-x', {
+        method: 'POST',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ action, tweetLink }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to submit X quest.');
+
+      xQuestSubmissionForm.reset();
+      showStyledAlert('✅ X quest submitted successfully!', 3000);
+    } catch (error) {
+      console.error('❌ Error submitting X quest:', error);
+      showStyledAlert(`❌ ${error.message}`, 3000);
+    } finally {
+      if (submitXQuestButton) submitXQuestButton.disabled = false;
+    }
   });
 }
 

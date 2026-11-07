@@ -47,6 +47,7 @@ module.exports = {
             value:
               `💼 **work**: Get assigned a random task from the joblist.\n` +
               `💼 **tasklist**: Show the current list of jobs with asignees.\n` +
+              `𝕏 **submit-x**: Submit a completed X quest and tweet link.\n` +
               `🛍️ **giveaway**: View the list of giveaways and see which ones youre entered in.`,
             inline: false,
           },

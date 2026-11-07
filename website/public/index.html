@@ -159,6 +159,7 @@
     <button id="showShopButton" class="btn"><span class="btn-icon-content"><i class="fa-solid fa-store" aria-hidden="true"></i><span>Shop</span></span></button>
     <button id="showDailyTasksButton" class="btn"><span class="btn-icon-content"><i class="fa-solid fa-bolt" aria-hidden="true"></i><span>Auto Quests</span></span></button>
     <button id="showJobListButton" class="btn"><span class="btn-icon-content"><i class="fa-solid fa-list-check" aria-hidden="true"></i><span>Quests</span></span></button>
+    <button id="showXQuestsButton" class="btn"><span class="btn-icon-content"><i class="fa-brands fa-x-twitter" aria-hidden="true"></i><span>X Quests</span></span></button>
     <button id="showRobotOilButton" class="btn"><span class="btn-icon-content"><i class="fa-solid fa-oil-can" aria-hidden="true"></i><span>Robot Oil</span></span></button>
     <button id="showLeaderboardButton" class="btn"><span class="btn-icon-content"><i class="fa-solid fa-trophy" aria-hidden="true"></i><span>Leaderboard</span></span></button>
     <button id="showAdminListButton" class="btn"><span class="btn-icon-content"><i class="fa-solid fa-user-shield" aria-hidden="true"></i><span>Admin List</span></span></button>
@@ -494,6 +495,35 @@
     </div>
   </div>
   
+
+  <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
+</div>
+
+<!-- X Quests Section -->
+<div id="xQuestsSection" class="content" style="display: none;">
+  <h2>𝕏 X Quests</h2>
+  <p>Submit a link to the X activity you completed.</p>
+
+  <form id="xQuestSubmissionForm" class="x-quest-form">
+    <label for="xQuestAction">Submission Type</label>
+    <select id="xQuestAction" name="action" required>
+      <option value="posted">posted</option>
+      <option value="comment">comment</option>
+      <option value="retweet">retweet</option>
+      <option value="like">like</option>
+    </select>
+
+    <label for="xQuestTweetLink">Tweet Link</label>
+    <textarea
+      id="xQuestTweetLink"
+      name="tweetLink"
+      placeholder="https://x.com/user/status/1234567890"
+      maxlength="500"
+      required
+    ></textarea>
+
+    <button id="submitXQuestButton" type="submit" class="btn success"><span class="btn-icon-content"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i><span>Submit</span></span></button>
+  </form>
 
   <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
 </div>

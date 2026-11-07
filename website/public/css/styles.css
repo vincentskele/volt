@@ -1095,6 +1095,40 @@ code {
   margin-top: 0;
 }
 
+.x-quest-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(100%, 600px);
+  margin: 20px auto;
+  padding: 18px;
+  background: var(--bg-content);
+  border: 2px solid var(--bg-dark);
+  border-radius: 8px;
+  text-align: left;
+}
+
+.x-quest-form label {
+  font-weight: bold;
+}
+
+.x-quest-form select,
+.x-quest-form textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--text-secondary);
+  border-radius: 5px;
+  background: #1c1e29;
+  color: var(--text-primary);
+  font: inherit;
+  text-transform: none;
+}
+
+.x-quest-form textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+
 @media (min-width: 900px) {
   .auto-quests-wrapper {
     flex-direction: row;

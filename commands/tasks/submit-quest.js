@@ -1,6 +1,5 @@
 const {
   SlashCommandBuilder,
-  ActionRowBuilder,
   EmbedBuilder,
   FileUploadBuilder,
   LabelBuilder,
@@ -49,12 +48,15 @@ async function showSubmissionModal(interaction) {
 
   const descriptionInput = new TextInputBuilder()
     .setCustomId('questDescription')
-    .setLabel('Quest Description')
     .setPlaceholder('Describe your work')
     .setStyle(TextInputStyle.Paragraph)
     .setMinLength(1)
     .setMaxLength(2000)
     .setRequired(true);
+  const descriptionLabel = new LabelBuilder()
+    .setLabel('Quest Description')
+    .setDescription('Describe the work you completed.')
+    .setTextInputComponent(descriptionInput);
 
   const imageUpload = new FileUploadBuilder()
     .setCustomId('questImage')
@@ -70,8 +72,8 @@ async function showSubmissionModal(interaction) {
   const modal = new ModalBuilder()
     .setCustomId(`submit-quest:${contextID}:${assignedJob.jobID}`)
     .setTitle(`Submit Quest #${assignedJob.jobID}`)
-    .addComponents(
-      new ActionRowBuilder().addComponents(descriptionInput),
+    .addLabelComponents(
+      descriptionLabel,
       imageUploadLabel
     );
 
