@@ -1332,6 +1332,29 @@ code {
   white-space: pre-wrap;
 }
 
+.log-details {
+  margin-top: 8px;
+  color: #9ba3b8;
+  font: 12px/1.45 system-ui, sans-serif;
+}
+
+.log-details summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.log-details pre {
+  max-height: 240px;
+  margin: 8px 0 0;
+  padding: 9px;
+  overflow: auto;
+  border-radius: 5px;
+  background: #10121a;
+  color: #b9c0d1;
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}
+
 .console-empty-state {
   padding: 40px 16px;
   color: #929aaf;

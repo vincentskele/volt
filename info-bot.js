@@ -21,7 +21,7 @@ if (!TOKEN) {
 }
 
 // Bot event when ready
-client.once('ready', () => {
+client.once('clientReady', () => {
   console.log(`✅ Bot is online as ${client.user.tag}`);
 });
 

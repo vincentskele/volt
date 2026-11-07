@@ -5,7 +5,11 @@ const fs = require('fs');
 const path = require('path');
 const util = require('util');
 const { points } = require('./points');
-const { getVoiceRewardWindow } = require('./utils/voiceRewardWindow');
+const {
+  getVoiceRewardWindow,
+  getZonedParts,
+  zonedDateTimeToEpoch,
+} = require('./utils/voiceRewardWindow');
 
 /**
  * Capture the last 160 structured console entries for the dashboard.
@@ -82,6 +86,15 @@ const {
 
 // Safe chunked timer — handles giveaways longer than Node's 24.8 day setTimeout cap
 const LONG_TIMEOUT_MAX = 2_147_483_647;
+function formatDuration(milliseconds) {
+  const totalMinutes = Math.max(0, Math.round(milliseconds / 60_000));
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  return `${hours}h`;
+}
+
 function scheduleAt(endTimeMs, fn) {
   const tick = () => {
     const remaining = endTimeMs - Date.now();
@@ -158,7 +171,11 @@ async function userHasAllowedRole(user, guild) {
     try {
       member = await guild.members.fetch(user.id);
     } catch (err) {
-      console.error(`Error fetching member ${user.id} in guild ${guild.id}:`, err);
+      if (err?.code === 10013 || err?.status === 404) {
+        console.warn(`Ignored role check for Discord user ${user.id}: user no longer exists.`);
+      } else {
+        console.error(`Error fetching member ${user.id} in guild ${guild.id}:`, err);
+      }
       return false;
     }
   }
@@ -454,7 +471,7 @@ function scheduleGiveawayConclusion(giveaway, reason) {
     scheduleAt(giveaway.end_time, () => {
       concludeGiveaway(giveaway).finally(() => scheduledGiveaways.delete(giveaway.id));
     });
-    console.log(`⏳ Scheduled giveaway ${giveaway.message_id} (${reason}) to conclude in ${remainingTime}ms.`);
+    console.debug(`Scheduled giveaway ${giveaway.message_id} (${reason}) to conclude in ${formatDuration(remainingTime)}.`);
   } else {
     concludeGiveaway(giveaway).finally(() => scheduledGiveaways.delete(giveaway.id));
   }
@@ -468,7 +485,7 @@ function scheduleRaffleConclusion(raffle, reason) {
     scheduleAt(raffle.end_time, () => {
       concludeRaffle(raffle.id).finally(() => scheduledRaffles.delete(raffle.id));
     });
-    console.log(`📅 Scheduled raffle "${raffle.name}" (ID: ${raffle.id}) (${reason}) in ${timeLeft}ms.`);
+    console.debug(`Scheduled raffle "${raffle.name}" (ID: ${raffle.id}) (${reason}) in ${formatDuration(timeLeft)}.`);
   } else {
     concludeRaffle(raffle.id).finally(() => scheduledRaffles.delete(raffle.id));
   }
@@ -483,11 +500,11 @@ const { concludeRaffle } = require('./commands/giveaway/raffle.js');
 /**
  * Restore and schedule active giveaways on bot startup.
  */
-client.once('ready', async () => {
+client.once('clientReady', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
   
   const activeGiveaways = await getPendingGiveaways();
-  console.log(`🚦 Restoring ${activeGiveaways.length} pending giveaways...`);
+  console.debug(`Restoring ${activeGiveaways.length} pending giveaways.`);
 
   for (const giveaway of activeGiveaways) {
     await syncGiveawayEntries(giveaway);
@@ -495,11 +512,10 @@ client.once('ready', async () => {
   }
 });
 
-client.once('ready', async () => {
-  console.log('🔄 Checking active raffles on startup...');
+client.once('clientReady', async () => {
 
   const activeRaffles = await getPendingRaffles();
-  console.log(`🔄 Restoring ${activeRaffles.length} pending raffles...`);
+  console.debug(`Restoring ${activeRaffles.length} pending raffles.`);
 
   for (const raffle of activeRaffles) {
     scheduleRaffleConclusion(raffle, 'startup');
@@ -591,10 +607,9 @@ async function concludeTitleGiveaway(titleGiveaway) {
   }
 }
 
-client.once('ready', async () => {
-  console.log('🔄 Checking active title giveaways on startup...');
+client.once('clientReady', async () => {
   const activeTitleGiveaways = await getActiveTitleGiveaways();
-  console.log(`🔄 Restoring ${activeTitleGiveaways.length} active title giveaway(s)...`);
+  console.debug(`Restoring ${activeTitleGiveaways.length} active title giveaways.`);
 
   for (const tg of activeTitleGiveaways) {
     // Sync any reactions that came in while bot was offline
@@ -603,7 +618,7 @@ client.once('ready', async () => {
     const timeLeft = tg.end_time - Date.now();
     if (timeLeft > 0) {
       scheduleAt(tg.end_time, () => concludeTitleGiveaway(tg));
-      console.log(`⏳ Rescheduled title giveaway "${tg.giveaway_name}" (ID: ${tg.id}) — ${timeLeft}ms remaining.`);
+      console.debug(`Rescheduled title giveaway "${tg.giveaway_name}" (ID: ${tg.id}) — ${formatDuration(timeLeft)} remaining.`);
     } else {
       await concludeTitleGiveaway(tg);
       console.log(`⏰ Title giveaway "${tg.giveaway_name}" (ID: ${tg.id}) expired while offline — concluded immediately.`);
@@ -749,7 +764,7 @@ try {
   if (fs.existsSync(userMessageCountsPath)) {
     const rawData = fs.readFileSync(userMessageCountsPath);
     userMessageCounts = new Map(JSON.parse(rawData));
-    console.log("✅ Loaded message counts from file.");
+    console.debug('Loaded message counts from file.');
   }
 } catch (error) {
   console.error("⚠️ Error loading message counts:", error);
@@ -773,14 +788,11 @@ function saveMessageCounts() {
 }
 
 // ==========================
-// 🗓️ Helper: Get today's date in EST (without DST handling)
+// 🗓️ Helper: Get today's date in the rewards timezone.
 // ==========================
 function getESTDateString() {
-  // 5 hours behind UTC for standard EST (not accounting for DST)
-  const now = new Date();
-  const estTime = new Date(now.getTime() - (5 * 60 * 60 * 1000));
-  // Convert to YYYY-MM-DD string
-  return estTime.toISOString().split('T')[0];
+  const { year, month, day } = getZonedParts(new Date(), 'America/New_York');
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 // ==========================
@@ -788,20 +800,17 @@ function getESTDateString() {
 // ==========================
 function scheduleMidnightReset() {
   const now = new Date();
-  // We'll keep the approach of resetting at 05:00 UTC for "EST midnight" (no DST)
-  // If you need DST logic, use a timezone library.
-  
-  // This line calculates "today's midnight in EST" as 05:00 UTC
-  // (Manually ignoring DST changes.)
-  const estMidnight = new Date(now.toISOString().split('T')[0] + 'T05:00:00.000Z');
+  const localNow = getZonedParts(now, 'America/New_York');
+  const tomorrow = new Date(Date.UTC(localNow.year, localNow.month - 1, localNow.day + 1));
+  const nextMidnight = zonedDateTimeToEpoch({
+    year: tomorrow.getUTCFullYear(),
+    month: tomorrow.getUTCMonth() + 1,
+    day: tomorrow.getUTCDate(),
+    hour: 0,
+  }, 'America/New_York');
+  const timeUntilMidnight = nextMidnight - now.getTime();
 
-  let timeUntilMidnight = estMidnight.getTime() - now.getTime();
-  if (timeUntilMidnight < 0) {
-    // If it's already past 05:00 UTC, schedule for the next day
-    timeUntilMidnight += 24 * 60 * 60 * 1000;
-  }
-
-  console.log(`⏳ Scheduling daily rewards reset in ${timeUntilMidnight / 1000 / 60} minutes.`);
+  console.debug(`Daily rewards reset scheduled in ${formatDuration(timeUntilMidnight)}.`);
 
   setTimeout(() => {
     userMessageCounts.clear();
@@ -1102,7 +1111,7 @@ async function syncAndRewardVoiceAttendance() {
 if (!isVoiceRewardConfigured) {
   console.warn('⚠️ Voice rewards are disabled because their configuration is incomplete or invalid.');
 }
-client.once('ready', syncAndRewardVoiceAttendance);
+client.once('clientReady', syncAndRewardVoiceAttendance);
 setInterval(syncAndRewardVoiceAttendance, 15_000);
 
 

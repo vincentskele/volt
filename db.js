@@ -7,7 +7,7 @@ const db = new SQLite.Database('./points.db', (err) => {
   if (err) {
     console.error('Database connection error:', err);
   } else {
-    console.log('Connected to SQLite database');
+    console.debug('Connected to SQLite database.');
     initializeDatabase(); // Automatically initialize DB on connection
   }
 });
@@ -17,7 +17,7 @@ const db = new SQLite.Database('./points.db', (err) => {
 // =========================================================================
 function initializeDatabase() {
   db.serialize(() => {
-    console.log('🔄 Initializing database tables...');
+    console.debug('Initializing database tables.');
 
     // Economy Table (Users, Wallet, Bank, Login Data)
     db.run(`
@@ -188,7 +188,7 @@ db.run(`
           console.log('⚙️ Migrated: Added "type" column to robot_oil_market');
         });
       } else {
-        console.log('✅ "type" column already exists in robot_oil_market');
+        console.debug('robot_oil_market schema is current.');
       }
     });
   }
@@ -542,7 +542,7 @@ db.run(`
       }
     );
 
-    console.log('✅ Database initialization complete.');
+    console.debug('Database initialization complete.');
   });
 }
 

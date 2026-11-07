@@ -6437,6 +6437,17 @@ function renderConsoleLogs() {
       message.className = 'log-message';
       message.textContent = entry.message;
       item.append(header, message);
+
+      if (entry.details) {
+        const details = document.createElement('details');
+        details.className = 'log-details';
+        const summary = document.createElement('summary');
+        summary.textContent = 'Technical details';
+        const detailText = document.createElement('pre');
+        detailText.textContent = entry.details;
+        details.append(summary, detailText);
+        item.appendChild(details);
+      }
       consoleLogs.appendChild(item);
     });
   }
@@ -6460,6 +6471,7 @@ async function fetchAndDisplayConsoleLogs() {
       timestamp: entry.timestamp || null,
       level: ['debug', 'info', 'warn', 'error'].includes(entry.level) ? entry.level : 'info',
       message: String(entry.message || 'Unknown message'),
+      details: entry.details ? String(entry.details) : '',
       repeatCount: Math.max(1, Number(entry.repeatCount || 1)),
     }));
     renderConsoleLogs();

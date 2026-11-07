@@ -2270,7 +2270,10 @@ app.get('/api/console', (req, res) => {
       }
 
       const normalizedLogs = logs.slice(-limit).map((entry) => {
-        const message = String(entry?.message || entry?.msg || 'Unknown message');
+        const rawMessage = String(entry?.message || entry?.msg || 'Unknown message');
+        const [summary, ...detailLines] = rawMessage.split('\n');
+        let message = summary.trim() || 'Unknown message';
+        let details = detailLines.join('\n').trim();
         let level = String(entry?.level || '').toLowerCase();
         if (!['debug', 'info', 'warn', 'error'].includes(level)) {
           if (/\[debug\]|\bdebug:/i.test(message)) level = 'debug';
@@ -2278,13 +2281,23 @@ app.get('/api/console', (req, res) => {
           else if (/\[error\]|❌|🚨|\berror:/i.test(message)) level = 'error';
           else level = 'info';
         }
-        if (/^(?:\[debug\]|Scanning directory:|Entering subdirectory:|Found command file:|Loaded command:|✅ .* table is ready\.)/i.test(message)) {
+        if (/^(?:\[debug\]|Scanning directory:|Entering subdirectory:|Found command file:|Loaded command:|✅ .* table is ready\.|✅ Loaded message counts|Connected to SQLite|🔄 Initializing database|✅ Database initialization complete|✅ "type" column already exists|🔄 Checking active|(?:🚦|🔄) Restoring|(?:📅|⏳) Scheduled|⏳ Rescheduled title giveaway|Daily rewards reset scheduled|⏳ Scheduling daily rewards reset)/i.test(message)) {
           level = 'debug';
+        }
+        if (/DeprecationWarning: The ready event has been renamed to clientReady/i.test(message)) {
+          level = 'debug';
+        }
+        const unknownMemberMatch = message.match(/^Error fetching member (\d+) in guild \d+:.*Unknown User/i);
+        if (unknownMemberMatch) {
+          level = 'warn';
+          message = `Ignored role check for Discord user ${unknownMemberMatch[1]}: user no longer exists.`;
+          details = '';
         }
         return {
           timestamp: entry?.timestamp || entry?.time || null,
           level,
           message: message.replace(/^\[(?:debug|info|warn|error)\]\s*/i, ''),
+          details: details || null,
         };
       });
 
@@ -2292,7 +2305,7 @@ app.get('/api/console', (req, res) => {
       // another noisy message was interleaved between them.
       const recentByMessage = new Map();
       const compactLogs = normalizedLogs.reduce((result, entry) => {
-        const key = `${entry.level}\u0000${entry.message}`;
+        const key = `${entry.level}\u0000${entry.message}\u0000${entry.details || ''}`;
         const entryTime = new Date(entry.timestamp || 0).getTime();
         const recent = recentByMessage.get(key);
         if (recent && Number.isFinite(entryTime) && entryTime - recent.lastTime <= 2000) {
@@ -2380,7 +2393,7 @@ const ALLOWED_ROLES = process.env.ALLOWED_ROLES
 
 async function waitForClientReady() {
   if (client?.isReady && client.isReady()) return;
-  await new Promise(resolve => client.once('ready', resolve));
+  await new Promise(resolve => client.once('clientReady', resolve));
 }
 
 async function fetchGuild() {
