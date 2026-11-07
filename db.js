@@ -2240,12 +2240,18 @@ async function getGiveawayByMessageId(messageId) {
 
 // Record a giveaway entry (i.e. when a user reacts).
 async function addGiveawayEntry(giveawayId, userId) {
+  const normalizedUserId = String(userId || '').trim();
+  if (!normalizedUserId) {
+    console.warn(`⚠️ Ignored invalid giveaway entry for giveaway ${giveawayId}.`);
+    return false;
+  }
+
   try {
     // ✅ Force a real-time check from the database
     const existingEntry = await new Promise((resolve, reject) => {
       db.get(
         'SELECT * FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?',
-        [giveawayId, userId],
+        [giveawayId, normalizedUserId],
         (err, row) => {
           if (err) {
             console.error(`❌ Database error checking entry for user ${userId} in giveaway ${giveawayId}:`, err);
@@ -2265,7 +2271,7 @@ async function addGiveawayEntry(giveawayId, userId) {
     await new Promise((resolve, reject) => {
       db.run(
         'INSERT INTO giveaway_entries (giveaway_id, user_id) VALUES (?, ?)',
-        [giveawayId, userId],
+        [giveawayId, normalizedUserId],
         function (err) {
           if (err) {
             console.error(`❌ Database error adding user ${userId} to giveaway ${giveawayId}:`, err);
@@ -2302,10 +2308,13 @@ async function getGiveawayEntries(giveawayId) {
 
 // Remove a giveaway entry when a reaction is removed.
 async function removeGiveawayEntry(giveawayId, userId) {
+  const normalizedUserId = String(userId || '').trim();
+  if (!normalizedUserId) return false;
+
   return new Promise((resolve, reject) => {
     db.run(
       'DELETE FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?',
-      [giveawayId, userId],
+      [giveawayId, normalizedUserId],
       function (err) {
         if (err) {
           console.error(`❌ Database error removing user ${userId} from giveaway ${giveawayId}:`, err);

@@ -223,22 +223,22 @@ async function syncGiveawayEntries(giveaway) {
     const participantIDs = usersReacted.filter(user => !user.bot).map(user => user.id);
 
     // Get existing entries from the database
-    const existingEntries = await getGiveawayEntries(giveaway.id);
-    const existingUserIds = new Set(existingEntries.map(entry => entry.user_id));
+    const existingEntries = (await getGiveawayEntries(giveaway.id))
+      .map((userId) => String(userId || '').trim())
+      .filter(Boolean);
+    const existingUserIds = new Set(existingEntries);
 
     // Add new entries if they don't exist
     for (const userId of participantIDs) {
       if (!existingUserIds.has(userId)) {
         await addGiveawayEntry(giveaway.id, userId);
-        console.log(`✅ Added new entry for user ${userId} in giveaway ${giveaway.id}`);
       }
     }
 
     // Remove users from the database if they no longer have the reaction
-    for (const entry of existingEntries) {
-      if (!participantIDs.includes(entry.user_id)) {
-        await removeGiveawayEntry(giveaway.id, entry.user_id);
-        console.log(`❌ Removed entry for user ${entry.user_id} from giveaway ${giveaway.id}`);
+    for (const userId of existingEntries) {
+      if (!participantIDs.includes(userId)) {
+        await removeGiveawayEntry(giveaway.id, userId);
       }
     }
   } catch (error) {
@@ -288,7 +288,7 @@ async function syncTitleGiveawayEntries(titleGiveaway) {
 async function checkUserInGiveaway(giveawayId, userId) {
   try {
     const existingEntries = await getGiveawayEntries(giveawayId);
-    return existingEntries.some(entry => entry.user_id === userId);
+    return existingEntries.includes(userId);
   } catch (error) {
     console.error(`❌ Error checking giveaway entry for user ${userId}:`, error);
     return false; // Default to false if there's an error

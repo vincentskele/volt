@@ -2288,14 +2288,21 @@ app.get('/api/console', (req, res) => {
         };
       });
 
-      // Repeated adjacent messages are much easier to scan as one row.
+      // Collapse identical messages emitted in the same short burst, even when
+      // another noisy message was interleaved between them.
+      const recentByMessage = new Map();
       const compactLogs = normalizedLogs.reduce((result, entry) => {
-        const previous = result[result.length - 1];
-        if (previous && previous.level === entry.level && previous.message === entry.message) {
-          previous.timestamp = entry.timestamp;
-          previous.repeatCount += 1;
+        const key = `${entry.level}\u0000${entry.message}`;
+        const entryTime = new Date(entry.timestamp || 0).getTime();
+        const recent = recentByMessage.get(key);
+        if (recent && Number.isFinite(entryTime) && entryTime - recent.lastTime <= 2000) {
+          recent.item.timestamp = entry.timestamp;
+          recent.item.repeatCount += 1;
+          recent.lastTime = entryTime;
         } else {
-          result.push({ ...entry, repeatCount: 1 });
+          const item = { ...entry, repeatCount: 1 };
+          result.push(item);
+          recentByMessage.set(key, { item, lastTime: entryTime });
         }
         return result;
       }, []);
