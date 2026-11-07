@@ -1375,7 +1375,37 @@ function completePendingJobSubmissions(userID, submissionIDs, rewardPerSubmissio
   });
 }
 
-function createXQuestSubmission(userID, action, tweetUrl) {
+let xQuestSchemaPromise = null;
+function ensureXQuestSchema() {
+  if (xQuestSchemaPromise) return xQuestSchemaPromise;
+  xQuestSchemaPromise = new Promise((resolve, reject) => {
+    db.run(
+      `CREATE TABLE IF NOT EXISTS x_quest_submissions (
+        submission_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userID TEXT NOT NULL,
+        action TEXT NOT NULL,
+        tweet_url TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        reward_amount INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER DEFAULT (strftime('%s', 'now')),
+        completed_at INTEGER,
+        completed_by TEXT
+      )`,
+      (tableErr) => {
+        if (tableErr) return reject(tableErr);
+        db.run(
+          `CREATE INDEX IF NOT EXISTS idx_x_quest_submissions_pending
+           ON x_quest_submissions(status, userID, created_at)`,
+          (indexErr) => (indexErr ? reject(indexErr) : resolve())
+        );
+      }
+    );
+  });
+  return xQuestSchemaPromise;
+}
+
+async function createXQuestSubmission(userID, action, tweetUrl) {
+  await ensureXQuestSchema();
   return new Promise((resolve, reject) => {
     if (!userID || !action || !tweetUrl) {
       return reject(new Error('User, action, and tweet URL are required.'));
@@ -1392,7 +1422,8 @@ function createXQuestSubmission(userID, action, tweetUrl) {
   });
 }
 
-function deleteXQuestSubmission(submissionID) {
+async function deleteXQuestSubmission(submissionID) {
+  await ensureXQuestSchema();
   return new Promise((resolve, reject) => {
     db.run(
       `DELETE FROM x_quest_submissions WHERE submission_id = ? AND status = 'pending'`,
@@ -1405,7 +1436,8 @@ function deleteXQuestSubmission(submissionID) {
   });
 }
 
-function getPendingXQuestSubmissions(userID) {
+async function getPendingXQuestSubmissions(userID) {
+  await ensureXQuestSchema();
   return new Promise((resolve, reject) => {
     db.all(
       `SELECT submission_id, userID, action, tweet_url, created_at
@@ -1421,7 +1453,8 @@ function getPendingXQuestSubmissions(userID) {
   });
 }
 
-function getPendingXQuestUsers() {
+async function getPendingXQuestUsers() {
+  await ensureXQuestSchema();
   return new Promise((resolve, reject) => {
     db.all(
       `SELECT x.userID, e.username, COUNT(*) AS pending_count,
@@ -1441,7 +1474,8 @@ function getPendingXQuestUsers() {
   });
 }
 
-function completePendingXQuestSubmissions(userID, totalReward, completedBy) {
+async function completePendingXQuestSubmissions(userID, totalReward, completedBy) {
+  await ensureXQuestSchema();
   return new Promise((resolve, reject) => {
     const rewardAmount = Number(totalReward);
     if (!userID || !Number.isInteger(rewardAmount) || rewardAmount < 0) {

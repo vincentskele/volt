@@ -514,13 +514,13 @@
   <p>Submit a link to the X activity you completed.</p>
 
   <form id="xQuestSubmissionForm" class="x-quest-form">
-    <label for="xQuestAction">Submission Type</label>
-    <select id="xQuestAction" name="action" required>
-      <option value="posted">posted</option>
-      <option value="comment">comment</option>
-      <option value="retweet">retweet</option>
-      <option value="like">like</option>
-    </select>
+    <fieldset class="x-quest-actions">
+      <legend>Actions Completed</legend>
+      <label><input type="checkbox" name="xQuestAction" value="posted"> posted</label>
+      <label><input type="checkbox" name="xQuestAction" value="comment"> comment</label>
+      <label><input type="checkbox" name="xQuestAction" value="retweet"> retweet</label>
+      <label><input type="checkbox" name="xQuestAction" value="like"> like</label>
+    </fieldset>
 
     <label for="xQuestTweetLink">Tweet Link</label>
     <textarea

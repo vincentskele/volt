@@ -944,8 +944,13 @@ if (xQuestSubmissionForm) {
       return;
     }
 
-    const action = document.getElementById('xQuestAction')?.value;
+    const actions = Array.from(document.querySelectorAll('input[name="xQuestAction"]:checked'))
+      .map((input) => input.value);
     const tweetLink = document.getElementById('xQuestTweetLink')?.value.trim();
+    if (!actions.length) {
+      showStyledAlert('⚠️ Please check at least one completed X action.', 3000);
+      return;
+    }
     if (!tweetLink) {
       showStyledAlert('⚠️ Please paste a tweet link.', 3000);
       return;
@@ -956,7 +961,7 @@ if (xQuestSubmissionForm) {
       const response = await fetch('/api/submit-x', {
         method: 'POST',
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ action, tweetLink }),
+        body: JSON.stringify({ actions, tweetLink }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Failed to submit X quest.');

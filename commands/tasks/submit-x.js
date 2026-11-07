@@ -1,9 +1,9 @@
 const {
+  CheckboxGroupBuilder,
   EmbedBuilder,
   LabelBuilder,
   ModalBuilder,
   SlashCommandBuilder,
-  StringSelectMenuBuilder,
   TextInputBuilder,
   TextInputStyle,
 } = require('discord.js');
@@ -29,20 +29,19 @@ function normalizeTweetUrl(value) {
 }
 
 async function showSubmissionModal(interaction) {
-  const actionSelect = new StringSelectMenuBuilder()
-    .setCustomId('xAction')
-    .setPlaceholder('Choose an X action')
+  const actionCheckboxes = new CheckboxGroupBuilder()
+    .setCustomId('xActions')
     .setMinValues(1)
-    .setMaxValues(1)
+    .setMaxValues(X_ACTIONS.length)
     .addOptions(X_ACTIONS.map((action) => ({
       label: action,
       value: action,
     })));
 
   const actionLabel = new LabelBuilder()
-    .setLabel('Submission Type')
-    .setDescription('Select the X action you completed.')
-    .setStringSelectMenuComponent(actionSelect);
+    .setLabel('Actions Completed')
+    .setDescription('Check every X action completed for this post.')
+    .setCheckboxGroupComponent(actionCheckboxes);
 
   const tweetLink = new TextInputBuilder()
     .setCustomId('tweetLink')
@@ -71,11 +70,13 @@ async function handleModalSubmit(interaction) {
   await interaction.deferReply({ ephemeral: true });
   let submissionID = null;
   try {
-    const action = interaction.fields.getStringSelectValues('xAction')[0];
+    const selectedActions = interaction.fields.getCheckboxGroup('xActions');
+    const actions = X_ACTIONS.filter((action) => selectedActions.includes(action));
+    const actionsLabel = actions.join(', ');
     const tweetUrl = normalizeTweetUrl(interaction.fields.getTextInputValue('tweetLink'));
 
-    if (!X_ACTIONS.includes(action)) {
-      await interaction.editReply('🚫 Please select a valid submission type.');
+    if (!actions.length || actions.length !== new Set(selectedActions).size) {
+      await interaction.editReply('🚫 Please check at least one valid X action.');
       return true;
     }
     if (!tweetUrl) {
@@ -86,7 +87,7 @@ async function handleModalSubmit(interaction) {
       throw new Error('Quest submission channel is not configured.');
     }
 
-    const createResult = await db.createXQuestSubmission(interaction.user.id, action, tweetUrl);
+    const createResult = await db.createXQuestSubmission(interaction.user.id, actionsLabel, tweetUrl);
     submissionID = createResult.submissionId;
 
     const channel = await interaction.client.channels.fetch(QUEST_SUBMISSION_CHANNEL_ID);
@@ -98,7 +99,7 @@ async function handleModalSubmit(interaction) {
       .setTitle('𝕏 New X Quest Submission!')
       .setColor(SUBMISSION_COLOR)
       .addFields(
-        { name: 'Submission Type', value: action, inline: true },
+        { name: 'Actions Completed', value: actionsLabel, inline: true },
         { name: 'Tweet Link', value: `[View Tweet](${tweetUrl})` }
       )
       .setFooter({ text: `Submitted by: ${interaction.user.tag} (${interaction.user.id})` })
