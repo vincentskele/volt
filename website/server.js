@@ -2246,10 +2246,14 @@ app.get('/api/giveaways/active', (req, res) => {
 
 /**
  * GET /api/console
- * Serve the last 16 log entries from console.json in a readable format.
+ * Serve a compact, normalized log feed for the dashboard.
  */
 app.get('/api/console', (req, res) => {
   const consoleFilePath = path.join(__dirname, '..', 'console.json');
+  const requestedLimit = Number.parseInt(req.query.limit, 10);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.max(10, Math.min(requestedLimit, 160))
+    : 80;
 
   fs.readFile(consoleFilePath, 'utf8', (err, data) => {
     if (err) {
@@ -2265,19 +2269,47 @@ app.get('/api/console', (req, res) => {
         throw new Error('console.json does not contain an array.');
       }
 
-      // Get the last 160 log entries
-      const lastLogs = logs.slice(-160);
+      const normalizedLogs = logs.slice(-limit).map((entry) => {
+        const message = String(entry?.message || entry?.msg || 'Unknown message');
+        let level = String(entry?.level || '').toLowerCase();
+        if (!['debug', 'info', 'warn', 'error'].includes(level)) {
+          if (/\[debug\]|\bdebug:/i.test(message)) level = 'debug';
+          else if (/\[warn\]|⚠️|\bwarn(?:ing)?:/i.test(message)) level = 'warn';
+          else if (/\[error\]|❌|🚨|\berror:/i.test(message)) level = 'error';
+          else level = 'info';
+        }
+        if (/^(?:\[debug\]|Scanning directory:|Entering subdirectory:|Found command file:|Loaded command:|✅ .* table is ready\.)/i.test(message)) {
+          level = 'debug';
+        }
+        return {
+          timestamp: entry?.timestamp || entry?.time || null,
+          level,
+          message: message.replace(/^\[(?:debug|info|warn|error)\]\s*/i, ''),
+        };
+      });
+
+      // Repeated adjacent messages are much easier to scan as one row.
+      const compactLogs = normalizedLogs.reduce((result, entry) => {
+        const previous = result[result.length - 1];
+        if (previous && previous.level === entry.level && previous.message === entry.message) {
+          previous.timestamp = entry.timestamp;
+          previous.repeatCount += 1;
+        } else {
+          result.push({ ...entry, repeatCount: 1 });
+        }
+        return result;
+      }, []);
 
       res.setHeader('Content-Type', 'application/json');
       res.send(
         JSON.stringify(
           {
-            logs: lastLogs,
-            count: lastLogs.length,
-            message: 'Last 160 log entries retrieved successfully',
+            logs: compactLogs,
+            count: compactLogs.length,
+            rawCount: normalizedLogs.length,
           },
           null,
-          2 // Indentation for readability
+          2
         )
       );
     } catch (parseErr) {

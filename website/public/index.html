@@ -618,15 +618,33 @@
 <!-- Console Section -->
 <div id="consoleSection" class="content" style="display: none;">
   <h2>🖥️ Logs</h2>
-  <p></p>
+  <p class="console-description">Recent bot activity. Debug noise is hidden by default.</p>
+
+  <div class="console-toolbar" aria-label="Log controls">
+    <label class="console-control">
+      <span>Level</span>
+      <select id="consoleLevelFilter">
+        <option value="standard">Activity</option>
+        <option value="error">Errors</option>
+        <option value="warn">Warnings</option>
+        <option value="info">Info</option>
+        <option value="debug">Debug</option>
+        <option value="all">Everything</option>
+      </select>
+    </label>
+    <label class="console-control console-search-control">
+      <span>Search</span>
+      <input id="consoleSearchInput" type="search" placeholder="Filter messages…" autocomplete="off" />
+    </label>
+    <button id="consolePauseButton" class="console-pause-button" type="button">Pause</button>
+    <span id="consoleLogCount" class="console-log-count" aria-live="polite"></span>
+  </div>
 
   <div class="console-box">
     <ul id="consoleLogs" class="console-list">
       <!-- Console logs will be dynamically added here -->
     </ul>
   </div>
-
-  <p>miscellaneous nerd info</p>
 
   <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
 </div>

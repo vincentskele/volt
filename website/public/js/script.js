@@ -6360,86 +6360,135 @@ if (showDailyTasksButton) {
 // Console Section with Rolling Updates & Mobile Log Limit
 // ------------------------------
 const showConsoleButton = document.getElementById("showConsoleButton");
-let consoleUpdateInterval = null; // Store interval reference
+const consoleLevelFilter = document.getElementById('consoleLevelFilter');
+const consoleSearchInput = document.getElementById('consoleSearchInput');
+const consolePauseButton = document.getElementById('consolePauseButton');
+const consoleLogCount = document.getElementById('consoleLogCount');
+let consoleUpdateInterval = null;
+let consoleLogEntries = [];
+let consoleUpdatesPaused = false;
 
 if (showConsoleButton) {
   showConsoleButton.addEventListener("click", () => {
     showSection("consoleSection");
-    fetchAndDisplayConsoleLogs(); // Fetch logs immediately
-    startConsoleUpdates(); // Start rolling updates every 5 seconds
+    fetchAndDisplayConsoleLogs();
+    startConsoleUpdates();
   });
 }
 
-// Fetch and display logs
-async function fetchAndDisplayConsoleLogs() {
-  try {
-    const response = await fetch("/api/console");
-    if (!response.ok) {
-      throw new Error("Failed to fetch console logs");
-    }
-    let logs = await response.json();
-    console.log("Fetched logs:", logs); // Debugging log
+function renderConsoleLogs() {
+  const consoleLogs = document.getElementById('consoleLogs');
+  if (!consoleLogs) return;
 
-    // Ensure logs is an array; if not, try extracting from an object
-    if (!Array.isArray(logs)) {
-      logs = logs.logs || Object.values(logs);
-    }
+  const selectedLevel = consoleLevelFilter?.value || 'standard';
+  const searchTerm = consoleSearchInput?.value.trim().toLowerCase() || '';
+  const visibleLogs = consoleLogEntries.filter((entry) => {
+    const matchesLevel = selectedLevel === 'all'
+      || (selectedLevel === 'standard' && entry.level !== 'debug')
+      || entry.level === selectedLevel;
+    return matchesLevel && (!searchTerm || entry.message.toLowerCase().includes(searchTerm));
+  });
 
-    // Limit logs to the last 8 items on mobile devices
-    if (isMobileDevice() && logs.length > 8) {
-      logs = logs.slice(-8);
-    }
+  consoleLogs.replaceChildren();
+  if (visibleLogs.length === 0) {
+    const emptyState = document.createElement('li');
+    emptyState.className = 'console-empty-state';
+    emptyState.textContent = searchTerm ? 'No logs match these filters.' : 'No logs available.';
+    consoleLogs.appendChild(emptyState);
+  } else {
+    visibleLogs.forEach((entry) => {
+      const item = document.createElement('li');
+      item.className = `log-item log-${entry.level}`;
 
-    const consoleLogs = document.getElementById("consoleLogs");
-    if (!consoleLogs) return;
-
-    // Clear previous logs
-    consoleLogs.innerHTML = "";
-
-    if (logs.length === 0) {
-      consoleLogs.innerHTML = `<li class="log-item">No logs available.</li>`;
-    } else {
-      logs.forEach(log => {
-        const rawTimestamp = log.timestamp || log.time || 'Unknown Time';
-        const message = log.message || log.msg || 'Unknown Message';
-
-        // Convert timestamp to local time (hh:mm:ss AM/PM)
-        let formattedTime = "Unknown Time";
-        if (rawTimestamp !== "Unknown Time") {
-          const date = new Date(rawTimestamp);
-          formattedTime = date.toLocaleTimeString(undefined, {
-            hour: '2-digit',
+      const header = document.createElement('div');
+      header.className = 'log-item-header';
+      const level = document.createElement('span');
+      level.className = 'log-level';
+      level.textContent = entry.level;
+      const time = document.createElement('time');
+      time.className = 'log-time';
+      if (entry.timestamp) {
+        const parsedDate = new Date(entry.timestamp);
+        if (!Number.isNaN(parsedDate.getTime())) {
+          time.dateTime = parsedDate.toISOString();
+          time.textContent = parsedDate.toLocaleString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
             minute: '2-digit',
             second: '2-digit',
-            hour12: true,
           });
+        } else {
+          time.textContent = 'Unknown time';
         }
+      } else {
+        time.textContent = 'Unknown time';
+      }
+      header.append(level, time);
 
-        const li = document.createElement("li");
-        li.className = "log-item";
-        li.innerHTML = `<strong>[${formattedTime}]</strong> ${message}`;
-        consoleLogs.appendChild(li);
-      });
+      if (entry.repeatCount > 1) {
+        const repeats = document.createElement('span');
+        repeats.className = 'log-repeat-count';
+        repeats.textContent = `×${entry.repeatCount}`;
+        header.appendChild(repeats);
+      }
+
+      const message = document.createElement('p');
+      message.className = 'log-message';
+      message.textContent = entry.message;
+      item.append(header, message);
+      consoleLogs.appendChild(item);
+    });
+  }
+
+  if (consoleLogCount) {
+    consoleLogCount.textContent = `${visibleLogs.length} of ${consoleLogEntries.length} entries`;
+  }
+  const consoleBox = consoleLogs.closest('.console-box');
+  if (consoleBox) consoleBox.scrollTop = consoleBox.scrollHeight;
+}
+
+async function fetchAndDisplayConsoleLogs() {
+  if (consoleUpdatesPaused) return;
+  try {
+    const response = await fetch('/api/console?limit=80');
+    if (!response.ok) {
+      throw new Error('Failed to fetch console logs');
     }
-
-    // Force the scrollbar to scroll to the bottom
-    consoleLogs.scrollTop = consoleLogs.scrollHeight;
-    
+    const payload = await response.json();
+    consoleLogEntries = (Array.isArray(payload) ? payload : payload.logs || []).map((entry) => ({
+      timestamp: entry.timestamp || null,
+      level: ['debug', 'info', 'warn', 'error'].includes(entry.level) ? entry.level : 'info',
+      message: String(entry.message || 'Unknown message'),
+      repeatCount: Math.max(1, Number(entry.repeatCount || 1)),
+    }));
+    renderConsoleLogs();
   } catch (error) {
     console.error("Error fetching console logs:", error);
     const consoleLogs = document.getElementById("consoleLogs");
     if (consoleLogs) {
-      consoleLogs.innerHTML =
-        `<li class="log-item error">⚠️ Error loading logs. Please try again later.</li>`;
+      consoleLogs.replaceChildren();
+      const errorItem = document.createElement('li');
+      errorItem.className = 'console-empty-state log-error';
+      errorItem.textContent = 'Could not load logs. Please try again later.';
+      consoleLogs.appendChild(errorItem);
     }
   }
 }
 
-// Start rolling updates every 5 seconds
 function startConsoleUpdates() {
   if (consoleUpdateInterval) clearInterval(consoleUpdateInterval);
-  consoleUpdateInterval = setInterval(fetchAndDisplayConsoleLogs, 5000);
+  consoleUpdateInterval = setInterval(fetchAndDisplayConsoleLogs, 10000);
 }
+
+consoleLevelFilter?.addEventListener('change', renderConsoleLogs);
+consoleSearchInput?.addEventListener('input', renderConsoleLogs);
+consolePauseButton?.addEventListener('click', () => {
+  consoleUpdatesPaused = !consoleUpdatesPaused;
+  consolePauseButton.textContent = consoleUpdatesPaused ? 'Resume' : 'Pause';
+  consolePauseButton.classList.toggle('is-paused', consoleUpdatesPaused);
+  if (!consoleUpdatesPaused) fetchAndDisplayConsoleLogs();
+});
 
 // Stop updates when leaving the console section
 function stopConsoleUpdates() {

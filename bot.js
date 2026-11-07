@@ -3,38 +3,55 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, Partials, Collection } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const util = require('util');
 const { points } = require('./points');
+const { getVoiceRewardWindow } = require('./utils/voiceRewardWindow');
 
 /**
- * NEW: Log capturing functionality.
- * This code captures the last 160 console log/error messages and writes them to console.json.
+ * Capture the last 160 structured console entries for the dashboard.
  */
 const LOG_LIMIT = 160;
-const logBuffer = [];
+const consoleLogPath = path.join(__dirname, 'console.json');
+let logBuffer = [];
+try {
+  const previousLogs = JSON.parse(fs.readFileSync(consoleLogPath, 'utf8'));
+  if (Array.isArray(previousLogs)) logBuffer = previousLogs.slice(-LOG_LIMIT);
+} catch {
+  // A missing or invalid history file should not prevent the bot from starting.
+}
 const originalConsoleLog = console.log;
+const originalConsoleWarn = console.warn;
 const originalConsoleError = console.error;
+const originalConsoleDebug = console.debug;
 
 function updateLogBuffer(logEntry) {
   logBuffer.push(logEntry);
   if (logBuffer.length > LOG_LIMIT) {
     logBuffer.shift();
   }
-  // Write the updated logBuffer to console.json (formatted for readability)
-  fs.writeFileSync(path.join(__dirname, 'console.json'), JSON.stringify(logBuffer, null, 2), 'utf8');
+  fs.writeFileSync(consoleLogPath, JSON.stringify(logBuffer), 'utf8');
+}
+
+function captureConsoleEntry(level, args) {
+  const message = util.formatWithOptions({ colors: false, depth: 4, breakLength: 140 }, ...args);
+  updateLogBuffer({ timestamp: new Date().toISOString(), level, message });
 }
 
 console.log = function (...args) {
-  const message = args.join(' ');
-  const logEntry = { timestamp: new Date().toISOString(), message };
-  updateLogBuffer(logEntry);
+  captureConsoleEntry('info', args);
   originalConsoleLog.apply(console, args);
 };
-
+console.warn = function (...args) {
+  captureConsoleEntry('warn', args);
+  originalConsoleWarn.apply(console, args);
+};
 console.error = function (...args) {
-  const message = args.join(' ');
-  const logEntry = { timestamp: new Date().toISOString(), message };
-  updateLogBuffer(logEntry);
+  captureConsoleEntry('error', args);
   originalConsoleError.apply(console, args);
+};
+console.debug = function (...args) {
+  captureConsoleEntry('debug', args);
+  originalConsoleDebug.apply(console, args);
 };
 
 // Import the required database functions (adjust to your actual db.js exports).
@@ -44,8 +61,6 @@ const {
   deleteGiveaway,
   markGiveawayCompleted,
   updateWallet,
-  updateDaoCallRewardTimestamp,
-  recordDaoCallAttendance,
   getActiveRaffles,
   getPendingRaffles,
   getPrizeShopItemByName,
@@ -60,6 +75,9 @@ const {
   getActiveTitleGiveaways,
   getTitleGiveawayEntries,
   markTitleGiveawayCompleted,
+  setDaoCallPresence,
+  getDaoCallProgress,
+  awardDaoCallAttendance,
 } = require('./db');
 
 // Safe chunked timer — handles giveaways longer than Node's 24.8 day setTimeout cap
@@ -931,148 +949,161 @@ client.on('messageReactionRemove', async (reaction, user) => {
 });
 
 // ==========================
-// 🎧 VOICE PRESENCE REWARDS (DAO Call) — Fixed window clamp + weekly reset
+// 🎧 VOICE PRESENCE REWARDS (DAO Call)
 // ==========================
 
-const voicePresenceMap = new Map(); // { userId: { joinedAt: number|null, totalMinutes: number, rewardedThisWindow: boolean } }
-let hasLoggedWindowStart = false;
+const voiceRewardConfig = {
+  day: Number.parseInt(process.env.VOICE_REWARD_DAY, 10),
+  hour: Number.parseInt(process.env.VOICE_REWARD_HOUR, 10),
+  durationMinutes: Number.parseInt(process.env.VOICE_REWARD_DURATION, 10),
+  requiredMinutes: Number.parseInt(process.env.VOICE_REWARD_MINUTES_REQUIRED, 10),
+  rewardAmount: Number.parseInt(process.env.VOICE_REWARD_AMOUNT, 10),
+  timeZone: process.env.VOICE_REWARD_TIME_ZONE?.trim() || 'America/New_York',
+};
+let isVoiceRewardTimeZoneValid = true;
+try {
+  new Intl.DateTimeFormat('en-US', { timeZone: voiceRewardConfig.timeZone }).format();
+} catch {
+  isVoiceRewardTimeZoneValid = false;
+}
+const isVoiceRewardConfigured =
+  Boolean(process.env.VOICE_REWARD_CHANNEL_ID) &&
+  isVoiceRewardTimeZoneValid &&
+  Number.isInteger(voiceRewardConfig.day) && voiceRewardConfig.day >= 0 && voiceRewardConfig.day <= 6 &&
+  Number.isInteger(voiceRewardConfig.hour) && voiceRewardConfig.hour >= 0 && voiceRewardConfig.hour <= 23 &&
+  Number.isInteger(voiceRewardConfig.durationMinutes) && voiceRewardConfig.durationMinutes > 0 &&
+  Number.isInteger(voiceRewardConfig.requiredMinutes) && voiceRewardConfig.requiredMinutes > 0 &&
+  Number.isFinite(voiceRewardConfig.rewardAmount) && voiceRewardConfig.rewardAmount > 0;
+let lastLoggedVoiceWindow = null;
+let voiceRewardTickRunning = false;
 
-function getWindowBounds(now) {
-  // Server-local clock. If you need a specific TZ, compute in UTC or use a TZ lib.
-  const rewardDay = parseInt(process.env.VOICE_REWARD_DAY, 10);   // 0=Sun ... 6=Sat
-  const rewardHour = parseInt(process.env.VOICE_REWARD_HOUR, 10); // 0..23
-  const rewardDuration = parseInt(process.env.VOICE_REWARD_DURATION, 10); // minutes
-
-  // If today is the reward day, compute today's window; otherwise return nulls.
-  if (now.getDay() !== rewardDay) return { inWindow: false };
-
-  const windowStart = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    rewardHour, 0, 0, 0
-  ).getTime();
-
-  const windowEnd = windowStart + rewardDuration * 60_000;
-  const nowMs = now.getTime();
-  return { windowStart, windowEnd, inWindow: nowMs >= windowStart && nowMs < windowEnd };
+function getWindowBounds(now = new Date()) {
+  return getVoiceRewardWindow(now, voiceRewardConfig);
 }
 
-client.on('voiceStateUpdate', (oldState, newState) => {
+async function recordVoicePresence(userId, present, observedAtMs = Date.now()) {
+  if (!isVoiceRewardConfigured) return;
+  const { windowStart, windowEnd, inWindow } = getWindowBounds(new Date(observedAtMs));
+  if (present && !inWindow) return;
+
+  await setDaoCallPresence({
+    userID: userId,
+    meetingStartedAt: Math.floor(windowStart / 1000),
+    observedAt: Math.floor(observedAtMs / 1000),
+    windowEndsAt: Math.floor(windowEnd / 1000),
+    present,
+  });
+}
+
+client.on('voiceStateUpdate', async (oldState, newState) => {
   const userId = newState.member?.user?.id || oldState.member?.user?.id;
-  if (!userId) return;
+  const user = newState.member?.user || oldState.member?.user;
+  if (!userId || user?.bot || !isVoiceRewardConfigured) return;
 
   const joinedChannelId = newState.channelId;
   const leftChannelId = oldState.channelId;
   const targetChannelId = process.env.VOICE_REWARD_CHANNEL_ID;
 
-  const joinedTarget = joinedChannelId === targetChannelId;
+  const joinedTarget = joinedChannelId === targetChannelId && leftChannelId !== targetChannelId;
   const leftTarget = leftChannelId === targetChannelId && joinedChannelId !== targetChannelId;
 
-  if (joinedTarget) {
-    const session = voicePresenceMap.get(userId) || {
-      joinedAt: null,
-      totalMinutes: 0,
-      rewardedThisWindow: false,
-    };
-    // Only set joinedAt if not already in a session
-    if (!session.joinedAt) session.joinedAt = Date.now();
-    voicePresenceMap.set(userId, session);
-
-    const { inWindow } = getWindowBounds(new Date());
-    if (inWindow) {
-      const user = client.users.cache.get(userId);
-      console.log(`🎙️ ${user?.tag || userId} joined the voice channel during the reward window.`);
-    }
-  }
-
-  if (leftTarget && voicePresenceMap.has(userId)) {
-    const session = voicePresenceMap.get(userId);
-    if (session.joinedAt) {
-      // Add only time that overlaps with the active window (if any)
-      const now = new Date();
-      const { inWindow, windowStart, windowEnd } = getWindowBounds(now);
-
-      const leftAt = Date.now();
-      let started = session.joinedAt;
-
-      if (inWindow) {
-        // clamp to [windowStart, now]
-        started = Math.max(started, windowStart);
-        const effectiveEnd = Math.min(leftAt, windowEnd);
-        const minutesInSession = Math.max(0, Math.floor((effectiveEnd - started) / 60000));
-        session.totalMinutes += minutesInSession;
+  try {
+    if (leftTarget) await recordVoicePresence(userId, false);
+    if (joinedTarget) {
+      await recordVoicePresence(userId, true);
+      if (getWindowBounds().inWindow) {
+        console.log(`🎙️ ${user?.tag || userId} joined the voice reward channel.`);
       }
-      // end session
-      session.joinedAt = null;
-      voicePresenceMap.set(userId, session);
     }
+  } catch (error) {
+    console.error(`❌ Failed to persist voice attendance for ${userId}:`, error);
   }
 });
 
-setInterval(async () => {
-  const now = new Date();
-  const { inWindow, windowStart, windowEnd } = getWindowBounds(now);
+async function syncAndRewardVoiceAttendance() {
+  if (!client.isReady() || !isVoiceRewardConfigured || voiceRewardTickRunning) return;
+  voiceRewardTickRunning = true;
 
-  const requiredMinutes = parseInt(process.env.VOICE_REWARD_MINUTES_REQUIRED, 10);
-  const rewardAmount = parseInt(process.env.VOICE_REWARD_AMOUNT, 10);
+  try {
+    const now = new Date();
+    const { inWindow, windowStart, windowEnd } = getWindowBounds(now);
+    const meetingStartedAt = Math.floor(windowStart / 1000);
+    const windowEndsAt = Math.floor(windowEnd / 1000);
+    const observedAt = Math.floor(now.getTime() / 1000);
+    const shouldReconcile = inWindow || now.getTime() <= windowEnd + 5 * 60_000;
 
-  // On window open: log once and reset per-window state
-  if (inWindow && !hasLoggedWindowStart) {
-    console.log(`🕒 DAO call reward window has started (${Math.floor((windowEnd - windowStart)/60000)} min, requires ${requiredMinutes} min presence)`);
-    hasLoggedWindowStart = true;
+    if (inWindow && lastLoggedVoiceWindow !== meetingStartedAt) {
+      console.log(`🕒 DAO call reward window started (${voiceRewardConfig.timeZone}; ${voiceRewardConfig.requiredMinutes} min required).`);
+      lastLoggedVoiceWindow = meetingStartedAt;
+    }
 
-    // Reset everyone for the new window; clamp any current join to windowStart
-    for (const session of voicePresenceMap.values()) {
-      session.totalMinutes = 0;
-      session.rewardedThisWindow = false;
-      if (session.joinedAt && session.joinedAt < windowStart) {
-        session.joinedAt = windowStart; // don't count pre-window time
+    if (shouldReconcile) {
+      const channel = client.channels.cache.get(process.env.VOICE_REWARD_CHANNEL_ID)
+        || await client.channels.fetch(process.env.VOICE_REWARD_CHANNEL_ID);
+      if (!channel?.isVoiceBased?.()) {
+        throw new Error('VOICE_REWARD_CHANNEL_ID does not resolve to a voice channel.');
+      }
+      const liveUserIds = new Set(
+        [...channel.members.values()]
+          .filter((member) => !member.user?.bot)
+          .map((member) => member.id)
+      );
+      const existingProgress = await getDaoCallProgress(meetingStartedAt, observedAt, windowEndsAt);
+
+      for (const row of existingProgress) {
+        if (!row.joinedAt || liveUserIds.has(row.userID)) continue;
+        // If an event was missed (or the bot restarted), only count through the
+        // last confirmed heartbeat instead of guessing that the user stayed.
+        await setDaoCallPresence({
+          userID: row.userID,
+          meetingStartedAt,
+          observedAt: row.lastSeenAt || observedAt,
+          windowEndsAt,
+          present: false,
+        });
+      }
+
+      for (const userId of liveUserIds) {
+        await setDaoCallPresence({
+          userID: userId,
+          meetingStartedAt,
+          observedAt: inWindow ? observedAt : windowEndsAt,
+          windowEndsAt,
+          present: inWindow,
+        });
       }
     }
-  }
 
-  // On window close: allow next week's open to log/reset again
-  if (!inWindow && hasLoggedWindowStart) {
-    hasLoggedWindowStart = false;
-
-    // Optional: clear sessions entirely if you prefer a clean slate
-    // voicePresenceMap.clear();
-  }
-
-  if (!inWindow) return;
-
-  // During the window, update running minutes and award if threshold reached
-  for (const [userId, session] of voicePresenceMap.entries()) {
-    // Calculate active minutes since joined, but CLAMP to the window bounds
-    let activeMinutes = 0;
-    if (session.joinedAt) {
-      const effectiveStart = Math.max(session.joinedAt, windowStart);
-      const effectiveNow = Math.min(Date.now(), windowEnd);
-      activeMinutes = Math.max(0, Math.floor((effectiveNow - effectiveStart) / 60000));
+    const progressRows = await getDaoCallProgress(meetingStartedAt, observedAt, windowEndsAt);
+    const rewardedAt = Math.min(observedAt, windowEndsAt);
+    for (const row of progressRows) {
+      const totalMinutes = Math.floor(Number(row.attendedSeconds || 0) / 60);
+      if (totalMinutes >= voiceRewardConfig.requiredMinutes) {
+        const result = await awardDaoCallAttendance({
+          userID: row.userID,
+          meetingStartedAt,
+          rewardedAt,
+          minutesAttended: totalMinutes,
+          rewardAmount: voiceRewardConfig.rewardAmount,
+        });
+        if (result.awarded) {
+          const user = client.users.cache.get(row.userID);
+          console.log(`🏆 ${user?.tag || row.userID} awarded ${voiceRewardConfig.rewardAmount} Volts for DAO call attendance (${totalMinutes} min).`);
+        }
+      }
     }
-
-    const totalMinutes = session.totalMinutes + activeMinutes;
-
-    if (!session.rewardedThisWindow && totalMinutes >= requiredMinutes) {
-      const rewardedAt = Math.floor(Date.now() / 1000);
-      await updateWallet(userId, rewardAmount);
-      await updateDaoCallRewardTimestamp(userId, rewardedAt);
-      await recordDaoCallAttendance({
-        userID: userId,
-        meetingStartedAt: Math.floor(windowStart / 1000),
-        rewardedAt,
-        minutesAttended: totalMinutes,
-        rewardAmount,
-      });
-      session.rewardedThisWindow = true;
-      voicePresenceMap.set(userId, session);
-
-      const user = client.users.cache.get(userId);
-      console.log(`🏆 ${user?.tag || userId} awarded ${rewardAmount} Volts for attending the DAO call (${totalMinutes} min).`);
-    }
+  } catch (error) {
+    console.error('❌ Voice reward attendance sync failed:', error);
+  } finally {
+    voiceRewardTickRunning = false;
   }
-}, 60_000);
+}
+
+if (!isVoiceRewardConfigured) {
+  console.warn('⚠️ Voice rewards are disabled because their configuration is incomplete or invalid.');
+}
+client.once('ready', syncAndRewardVoiceAttendance);
+setInterval(syncAndRewardVoiceAttendance, 15_000);
 
 
 // ==========================

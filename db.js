@@ -500,6 +500,22 @@ db.run(`
       else console.log('✅ DAO call attendance table is ready.');
     });
 
+    // In-progress voice attendance survives bot restarts during a call.
+    db.run(`
+      CREATE TABLE IF NOT EXISTS dao_call_progress (
+        userID TEXT NOT NULL,
+        meeting_started_at INTEGER NOT NULL,
+        attended_seconds INTEGER NOT NULL DEFAULT 0,
+        joined_at INTEGER,
+        last_seen_at INTEGER,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (userID, meeting_started_at)
+      )
+    `, (err) => {
+      if (err) console.error('❌ Error creating dao_call_progress table:', err);
+      else console.log('✅ DAO call progress table is ready.');
+    });
+
     // X quest submissions awaiting admin review.
     db.run(`
       CREATE TABLE IF NOT EXISTS x_quest_submissions (
@@ -682,6 +698,126 @@ function getDaoCallAttendanceCountForYear(userID, year) {
         resolve(row?.meetingsJoined || 0);
       }
     );
+  });
+}
+
+function setDaoCallPresence({
+  userID,
+  meetingStartedAt,
+  observedAt = Math.floor(Date.now() / 1000),
+  windowEndsAt,
+  present,
+}) {
+  const effectiveObservedAt = Math.min(observedAt, windowEndsAt);
+  return new Promise((resolve, reject) => {
+    if (present) {
+      db.run(
+        `INSERT INTO dao_call_progress (
+           userID, meeting_started_at, attended_seconds, joined_at, last_seen_at, updated_at
+         ) VALUES (?, ?, 0, ?, ?, ?)
+         ON CONFLICT(userID, meeting_started_at) DO UPDATE SET
+           joined_at = COALESCE(dao_call_progress.joined_at, excluded.joined_at),
+           last_seen_at = excluded.last_seen_at,
+           updated_at = excluded.updated_at`,
+        [userID, meetingStartedAt, effectiveObservedAt, effectiveObservedAt, observedAt],
+        function (err) {
+          if (err) return reject(err);
+          resolve({ changes: this.changes });
+        }
+      );
+      return;
+    }
+
+    db.run(
+      `UPDATE dao_call_progress
+       SET attended_seconds = attended_seconds + CASE
+             WHEN joined_at IS NULL THEN 0
+             ELSE MAX(0, ? - joined_at)
+           END,
+           joined_at = NULL,
+           last_seen_at = ?,
+           updated_at = ?
+       WHERE userID = ? AND meeting_started_at = ?`,
+      [effectiveObservedAt, effectiveObservedAt, observedAt, userID, meetingStartedAt],
+      function (err) {
+        if (err) return reject(err);
+        resolve({ changes: this.changes });
+      }
+    );
+  });
+}
+
+function getDaoCallProgress(meetingStartedAt, asOf, windowEndsAt) {
+  const effectiveAsOf = Math.min(asOf, windowEndsAt);
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT
+         userID,
+         attended_seconds + CASE
+           WHEN joined_at IS NULL THEN 0
+           ELSE MAX(0, ? - joined_at)
+         END AS attendedSeconds,
+         joined_at AS joinedAt,
+         last_seen_at AS lastSeenAt
+       FROM dao_call_progress
+       WHERE meeting_started_at = ?`,
+      [effectiveAsOf, meetingStartedAt],
+      (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows || []);
+      }
+    );
+  });
+}
+
+async function awardDaoCallAttendance({
+  userID,
+  meetingStartedAt,
+  rewardedAt = Math.floor(Date.now() / 1000),
+  minutesAttended,
+  rewardAmount,
+}) {
+  await initUserEconomy(userID);
+
+  return new Promise((resolve, reject) => {
+    db.serialize(() => {
+      db.run('BEGIN IMMEDIATE TRANSACTION', (beginError) => {
+        if (beginError) return reject(beginError);
+
+        const rollback = (error) => db.run('ROLLBACK', () => reject(error));
+        db.run(
+          `INSERT OR IGNORE INTO dao_call_attendance (
+             userID, meeting_started_at, rewarded_at, minutes_attended, reward_amount
+           ) VALUES (?, ?, ?, ?, ?)`,
+          [userID, meetingStartedAt, rewardedAt, minutesAttended, rewardAmount],
+          function (insertError) {
+            if (insertError) return rollback(insertError);
+            if (this.changes === 0) {
+              return db.run('COMMIT', (commitError) => {
+                if (commitError) return reject(commitError);
+                resolve({ awarded: false });
+              });
+            }
+
+            db.run(
+              `UPDATE economy
+               SET wallet = wallet + ?, last_dao_call_reward_at = ?
+               WHERE userID = ?`,
+              [rewardAmount, rewardedAt, userID],
+              function (walletError) {
+                if (walletError || this.changes !== 1) {
+                  return rollback(walletError || new Error('Failed to update DAO call reward balance.'));
+                }
+                db.run('COMMIT', (commitError) => {
+                  if (commitError) return reject(commitError);
+                  resolve({ awarded: true });
+                });
+              }
+            );
+          }
+        );
+      });
+    });
   });
 }
 
@@ -3639,6 +3775,9 @@ module.exports = {
   updateDaoCallRewardTimestamp,
   recordDaoCallAttendance,
   getDaoCallAttendanceCountForYear,
+  setDaoCallPresence,
+  getDaoCallProgress,
+  awardDaoCallAttendance,
   transferFromWallet,
   robUser,
   withdraw,
