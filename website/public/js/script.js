@@ -45,7 +45,6 @@
   const AUTH_REQUIRED_SECTIONS = new Set(['userProfileSection', 'inventorySection', 'mapSection', 'myStatsSection']);
   let cachedAdminStatus = null;
   let adminStatusPromise = null;
-  let analyticsTrendChart = null;
   let analyticsSourceChart = null;
 
   function getAuthToken() {
@@ -1673,6 +1672,37 @@ function formatAnalyticsPeriod(period) {
   return start === end ? start : `${start} – ${end}`;
 }
 
+function renderAnalyticsInsights(trends) {
+  const container = document.getElementById('analyticsInsights');
+  if (!container) return;
+
+  const activeDays = (trends || []).filter((point) => Number(point.earned || 0) || Number(point.spent || 0));
+  const earned = activeDays.reduce((total, point) => total + Number(point.earned || 0), 0);
+  const spent = activeDays.reduce((total, point) => total + Number(point.spent || 0), 0);
+  const busiestDay = activeDays.reduce((busiest, point) => {
+    const activity = Number(point.earned || 0) + Number(point.spent || 0);
+    return !busiest || activity > busiest.activity ? { ...point, activity } : busiest;
+  }, null);
+  const busiestDate = busiestDay
+    ? new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+      .format(new Date(`${busiestDay.day}T00:00:00Z`))
+    : 'No activity';
+  const insights = [
+    ['Net Volts added', earned - spent, 'Earned minus spent'],
+    ['Average earned', activeDays.length ? Math.round(earned / activeDays.length) : 0, 'Per active day'],
+    ['Most active day', busiestDate, busiestDay ? `${formatAnalyticsNumber(busiestDay.activity)} Volts moved` : 'Nothing recorded'],
+    ['Active days', activeDays.length, 'Days with earning or spending'],
+  ];
+
+  container.innerHTML = insights.map(([label, value, note]) => `
+    <div class="analytics-insight">
+      <span>${escapeHtml(label)}</span>
+      <strong>${typeof value === 'number' ? formatAnalyticsNumber(value) : escapeHtml(value)}</strong>
+      <small>${escapeHtml(note)}</small>
+    </div>
+  `).join('');
+}
+
 async function loadAdminAnalytics() {
   const loading = document.getElementById('analyticsLoading');
   const content = document.getElementById('analyticsContent');
@@ -1753,21 +1783,9 @@ async function loadAdminAnalytics() {
         }).join('')
       : '<p class="analytics-muted">No recent activity in this range.</p>';
 
-    analyticsTrendChart?.destroy();
     analyticsSourceChart?.destroy();
-    const trendContext = document.getElementById('analyticsTrendChart');
     const sourceContext = document.getElementById('analyticsSourceChart');
-    analyticsTrendChart = new Chart(trendContext, {
-      type: 'line',
-      data: {
-        labels: data.trends.map((point) => point.day),
-        datasets: [
-          { label: 'Earned', data: data.trends.map((point) => point.earned), borderColor: '#2dd4bf', backgroundColor: 'rgba(45,212,191,.16)', fill: true, tension: .25 },
-          { label: 'Spent', data: data.trends.map((point) => point.spent), borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,.12)', fill: true, tension: .25 },
-        ],
-      },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#e5e7eb' } } }, scales: { x: { ticks: { color: '#9ca3af', maxTicksLimit: 8 } }, y: { beginAtZero: true, ticks: { color: '#9ca3af' } } } },
-    });
+    renderAnalyticsInsights(data.trends);
     analyticsSourceChart = new Chart(sourceContext, {
       type: 'doughnut',
       data: {
