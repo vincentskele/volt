@@ -191,26 +191,17 @@
   <div class="analytics-heading">
     <div>
       <h2>📊 My Stats</h2>
-      <p class="analytics-muted">Your balances, Volt activity, quests, and recent history.</p>
+      <p class="analytics-muted">Your balances, Volt activity, and quests.</p>
+      <p id="myStatsTrackingStart" class="analytics-muted analytics-tracking-start" hidden></p>
     </div>
   </div>
   <div id="myStatsLoading" class="admin-item">Loading your stats…</div>
   <div id="myStatsContent" style="display: none;">
     <div id="myStatsSummary" class="analytics-stat-grid"></div>
-    <div class="analytics-chart-grid my-stats-chart-grid">
-      <section class="analytics-card">
-        <h3>Last 30 days</h3>
-        <div class="analytics-chart-wrap"><canvas id="myStatsActivityChart"></canvas></div>
-      </section>
-      <section class="analytics-card">
-        <h3>Earning sources</h3>
-        <div id="myStatsSources"></div>
-      </section>
-    </div>
     <div class="analytics-detail-grid">
+      <section class="analytics-card"><h3>Earning sources</h3><div id="myStatsSources"></div></section>
       <section class="analytics-card"><h3>Quest participation</h3><div id="myStatsQuests"></div></section>
-      <section class="analytics-card"><h3>Recent activity</h3><div id="myStatsRecent"></div></section>
-      <section class="analytics-card my-stats-coverage"><h3>Historical coverage</h3><div id="myStatsCoverage"></div></section>
+      <section class="analytics-card analytics-card-wide"><h3>Recent activity</h3><div id="myStatsRecent"></div></section>
     </div>
   </div>
   <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
@@ -385,29 +376,38 @@
     <div class="analytics-heading">
       <div>
         <h3>📈 Analytics</h3>
-        <p class="analytics-muted">Economy and member activity. Partial-history metrics are labeled below.</p>
+        <p class="analytics-muted">Economy and member activity.</p>
+        <p id="analyticsTrackingStart" class="analytics-muted analytics-tracking-start" hidden></p>
       </div>
-      <label class="analytics-range-label" for="analyticsRange">Date range
-        <select id="analyticsRange">
-          <option value="7d">Last 7 days</option>
-          <option value="30d" selected>Last 30 days</option>
-          <option value="90d">Last 90 days</option>
-          <option value="all">All time</option>
-        </select>
-      </label>
+      <div class="analytics-range-controls">
+        <label class="analytics-range-label" for="analyticsRange">Date range
+          <select id="analyticsRange">
+            <option value="week">This week</option>
+            <option value="month" selected>This month</option>
+            <option value="year">This year</option>
+            <option value="custom">Custom range</option>
+            <option value="all">All time</option>
+          </select>
+        </label>
+        <div id="analyticsCustomRange" class="analytics-custom-range" hidden>
+          <label for="analyticsFrom">From<input id="analyticsFrom" type="date"></label>
+          <label for="analyticsTo">To<input id="analyticsTo" type="date"></label>
+          <button id="analyticsApplyRange" type="button" class="confirm-button">Apply</button>
+        </div>
+        <p id="analyticsPeriodLabel" class="analytics-period-label" aria-live="polite"></p>
+      </div>
     </div>
     <div id="analyticsLoading" class="admin-item">Loading analytics…</div>
     <div id="analyticsContent" style="display: none;">
       <div id="analyticsSummary" class="analytics-stat-grid"></div>
       <div class="analytics-chart-grid">
         <section class="analytics-card"><h4>Volt trends</h4><div class="analytics-chart-wrap"><canvas id="analyticsTrendChart"></canvas></div></section>
-        <section class="analytics-card"><h4>Reward sources</h4><div class="analytics-chart-wrap"><canvas id="analyticsSourceChart"></canvas></div></section>
+        <section class="analytics-card"><h4>Reward sources <small class="analytics-selected-period">selected period</small></h4><div class="analytics-chart-wrap"><canvas id="analyticsSourceChart"></canvas></div></section>
       </div>
       <div class="analytics-detail-grid">
-        <section class="analytics-card"><h4>Member activity</h4><div id="analyticsActivity"></div></section>
-        <section class="analytics-card"><h4>Most active members</h4><div id="analyticsMembers"></div></section>
+        <section class="analytics-card"><h4>Member activity <small class="analytics-selected-period">selected period</small></h4><div id="analyticsActivity"></div></section>
+        <section class="analytics-card"><h4>Most active members <small class="analytics-selected-period">selected period</small></h4><div id="analyticsMembers"></div></section>
         <section class="analytics-card"><h4>Recent activity</h4><div id="analyticsRecent"></div></section>
-        <section class="analytics-card"><h4>Historical coverage</h4><div id="analyticsCoverage"></div></section>
       </div>
     </div>
   </div>

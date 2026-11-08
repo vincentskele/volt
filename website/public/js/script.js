@@ -47,7 +47,6 @@
   let adminStatusPromise = null;
   let analyticsTrendChart = null;
   let analyticsSourceChart = null;
-  let myStatsActivityChart = null;
 
   function getAuthToken() {
     return localStorage.getItem('token') || '';
@@ -1585,15 +1584,124 @@ function analyticsLabel(value) {
   return String(value || 'other').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function renderAnalyticsStats(containerId, stats, redemptionItems = []) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  container.innerHTML = stats.map(([label, value, note, expandable]) => {
+    if (!expandable) {
+      return `<article class="analytics-stat">
+        <span>${escapeHtml(label)}</span>
+        <strong>${formatAnalyticsNumber(value)}</strong>
+        <small>${escapeHtml(note)}</small>
+      </article>`;
+    }
+
+    const breakdownId = `${containerId}RedemptionBreakdown`;
+    const breakdown = redemptionItems.length
+      ? redemptionItems.map((entry) => `
+          <div class="analytics-redemption-row">
+            <span>${escapeHtml(entry.name || 'Unknown item')}</span>
+            <strong>${formatAnalyticsNumber(entry.quantity)}</strong>
+          </div>`).join('')
+      : '<p class="analytics-muted">No redeemed items yet.</p>';
+
+    return `<article class="analytics-stat analytics-stat-expandable">
+      <button type="button" class="analytics-stat-toggle" aria-expanded="false" aria-controls="${breakdownId}">
+        <span>${escapeHtml(label)}</span>
+        <strong>${formatAnalyticsNumber(value)}</strong>
+        <small class="analytics-stat-note">${escapeHtml(note)}</small>
+        <span class="analytics-expand-hint">View breakdown</span>
+      </button>
+      <div id="${breakdownId}" class="analytics-redemption-breakdown" hidden>${breakdown}</div>
+    </article>`;
+  }).join('');
+
+  const toggle = container.querySelector('.analytics-stat-toggle');
+  toggle?.addEventListener('click', () => {
+    const breakdown = document.getElementById(toggle.getAttribute('aria-controls'));
+    if (!breakdown) return;
+    const expanded = toggle.getAttribute('aria-expanded') === 'true';
+    toggle.setAttribute('aria-expanded', String(!expanded));
+    breakdown.hidden = expanded;
+    const hint = toggle.querySelector('.analytics-expand-hint');
+    if (hint) hint.textContent = expanded ? 'View breakdown' : 'Hide breakdown';
+  });
+}
+
+function showAnalyticsTrackingStart(elementId, timestamp) {
+  const element = document.getElementById(elementId);
+  const date = new Date(Number(timestamp) * 1000);
+  if (!element || !Number.isFinite(date.getTime())) return;
+
+  element.textContent = `Tracking started on ${date.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })}.`;
+  element.hidden = false;
+}
+
+function formatDateInputValue(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function setAnalyticsCustomRangeVisibility() {
+  const rangeSelect = document.getElementById('analyticsRange');
+  const customRange = document.getElementById('analyticsCustomRange');
+  const fromInput = document.getElementById('analyticsFrom');
+  const toInput = document.getElementById('analyticsTo');
+  if (!rangeSelect || !customRange || !fromInput || !toInput) return;
+
+  const today = new Date();
+  const todayValue = formatDateInputValue(today);
+  fromInput.max = todayValue;
+  toInput.max = todayValue;
+  if (!toInput.value) toInput.value = todayValue;
+  if (!fromInput.value) fromInput.value = formatDateInputValue(new Date(today.getFullYear(), today.getMonth(), 1));
+  customRange.hidden = rangeSelect.value !== 'custom';
+}
+
+function formatAnalyticsPeriod(period) {
+  if (!period || !Number.isFinite(Number(period.since)) || !Number.isFinite(Number(period.until))) return '';
+  const formatter = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const start = formatter.format(new Date(Number(period.since) * 1000));
+  const end = formatter.format(new Date((Number(period.until) - 1) * 1000));
+  return start === end ? start : `${start} – ${end}`;
+}
+
 async function loadAdminAnalytics() {
   const loading = document.getElementById('analyticsLoading');
   const content = document.getElementById('analyticsContent');
   const rangeSelect = document.getElementById('analyticsRange');
+  const fromInput = document.getElementById('analyticsFrom');
+  const toInput = document.getElementById('analyticsTo');
+  const applyButton = document.getElementById('analyticsApplyRange');
   if (!loading || !content || !rangeSelect) return;
 
   if (!rangeSelect.dataset.bound) {
     rangeSelect.dataset.bound = 'true';
-    rangeSelect.addEventListener('change', loadAdminAnalytics);
+    rangeSelect.addEventListener('change', () => {
+      setAnalyticsCustomRangeVisibility();
+      loadAdminAnalytics();
+    });
+    applyButton?.addEventListener('click', loadAdminAnalytics);
+  }
+  setAnalyticsCustomRangeVisibility();
+
+  const params = new URLSearchParams({ range: rangeSelect.value });
+  if (rangeSelect.value === 'custom') {
+    if (!fromInput?.value || !toInput?.value || fromInput.value > toInput.value) {
+      loading.style.display = 'block';
+      loading.textContent = 'Choose a valid start and end date.';
+      content.style.display = 'none';
+      return;
+    }
+    params.set('from', fromInput.value);
+    params.set('to', toInput.value);
   }
 
   loading.style.display = 'block';
@@ -1601,26 +1709,27 @@ async function loadAdminAnalytics() {
   content.style.display = 'none';
 
   try {
-    const response = await fetch(`/api/admin/analytics?range=${encodeURIComponent(rangeSelect.value)}`, {
+    const response = await fetch(`/api/admin/analytics?${params}`, {
       headers: getAuthHeaders(),
     });
-    if (!response.ok) throw new Error('Failed to load analytics.');
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => ({}));
+      throw new Error(errorPayload.message || 'Failed to load analytics.');
+    }
     const data = await response.json();
+    showAnalyticsTrackingStart('analyticsTrackingStart', data.collectionStartedAt);
+    const periodLabel = document.getElementById('analyticsPeriodLabel');
+    if (periodLabel) periodLabel.textContent = data.range === 'all' ? 'Showing all recorded activity' : `Snapshot: ${formatAnalyticsPeriod(data.period)}`;
 
     const stats = [
-      ['Volts earned', data.summary.earned, 'Historical quest/call data + tracked sources'],
-      ['Volts spent', data.summary.spent, 'Partial history'],
-      ['Volts transferred', data.summary.transferred, 'Member transfers; partial history'],
-      ['Items redeemed', data.summary.redeemed, 'Redemption log history'],
+      ['Volts earned', data.summary.earned, 'Quest, call, and reward earnings'],
+      ['Volts spent', data.summary.spent, 'Member spending'],
+      ['Volts transferred', data.summary.transferred, 'Sent to members'],
+      ['Items redeemed', data.summary.redeemed, 'Item redemptions', true],
       ['In circulation', data.summary.circulation, 'Current wallet + bank balances'],
-      ['Members', data.summary.members, `${formatAnalyticsNumber(data.summary.activeMembers)} tracked active in range`],
+      ['Members', data.summary.members, `${formatAnalyticsNumber(data.summary.activeMembers)} active in range`],
     ];
-    document.getElementById('analyticsSummary').innerHTML = stats.map(([label, value, note]) => `
-      <article class="analytics-stat">
-        <span>${escapeHtml(label)}</span>
-        <strong>${formatAnalyticsNumber(value)}</strong>
-        <small>${escapeHtml(note)}</small>
-      </article>`).join('');
+    renderAnalyticsStats('analyticsSummary', stats, data.redemptionItems || []);
 
     const activity = [
       ['Quests completed', data.activity.quests],
@@ -1634,7 +1743,7 @@ async function loadAdminAnalytics() {
 
     document.getElementById('analyticsMembers').innerHTML = data.topMembers.length
       ? data.topMembers.map((member) => `<div class="analytics-row"><span>${escapeHtml(member.username || member.userID)}</span><strong>${formatAnalyticsNumber(member.actions)} actions</strong></div>`).join('')
-      : '<p class="analytics-muted">No timestamped activity in this range.</p>';
+      : '<p class="analytics-muted">No member activity in this range.</p>';
 
     document.getElementById('analyticsRecent').innerHTML = data.recent.length
       ? data.recent.slice(0, 10).map((entry) => {
@@ -1643,12 +1752,6 @@ async function loadAdminAnalytics() {
           return `<div class="analytics-event"><strong>${escapeHtml(analyticsLabel(entry.label))}${amount}</strong><small>${escapeHtml(entry.userID || 'System')} · ${escapeHtml(date)}</small></div>`;
         }).join('')
       : '<p class="analytics-muted">No recent activity in this range.</p>';
-
-    document.getElementById('analyticsCoverage').innerHTML = data.coverage.map((item) => `
-      <div class="analytics-coverage">
-        <span class="analytics-badge analytics-badge-${escapeHtml(item.status)}">${escapeHtml(item.status)}</span>
-        <div><strong>${escapeHtml(item.metric)}</strong><small>${escapeHtml(item.note)}</small></div>
-      </div>`).join('');
 
     analyticsTrendChart?.destroy();
     analyticsSourceChart?.destroy();
@@ -1678,7 +1781,7 @@ async function loadAdminAnalytics() {
     content.style.display = 'block';
   } catch (error) {
     console.error('Failed to load admin analytics:', error);
-    loading.textContent = 'Analytics could not be loaded.';
+    loading.textContent = error.message || 'Analytics could not be loaded.';
     content.style.display = 'none';
   }
 }
@@ -1696,33 +1799,29 @@ async function loadMyStats() {
     const response = await fetch('/api/analytics/me', { headers: getAuthHeaders() });
     if (!response.ok) throw new Error('Failed to load your stats.');
     const data = await response.json();
+    showAnalyticsTrackingStart('myStatsTrackingStart', data.collectionStartedAt);
 
     const stats = [
       ['Total balance', data.balance.total, `Wallet ${formatAnalyticsNumber(data.balance.wallet)} · Bank ${formatAnalyticsNumber(data.balance.bank)}`],
-      ['Earned', data.summary.earned, 'Historical where available'],
-      ['Earned (30 days)', data.summary.earned30, 'Timestamped activity'],
-      ['Spent', data.summary.spent, 'Partial history'],
-      ['Spent (30 days)', data.summary.spent30, 'Tracked activity'],
-      ['Transferred', data.summary.transferred, 'Sent to members; partial history'],
-      ['Items redeemed', data.summary.redemptions, 'Redemption log history'],
-      ['Shop items purchased', data.summary.purchases, 'Tracked purchases'],
+      ['Earned', data.summary.earned, 'Total earnings'],
+      ['Earned (30 days)', data.summary.earned30, 'Last 30 days'],
+      ['Spent', data.summary.spent, 'Total spending'],
+      ['Spent (30 days)', data.summary.spent30, 'Last 30 days'],
+      ['Transferred', data.summary.transferred, 'Sent to members'],
+      ['Items redeemed', data.summary.redemptions, 'Total redemptions', true],
+      ['Shop items purchased', data.summary.purchases, 'Total purchases'],
     ];
-    document.getElementById('myStatsSummary').innerHTML = stats.map(([label, value, note]) => `
-      <article class="analytics-stat">
-        <span>${escapeHtml(label)}</span>
-        <strong>${formatAnalyticsNumber(value)}</strong>
-        <small>${escapeHtml(note)}</small>
-      </article>`).join('');
+    renderAnalyticsStats('myStatsSummary', stats, data.redemptionItems || []);
 
     document.getElementById('myStatsSources').innerHTML = data.rewardSources.length
       ? data.rewardSources.map((source) => `<div class="analytics-row"><span>${escapeHtml(analyticsLabel(source.source))}</span><strong>⚡${formatAnalyticsNumber(source.amount)}</strong></div>`).join('')
-      : '<p class="analytics-muted">No timestamped earning sources are available yet.</p>';
+      : '<p class="analytics-muted">No earning sources are available yet.</p>';
 
     const questStats = [
-      ['Submitted', data.quests.submitted],
-      ['Completed', data.quests.completed],
-      ['Pending', data.quests.pending],
-      ['DAO calls rewarded', data.quests.calls],
+      ['Completed (30 days)', data.quests.last30],
+      ['Completed (all time)', data.quests.allTime],
+      ['Monthly average', data.quests.monthlyAverage],
+      ['Calls attended', data.quests.callsAttended],
     ];
     document.getElementById('myStatsQuests').innerHTML = questStats.map(([label, value]) =>
       `<div class="analytics-row"><span>${escapeHtml(label)}</span><strong>${formatAnalyticsNumber(value)}</strong></div>`
@@ -1735,35 +1834,6 @@ async function loadMyStats() {
           return `<div class="analytics-event"><strong>${escapeHtml(analyticsLabel(entry.label))}${amount}</strong><small>${escapeHtml(date)}</small></div>`;
         }).join('')
       : '<p class="analytics-muted">No personal activity has been recorded yet.</p>';
-
-    document.getElementById('myStatsCoverage').innerHTML = data.coverage.map((item) => `
-      <div class="analytics-coverage">
-        <span class="analytics-badge analytics-badge-${escapeHtml(item.status)}">${escapeHtml(item.status)}</span>
-        <div><strong>${escapeHtml(item.metric)}</strong><small>${escapeHtml(item.note)}</small></div>
-      </div>`).join('');
-
-    const sparseTrends = new Map(data.trends.map((point) => [point.day, point]));
-    const days = [];
-    for (let offset = 29; offset >= 0; offset -= 1) {
-      const date = new Date();
-      date.setUTCHours(0, 0, 0, 0);
-      date.setUTCDate(date.getUTCDate() - offset);
-      const day = date.toISOString().slice(0, 10);
-      days.push({ day, earned: sparseTrends.get(day)?.earned || 0, spent: sparseTrends.get(day)?.spent || 0 });
-    }
-
-    myStatsActivityChart?.destroy();
-    myStatsActivityChart = new Chart(document.getElementById('myStatsActivityChart'), {
-      type: 'bar',
-      data: {
-        labels: days.map((point) => point.day),
-        datasets: [
-          { label: 'Earned', data: days.map((point) => point.earned), backgroundColor: 'rgba(45,212,191,.72)', borderRadius: 3 },
-          { label: 'Spent', data: days.map((point) => point.spent), backgroundColor: 'rgba(249,115,22,.72)', borderRadius: 3 },
-        ],
-      },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#e5e7eb' } } }, scales: { x: { stacked: false, ticks: { color: '#9ca3af', maxTicksLimit: 6 } }, y: { beginAtZero: true, ticks: { color: '#9ca3af' } } } },
-    });
 
     loading.style.display = 'none';
     content.style.display = 'block';
