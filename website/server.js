@@ -702,11 +702,64 @@ async function addGiveawayEntry(giveawayId, userId) {
 async function resolveUsername(userId) {
   try {
     const user = await client.users.fetch(userId);
-    return user.tag; // e.g. 'Vincent#1234'
+    return user.globalName || user.username || user.tag;
   } catch (err) {
     console.error(`Error fetching user for ID ${userId}: ${err.message}`);
     return `UnknownUser(${userId})`;
   }
+}
+
+function hasUsableProfileName(username, userId) {
+  const normalizedName = String(username || '').trim();
+  const normalizedId = String(userId || '').trim();
+  return Boolean(normalizedName && normalizedName !== normalizedId && !/^\d{15,22}$/.test(normalizedName));
+}
+
+async function resolveAnalyticsNames(topMembers, recent) {
+  const profileNames = new Map();
+  for (const member of topMembers) {
+    if (hasUsableProfileName(member.username, member.userID)) {
+      profileNames.set(String(member.userID), String(member.username).trim());
+    }
+  }
+
+  const userIds = [...new Set(
+    [...topMembers, ...recent]
+      .map((row) => String(row.userID || '').trim())
+      .filter(Boolean)
+  )];
+
+  const missingProfileIds = userIds.filter((userId) => !profileNames.has(userId));
+  if (missingProfileIds.length) {
+    const placeholders = missingProfileIds.map(() => '?').join(',');
+    const rows = await dbAll(
+      `SELECT userID, username FROM economy WHERE userID IN (${placeholders})`,
+      missingProfileIds
+    );
+    for (const row of rows) {
+      if (hasUsableProfileName(row.username, row.userID)) {
+        profileNames.set(String(row.userID), String(row.username).trim());
+      }
+    }
+  }
+
+  const resolvedNames = new Map(profileNames);
+  await Promise.all(userIds.map(async (userId) => {
+    if (resolvedNames.has(userId)) return;
+    const discordName = await resolveUsername(userId);
+    if (discordName && !discordName.startsWith('UnknownUser(')) {
+      resolvedNames.set(userId, discordName);
+    }
+  }));
+
+  const addDisplayName = (row) => ({
+    ...row,
+    displayName: resolvedNames.get(String(row.userID || '')) || String(row.userID || 'System'),
+  });
+  return {
+    topMembers: topMembers.map(addDisplayName),
+    recent: recent.map(addDisplayName),
+  };
 }
 
 /**
@@ -927,6 +980,7 @@ app.get('/api/admin/analytics', authenticateToken, requireAdmin, async (req, res
 
     const nativeEarned = Number(native.questEarned) + Number(native.xQuestEarned) + Number(native.callEarned);
     const collectionStartedAt = Number(meta?.value || now);
+    const namedActivity = await resolveAnalyticsNames(topMembers, recent);
     return res.json({
       range,
       period: { from: period.from || null, to: period.to || null, since, until },
@@ -950,8 +1004,8 @@ app.get('/api/admin/analytics', authenticateToken, requireAdmin, async (req, res
       rewardSources: rewardSources.map((row) => ({ source: row.source, amount: Number(row.amount) })),
       redemptionItems: redemptionItems.map((row) => ({ name: row.name, quantity: Number(row.quantity) })),
       trends: trendRows.map((row) => ({ day: row.day, earned: Number(row.earned), spent: Number(row.spent) })),
-      topMembers: topMembers.map((row) => ({ ...row, actions: Number(row.actions), volts: Number(row.volts) })),
-      recent: recent.map((row) => ({ ...row, amount: Number(row.amount || 0), createdAt: Number(row.createdAt) })),
+      topMembers: namedActivity.topMembers.map((row) => ({ ...row, actions: Number(row.actions), volts: Number(row.volts) })),
+      recent: namedActivity.recent.map((row) => ({ ...row, amount: Number(row.amount || 0), createdAt: Number(row.createdAt) })),
     });
   } catch (error) {
     console.error('Error loading admin analytics:', error);

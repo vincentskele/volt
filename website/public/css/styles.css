@@ -611,7 +611,15 @@ code {
   width: min(700px, 100%);
   box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
   margin: 0 auto 12px;
+  box-sizing: border-box;
 }
+
+#adminPage {
+  max-width: 1120px;
+  box-sizing: border-box;
+}
+
+#adminAnalyticsPanel { max-width: 1000px; }
 
 .admin-panel h3 {
   margin: 0 0 8px;
@@ -3237,10 +3245,11 @@ header h1 {
 .analytics-redemption-row span { min-width: 0; color: #cbd5e1; overflow-wrap: anywhere; }
 .analytics-redemption-row strong { flex: 0 0 auto; margin: 0; font-size: 1rem; }
 .analytics-chart-grid, .analytics-detail-grid { display: grid; gap: 16px; margin-bottom: 16px; }
-.analytics-chart-grid { grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); }
-.analytics-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.analytics-chart-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+.analytics-detail-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
 .analytics-card h3, .analytics-card h4 { margin: 0 0 12px; color: #e5e7eb; }
 .analytics-chart-wrap { position: relative; min-height: 275px; }
+.analytics-card { min-width: 0; overflow: hidden; }
 .analytics-row, .analytics-event {
   display: flex;
   justify-content: space-between;
@@ -3248,8 +3257,15 @@ header h1 {
   padding: 9px 0;
   border-bottom: 1px solid rgba(148, 163, 184, .15);
 }
+.analytics-row > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.analytics-row > strong { flex: 0 0 auto; text-align: right; }
 .analytics-row:last-child, .analytics-event:last-child { border-bottom: 0; }
 .analytics-event { flex-direction: column; gap: 2px; }
+.analytics-event strong, .analytics-event small { overflow-wrap: anywhere; }
 .analytics-event small { display: block; color: #9ca3af; margin-top: 3px; }
 .analytics-tracking-start { margin-top: 4px; }
 .analytics-card-wide { grid-column: 1 / -1; }

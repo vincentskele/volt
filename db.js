@@ -3046,11 +3046,20 @@ async function recordRaffleTicketPurchase(userID, itemName, quantity = 1) {
                     return reject(updateErr);
                   }
 
-                  db.run('COMMIT', (commitErr) => {
+                  db.run('COMMIT', async (commitErr) => {
                     if (commitErr) {
                       console.error('Error committing raffle ticket purchase tracking:', commitErr);
                       return reject(commitErr);
                     }
+                    await recordAnalyticsEvent(db, {
+                      uniqueKey: `raffle-purchase:${raffle.id}:${userID}:${previousCount}:${newCount}`,
+                      eventType: 'raffle_entry',
+                      userId: userID,
+                      quantity: safeQty,
+                      source: 'raffle',
+                      itemName,
+                      metadata: { raffleId: raffle.id, previousCount, newCount },
+                    });
                     resolve({ raffle, bonusTickets, milestones, previousCount, newCount });
                   });
                 }

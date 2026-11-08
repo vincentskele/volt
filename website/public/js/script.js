@@ -1742,14 +1742,14 @@ async function loadAdminAnalytics() {
     ).join('');
 
     document.getElementById('analyticsMembers').innerHTML = data.topMembers.length
-      ? data.topMembers.map((member) => `<div class="analytics-row"><span>${escapeHtml(member.username || member.userID)}</span><strong>${formatAnalyticsNumber(member.actions)} actions</strong></div>`).join('')
+      ? data.topMembers.map((member) => `<div class="analytics-row"><span>${escapeHtml(member.displayName || member.username || member.userID)}</span><strong>${formatAnalyticsNumber(member.actions)} actions</strong></div>`).join('')
       : '<p class="analytics-muted">No member activity in this range.</p>';
 
     document.getElementById('analyticsRecent').innerHTML = data.recent.length
       ? data.recent.slice(0, 10).map((entry) => {
           const date = new Date(entry.createdAt * 1000).toLocaleString();
           const amount = entry.amount ? ` · ⚡${formatAnalyticsNumber(entry.amount)}` : '';
-          return `<div class="analytics-event"><strong>${escapeHtml(analyticsLabel(entry.label))}${amount}</strong><small>${escapeHtml(entry.userID || 'System')} · ${escapeHtml(date)}</small></div>`;
+          return `<div class="analytics-event"><strong>${escapeHtml(analyticsLabel(entry.label))}${amount}</strong><small>${escapeHtml(entry.displayName || entry.userID || 'System')} · ${escapeHtml(date)}</small></div>`;
         }).join('')
       : '<p class="analytics-muted">No recent activity in this range.</p>';
 
