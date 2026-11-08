@@ -221,7 +221,10 @@ module.exports = {
             if (!isNaN(prizeInput)) {
               const prizeAmount = parseInt(prizeInput, 10);
               for (const winnerId of winners) {
-                await db.updateWallet(winnerId, prizeAmount);
+                await db.updateWallet(winnerId, prizeAmount, {
+                  eventType: 'earned', source: 'title_giveaway',
+                  metadata: { giveawayId: giveaway.id },
+                });
               }
 
               const winnerMentions = winners.map(id => `<@${id}>`).join(', ');

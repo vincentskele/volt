@@ -121,9 +121,15 @@ module.exports = {
         return context.reply(replyPayload);
       }
 
-      await db.updateWallet(user.id, -totalCost);
+      await db.updateWallet(user.id, -totalCost, { enabled: false });
       await db.addItemToInventory(user.id, shopItem.itemID, quantity);
       await db.updateShopItemQuantity(shopItem.itemID, shopItem.quantity - quantity);
+
+      void db.trackAnalyticsEvent({
+        eventType: 'spent', userId: user.id, amount: totalCost,
+        source: 'shop_purchase', itemName: shopItem.name, quantity,
+        metadata: { itemId: shopItem.itemID, channel: 'discord' },
+      });
 
       const bonusInfo = await db.applyRafflePurchaseBonus(user.id, shopItem.name, quantity);
 

@@ -40,7 +40,7 @@ async function awardRPSBonus(userId) {
 
   entry.wins++;
   if (entry.wins <= 3) {
-    await updateWallet(userId, 8);
+    await updateWallet(userId, 8, { eventType: 'earned', source: 'rps_bonus' });
     console.log(`🎉 Bonus: +8 volts for user ${userId} (daily win #${entry.wins}).`);
   }
 
@@ -203,8 +203,8 @@ module.exports = {
       } else {
         const winner = result === 1 ? g.challengerId : g.opponentId;
         const loser = result === 1 ? g.opponentId : g.challengerId;
-        await updateWallet(winner, g.wager);
-        await updateWallet(loser, -g.wager);
+        await updateWallet(winner, g.wager, { eventType: 'earned', source: 'rps_wager', counterpartyId: loser });
+        await updateWallet(loser, -g.wager, { eventType: 'spent', source: 'rps_wager', counterpartyId: winner });
         const bonusCount = await awardRPSBonus(winner);
         summary = `🎉 <@${winner}> wins **${g.wager}** volts! (<@${loser}> loses ${g.wager})`;
         if (bonusCount <= 3) summary += `\n🏅 Bonus win (+8 Volts) ${bonusCount}/3 today!`;

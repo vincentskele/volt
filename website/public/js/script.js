@@ -18,6 +18,7 @@
     userProfileSection: 'profile',
     chatSection: 'chat',
     adminPage: 'admin',
+    myStatsSection: 'my-stats',
   };
   const ADMIN_PANEL_HASHES = {
     adminSubmissionsPanel: 'quest-submissions',
@@ -31,6 +32,7 @@
     adminUnclaimedItemsPanel: 'unclaimed-items',
     adminRedemptionsPanel: 'item-redemptions',
     adminCallAttendancePanel: 'call-attendance',
+    adminAnalyticsPanel: 'analytics',
   };
   const HASH_TO_SECTION = Object.fromEntries(
     Object.entries(SECTION_HASHES).map(([sectionId, hashName]) => [hashName, sectionId])
@@ -40,9 +42,12 @@
   );
   const ADMIN_ROUTE_SECTION = 'adminPage';
   const DEFAULT_ADMIN_PANEL = 'adminSubmissionsPanel';
-  const AUTH_REQUIRED_SECTIONS = new Set(['userProfileSection', 'inventorySection', 'mapSection']);
+  const AUTH_REQUIRED_SECTIONS = new Set(['userProfileSection', 'inventorySection', 'mapSection', 'myStatsSection']);
   let cachedAdminStatus = null;
   let adminStatusPromise = null;
+  let analyticsTrendChart = null;
+  let analyticsSourceChart = null;
+  let myStatsActivityChart = null;
 
   function getAuthToken() {
     return localStorage.getItem('token') || '';
@@ -233,6 +238,7 @@
     if (targetId === 'adminShopItemsPanel') loadAdminShopItems();
     if (targetId === 'adminUnclaimedItemsPanel') loadAdminUnclaimedItems();
     if (targetId === 'adminCallAttendancePanel') loadAdminCallAttendance();
+    if (targetId === 'adminAnalyticsPanel') loadAdminAnalytics();
   }
 
   async function openAdminSection(targetPanelId = DEFAULT_ADMIN_PANEL, options = {}) {
@@ -1569,6 +1575,203 @@ if (adminAddJobButton) {
       if (result.ok) loadAdminJoblist();
     });
   });
+}
+
+function formatAnalyticsNumber(value) {
+  return new Intl.NumberFormat().format(Number(value || 0));
+}
+
+function analyticsLabel(value) {
+  return String(value || 'other').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+async function loadAdminAnalytics() {
+  const loading = document.getElementById('analyticsLoading');
+  const content = document.getElementById('analyticsContent');
+  const rangeSelect = document.getElementById('analyticsRange');
+  if (!loading || !content || !rangeSelect) return;
+
+  if (!rangeSelect.dataset.bound) {
+    rangeSelect.dataset.bound = 'true';
+    rangeSelect.addEventListener('change', loadAdminAnalytics);
+  }
+
+  loading.style.display = 'block';
+  loading.textContent = 'Loading analytics…';
+  content.style.display = 'none';
+
+  try {
+    const response = await fetch(`/api/admin/analytics?range=${encodeURIComponent(rangeSelect.value)}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to load analytics.');
+    const data = await response.json();
+
+    const stats = [
+      ['Volts earned', data.summary.earned, 'Historical quest/call data + tracked sources'],
+      ['Volts spent', data.summary.spent, 'Partial history'],
+      ['Volts transferred', data.summary.transferred, 'Member transfers; partial history'],
+      ['Items redeemed', data.summary.redeemed, 'Redemption log history'],
+      ['In circulation', data.summary.circulation, 'Current wallet + bank balances'],
+      ['Members', data.summary.members, `${formatAnalyticsNumber(data.summary.activeMembers)} tracked active in range`],
+    ];
+    document.getElementById('analyticsSummary').innerHTML = stats.map(([label, value, note]) => `
+      <article class="analytics-stat">
+        <span>${escapeHtml(label)}</span>
+        <strong>${formatAnalyticsNumber(value)}</strong>
+        <small>${escapeHtml(note)}</small>
+      </article>`).join('');
+
+    const activity = [
+      ['Quests completed', data.activity.quests],
+      ['Shop items purchased', data.activity.shopPurchases],
+      ['Giveaway entries', data.activity.giveawayEntries],
+      ['Raffle entries', data.activity.raffleTickets],
+    ];
+    document.getElementById('analyticsActivity').innerHTML = activity.map(([label, value]) =>
+      `<div class="analytics-row"><span>${escapeHtml(label)}</span><strong>${formatAnalyticsNumber(value)}</strong></div>`
+    ).join('');
+
+    document.getElementById('analyticsMembers').innerHTML = data.topMembers.length
+      ? data.topMembers.map((member) => `<div class="analytics-row"><span>${escapeHtml(member.username || member.userID)}</span><strong>${formatAnalyticsNumber(member.actions)} actions</strong></div>`).join('')
+      : '<p class="analytics-muted">No timestamped activity in this range.</p>';
+
+    document.getElementById('analyticsRecent').innerHTML = data.recent.length
+      ? data.recent.slice(0, 10).map((entry) => {
+          const date = new Date(entry.createdAt * 1000).toLocaleString();
+          const amount = entry.amount ? ` · ⚡${formatAnalyticsNumber(entry.amount)}` : '';
+          return `<div class="analytics-event"><strong>${escapeHtml(analyticsLabel(entry.label))}${amount}</strong><small>${escapeHtml(entry.userID || 'System')} · ${escapeHtml(date)}</small></div>`;
+        }).join('')
+      : '<p class="analytics-muted">No recent activity in this range.</p>';
+
+    document.getElementById('analyticsCoverage').innerHTML = data.coverage.map((item) => `
+      <div class="analytics-coverage">
+        <span class="analytics-badge analytics-badge-${escapeHtml(item.status)}">${escapeHtml(item.status)}</span>
+        <div><strong>${escapeHtml(item.metric)}</strong><small>${escapeHtml(item.note)}</small></div>
+      </div>`).join('');
+
+    analyticsTrendChart?.destroy();
+    analyticsSourceChart?.destroy();
+    const trendContext = document.getElementById('analyticsTrendChart');
+    const sourceContext = document.getElementById('analyticsSourceChart');
+    analyticsTrendChart = new Chart(trendContext, {
+      type: 'line',
+      data: {
+        labels: data.trends.map((point) => point.day),
+        datasets: [
+          { label: 'Earned', data: data.trends.map((point) => point.earned), borderColor: '#2dd4bf', backgroundColor: 'rgba(45,212,191,.16)', fill: true, tension: .25 },
+          { label: 'Spent', data: data.trends.map((point) => point.spent), borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,.12)', fill: true, tension: .25 },
+        ],
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#e5e7eb' } } }, scales: { x: { ticks: { color: '#9ca3af', maxTicksLimit: 8 } }, y: { beginAtZero: true, ticks: { color: '#9ca3af' } } } },
+    });
+    analyticsSourceChart = new Chart(sourceContext, {
+      type: 'doughnut',
+      data: {
+        labels: data.rewardSources.map((entry) => analyticsLabel(entry.source)),
+        datasets: [{ data: data.rewardSources.map((entry) => entry.amount), backgroundColor: ['#2dd4bf', '#60a5fa', '#a78bfa', '#f59e0b', '#f472b6', '#34d399', '#fb7185'] }],
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#e5e7eb' } } } },
+    });
+
+    loading.style.display = 'none';
+    content.style.display = 'block';
+  } catch (error) {
+    console.error('Failed to load admin analytics:', error);
+    loading.textContent = 'Analytics could not be loaded.';
+    content.style.display = 'none';
+  }
+}
+
+async function loadMyStats() {
+  const loading = document.getElementById('myStatsLoading');
+  const content = document.getElementById('myStatsContent');
+  if (!loading || !content) return;
+
+  loading.style.display = 'block';
+  loading.textContent = 'Loading your stats…';
+  content.style.display = 'none';
+
+  try {
+    const response = await fetch('/api/analytics/me', { headers: getAuthHeaders() });
+    if (!response.ok) throw new Error('Failed to load your stats.');
+    const data = await response.json();
+
+    const stats = [
+      ['Total balance', data.balance.total, `Wallet ${formatAnalyticsNumber(data.balance.wallet)} · Bank ${formatAnalyticsNumber(data.balance.bank)}`],
+      ['Earned', data.summary.earned, 'Historical where available'],
+      ['Earned (30 days)', data.summary.earned30, 'Timestamped activity'],
+      ['Spent', data.summary.spent, 'Partial history'],
+      ['Spent (30 days)', data.summary.spent30, 'Tracked activity'],
+      ['Transferred', data.summary.transferred, 'Sent to members; partial history'],
+      ['Items redeemed', data.summary.redemptions, 'Redemption log history'],
+      ['Shop items purchased', data.summary.purchases, 'Tracked purchases'],
+    ];
+    document.getElementById('myStatsSummary').innerHTML = stats.map(([label, value, note]) => `
+      <article class="analytics-stat">
+        <span>${escapeHtml(label)}</span>
+        <strong>${formatAnalyticsNumber(value)}</strong>
+        <small>${escapeHtml(note)}</small>
+      </article>`).join('');
+
+    document.getElementById('myStatsSources').innerHTML = data.rewardSources.length
+      ? data.rewardSources.map((source) => `<div class="analytics-row"><span>${escapeHtml(analyticsLabel(source.source))}</span><strong>⚡${formatAnalyticsNumber(source.amount)}</strong></div>`).join('')
+      : '<p class="analytics-muted">No timestamped earning sources are available yet.</p>';
+
+    const questStats = [
+      ['Submitted', data.quests.submitted],
+      ['Completed', data.quests.completed],
+      ['Pending', data.quests.pending],
+      ['DAO calls rewarded', data.quests.calls],
+    ];
+    document.getElementById('myStatsQuests').innerHTML = questStats.map(([label, value]) =>
+      `<div class="analytics-row"><span>${escapeHtml(label)}</span><strong>${formatAnalyticsNumber(value)}</strong></div>`
+    ).join('');
+
+    document.getElementById('myStatsRecent').innerHTML = data.recent.length
+      ? data.recent.map((entry) => {
+          const date = new Date(entry.createdAt * 1000).toLocaleString();
+          const amount = entry.amount ? ` · ⚡${formatAnalyticsNumber(entry.amount)}` : '';
+          return `<div class="analytics-event"><strong>${escapeHtml(analyticsLabel(entry.label))}${amount}</strong><small>${escapeHtml(date)}</small></div>`;
+        }).join('')
+      : '<p class="analytics-muted">No personal activity has been recorded yet.</p>';
+
+    document.getElementById('myStatsCoverage').innerHTML = data.coverage.map((item) => `
+      <div class="analytics-coverage">
+        <span class="analytics-badge analytics-badge-${escapeHtml(item.status)}">${escapeHtml(item.status)}</span>
+        <div><strong>${escapeHtml(item.metric)}</strong><small>${escapeHtml(item.note)}</small></div>
+      </div>`).join('');
+
+    const sparseTrends = new Map(data.trends.map((point) => [point.day, point]));
+    const days = [];
+    for (let offset = 29; offset >= 0; offset -= 1) {
+      const date = new Date();
+      date.setUTCHours(0, 0, 0, 0);
+      date.setUTCDate(date.getUTCDate() - offset);
+      const day = date.toISOString().slice(0, 10);
+      days.push({ day, earned: sparseTrends.get(day)?.earned || 0, spent: sparseTrends.get(day)?.spent || 0 });
+    }
+
+    myStatsActivityChart?.destroy();
+    myStatsActivityChart = new Chart(document.getElementById('myStatsActivityChart'), {
+      type: 'bar',
+      data: {
+        labels: days.map((point) => point.day),
+        datasets: [
+          { label: 'Earned', data: days.map((point) => point.earned), backgroundColor: 'rgba(45,212,191,.72)', borderRadius: 3 },
+          { label: 'Spent', data: days.map((point) => point.spent), backgroundColor: 'rgba(249,115,22,.72)', borderRadius: 3 },
+        ],
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#e5e7eb' } } }, scales: { x: { stacked: false, ticks: { color: '#9ca3af', maxTicksLimit: 6 } }, y: { beginAtZero: true, ticks: { color: '#9ca3af' } } } },
+    });
+
+    loading.style.display = 'none';
+    content.style.display = 'block';
+  } catch (error) {
+    console.error('Failed to load personal analytics:', error);
+    loading.textContent = 'Your stats could not be loaded.';
+    content.style.display = 'none';
+  }
 }
 
 async function loadAdminPage() {
@@ -3659,6 +3862,21 @@ function showPostLoginButtons() {
   userAvatar.alt = 'Your Discord avatar';
   userActionContainer.appendChild(userAvatar);
 
+  // ========== MY STATS BUTTON ==========
+  const myStatsButton = document.createElement('button');
+  myStatsButton.innerHTML = buildButtonIconMarkup('fa-solid fa-chart-simple', 'My Stats');
+  myStatsButton.className = 'btn text-sm font-bold';
+  myStatsButton.style.height = '24px';
+  myStatsButton.style.width = '110px';
+  myStatsButton.style.lineHeight = '24px';
+  myStatsButton.style.padding = '0 12px';
+  myStatsButton.style.textAlign = 'center';
+
+  myStatsButton.addEventListener('click', () => {
+    showSection('myStatsSection');
+    loadMyStats();
+  });
+
   // ========== INVENTORY BUTTON ==========
   const inventoryButton = document.createElement('button');
   inventoryButton.innerHTML = buildButtonIconMarkup('fa-solid fa-box-open', 'Inventory');
@@ -3761,6 +3979,7 @@ function showPostLoginButtons() {
   });
 
   // Add both buttons to the container
+  userActionContainer.appendChild(myStatsButton);
   userActionContainer.appendChild(inventoryButton);
   userActionContainer.appendChild(userProfileButton);
   userActionContainer.appendChild(mapButton);
@@ -3852,6 +4071,8 @@ async function loadSectionDataForRoute(sectionId, routeParts = []) {
     pingChatPresence();
     loadChatPresence();
     startChatPresencePolling();
+  } else if (sectionId === 'myStatsSection') {
+    loadMyStats();
   }
 }
 

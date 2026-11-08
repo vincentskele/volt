@@ -186,6 +186,36 @@
   
 </div>
 
+<!-- Personal Analytics (Authenticated Member Only) -->
+<div id="myStatsSection" class="content" style="display: none;">
+  <div class="analytics-heading">
+    <div>
+      <h2>📊 My Stats</h2>
+      <p class="analytics-muted">Your balances, Volt activity, quests, and recent history.</p>
+    </div>
+  </div>
+  <div id="myStatsLoading" class="admin-item">Loading your stats…</div>
+  <div id="myStatsContent" style="display: none;">
+    <div id="myStatsSummary" class="analytics-stat-grid"></div>
+    <div class="analytics-chart-grid my-stats-chart-grid">
+      <section class="analytics-card">
+        <h3>Last 30 days</h3>
+        <div class="analytics-chart-wrap"><canvas id="myStatsActivityChart"></canvas></div>
+      </section>
+      <section class="analytics-card">
+        <h3>Earning sources</h3>
+        <div id="myStatsSources"></div>
+      </section>
+    </div>
+    <div class="analytics-detail-grid">
+      <section class="analytics-card"><h3>Quest participation</h3><div id="myStatsQuests"></div></section>
+      <section class="analytics-card"><h3>Recent activity</h3><div id="myStatsRecent"></div></section>
+      <section class="analytics-card my-stats-coverage"><h3>Historical coverage</h3><div id="myStatsCoverage"></div></section>
+    </div>
+  </div>
+  <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
+</div>
+
 
 <!-- Raffles Section -->
 <div id="rafflesSection" class="content" style="display: none;">
@@ -277,6 +307,7 @@
     <button class="btn admin-toggle" data-target="adminUnclaimedItemsPanel"><span class="btn-icon-content"><i class="fa-solid fa-box-archive" aria-hidden="true"></i><span>Unclaimed Items</span></span></button>
     <button class="btn admin-toggle" data-target="adminRedemptionsPanel"><span class="btn-icon-content"><i class="fa-solid fa-receipt" aria-hidden="true"></i><span>Item Redmption</span></span></button>
     <button class="btn admin-toggle" data-target="adminCallAttendancePanel"><span class="btn-icon-content"><i class="fa-solid fa-headset" aria-hidden="true"></i><span>Call Attendance</span></span></button>
+    <button class="btn admin-toggle" data-target="adminAnalyticsPanel"><span class="btn-icon-content"><i class="fa-solid fa-chart-line" aria-hidden="true"></i><span>Analytics</span></span></button>
   </div>
 
   <div id="adminSubmissionsPanel" class="admin-panel" style="display: none;">
@@ -349,6 +380,36 @@
   <div id="adminCallAttendancePanel" class="admin-panel" style="display: none;">
     <h3>🎙️ Call Attendance</h3>
     <div id="adminCallAttendanceList" class="admin-list"></div>
+  </div>
+  <div id="adminAnalyticsPanel" class="admin-panel" style="display: none;">
+    <div class="analytics-heading">
+      <div>
+        <h3>📈 Analytics</h3>
+        <p class="analytics-muted">Economy and member activity. Partial-history metrics are labeled below.</p>
+      </div>
+      <label class="analytics-range-label" for="analyticsRange">Date range
+        <select id="analyticsRange">
+          <option value="7d">Last 7 days</option>
+          <option value="30d" selected>Last 30 days</option>
+          <option value="90d">Last 90 days</option>
+          <option value="all">All time</option>
+        </select>
+      </label>
+    </div>
+    <div id="analyticsLoading" class="admin-item">Loading analytics…</div>
+    <div id="analyticsContent" style="display: none;">
+      <div id="analyticsSummary" class="analytics-stat-grid"></div>
+      <div class="analytics-chart-grid">
+        <section class="analytics-card"><h4>Volt trends</h4><div class="analytics-chart-wrap"><canvas id="analyticsTrendChart"></canvas></div></section>
+        <section class="analytics-card"><h4>Reward sources</h4><div class="analytics-chart-wrap"><canvas id="analyticsSourceChart"></canvas></div></section>
+      </div>
+      <div class="analytics-detail-grid">
+        <section class="analytics-card"><h4>Member activity</h4><div id="analyticsActivity"></div></section>
+        <section class="analytics-card"><h4>Most active members</h4><div id="analyticsMembers"></div></section>
+        <section class="analytics-card"><h4>Recent activity</h4><div id="analyticsRecent"></div></section>
+        <section class="analytics-card"><h4>Historical coverage</h4><div id="analyticsCoverage"></div></section>
+      </div>
+    </div>
   </div>
   <button class="back-button"><span class="btn-icon-content"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Home</span></span></button>
 </div>

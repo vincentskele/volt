@@ -10,6 +10,7 @@ const multer = require("multer");
 const { EmbedBuilder } = require("discord.js");
 const { points, formatCurrency } = require("../points");
 const dbHelpers = require("../db");
+const { initializeAnalytics } = require('../analytics');
 const roboCheckAccountStore = require(path.resolve(__dirname, '..', '..', 'robo-check', 'src', 'accountStore.js'));
 
 const SUBMISSION_EMBED_COLORS = {
@@ -153,6 +154,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
     console.log(`Connected to SQLite database at ${dbPath}`);
   }
 });
+initializeAnalytics(db);
 
 // ✅ Admin/Quest submissions table (for pending review)
 db.run(
@@ -681,6 +683,11 @@ async function addGiveawayEntry(giveawayId, userId) {
 
     // Insert entry into giveaway_entries
     await dbRun(`INSERT INTO giveaway_entries (giveaway_id, user_id) VALUES (?, ?)`, [giveawayId, userId]);
+    void dbHelpers.trackAnalyticsEvent({
+      uniqueKey: `giveaway-entry:${giveawayId}:${userId}`,
+      eventType: 'giveaway_entry', userId, source: 'giveaway',
+      metadata: { giveawayId, channel: 'web' },
+    });
     console.log(`✅ Added new giveaway entry for user ${userId} in giveaway ${giveawayId}`);
   } catch (error) {
     console.error(`❌ Error adding giveaway entry:`, error);
@@ -804,6 +811,282 @@ app.get('/api/admin/check', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error in /api/admin/check:', err);
     return res.status(500).json({ message: 'Failed to check admin.' });
+  }
+});
+
+/**
+ * Read-only admin analytics. Historical audit tables remain the source of truth;
+ * the append-only analytics journal fills gaps going forward.
+ */
+app.get('/api/admin/analytics', authenticateToken, requireAdmin, async (req, res) => {
+  const ranges = { '7d': 7, '30d': 30, '90d': 90, all: null };
+  const range = Object.prototype.hasOwnProperty.call(ranges, req.query.range) ? req.query.range : '30d';
+  const now = Math.floor(Date.now() / 1000);
+  const since = ranges[range] ? now - (ranges[range] * 86400) : 0;
+
+  try {
+    const [balances, native, journal, redemptions, activity, rewardSources, trendRows, topMembers, recent, meta] = await Promise.all([
+      dbGet(`SELECT COUNT(*) AS members, COALESCE(SUM(wallet + bank), 0) AS circulation FROM economy`),
+      dbGet(
+        `SELECT
+           (SELECT COALESCE(SUM(reward_amount), 0) FROM job_submissions WHERE status = 'completed' AND COALESCE(completed_at, 0) >= ?) AS questEarned,
+           (SELECT COALESCE(SUM(reward_amount), 0) FROM x_quest_submissions WHERE status = 'completed' AND COALESCE(completed_at, 0) >= ?) AS xQuestEarned,
+           (SELECT COALESCE(SUM(reward_amount), 0) FROM dao_call_attendance WHERE rewarded_at >= ?) AS callEarned,
+           (SELECT COUNT(*) FROM job_submissions WHERE status = 'completed' AND COALESCE(completed_at, 0) >= ?) AS quests,
+           (SELECT COUNT(*) FROM x_quest_submissions WHERE status = 'completed' AND COALESCE(completed_at, 0) >= ?) AS xQuests,
+           (SELECT COUNT(*) FROM (
+              SELECT userID FROM job_submissions WHERE status = 'completed' AND COALESCE(completed_at, 0) >= ?
+              UNION SELECT userID FROM x_quest_submissions WHERE status = 'completed' AND COALESCE(completed_at, 0) >= ?
+              UNION SELECT userID FROM dao_call_attendance WHERE rewarded_at >= ?
+              UNION SELECT user_id FROM analytics_events WHERE created_at >= ? AND user_id IS NOT NULL
+              UNION SELECT userID FROM item_redemptions WHERE created_at >= ?
+            )) AS activeMembers`,
+        [since, since, since, since, since, since, since, since, since, since]
+      ),
+      dbGet(
+        `SELECT
+           COALESCE(SUM(CASE WHEN event_type = 'earned' AND source NOT IN ('quest', 'x_quest', 'dao_call') THEN amount ELSE 0 END), 0) AS earned,
+           COALESCE(SUM(CASE WHEN event_type = 'spent' THEN amount ELSE 0 END), 0) AS spent,
+           COALESCE(SUM(CASE WHEN event_type = 'transferred' THEN amount ELSE 0 END), 0) AS transferred,
+           COALESCE(SUM(CASE WHEN event_type = 'shop_purchase' OR source = 'shop_purchase' THEN quantity ELSE 0 END), 0) AS shopPurchases,
+           COALESCE(SUM(CASE WHEN event_type = 'giveaway_entry' THEN 1 ELSE 0 END), 0) AS giveawayEntries,
+           COALESCE(SUM(CASE WHEN event_type = 'raffle_entry' THEN quantity ELSE 0 END), 0) AS raffleEntries,
+           COALESCE(SUM(CASE WHEN event_type = 'earned' AND source = 'assigned_quest' THEN 1 ELSE 0 END), 0) AS assignedQuests,
+           COUNT(DISTINCT CASE WHEN user_id IS NOT NULL THEN user_id END) AS activeMembers
+         FROM analytics_events WHERE created_at >= ?`,
+        [since]
+      ),
+      dbGet(`SELECT COUNT(*) AS count FROM item_redemptions WHERE created_at >= ?`, [since]),
+      dbGet(
+        range === 'all'
+          ? `SELECT
+               (SELECT COUNT(*) FROM giveaway_entries) AS historicalGiveawayEntries,
+               (SELECT COALESCE(SUM(purchased_count), 0) FROM raffle_ticket_purchases) AS historicalRafflePurchases`
+          : `SELECT 0 AS historicalGiveawayEntries, 0 AS historicalRafflePurchases`
+      ),
+      dbAll(
+        `SELECT source, SUM(amount) AS amount FROM (
+           SELECT 'quest' AS source, reward_amount AS amount FROM job_submissions WHERE status = 'completed' AND COALESCE(completed_at, 0) >= ?
+           UNION ALL SELECT 'x_quest', reward_amount FROM x_quest_submissions WHERE status = 'completed' AND COALESCE(completed_at, 0) >= ?
+           UNION ALL SELECT 'dao_call', reward_amount FROM dao_call_attendance WHERE rewarded_at >= ?
+           UNION ALL SELECT source, amount FROM analytics_events
+             WHERE event_type = 'earned' AND source NOT IN ('quest', 'x_quest', 'dao_call') AND created_at >= ?
+         ) GROUP BY source ORDER BY amount DESC`,
+        [since, since, since, since]
+      ),
+      dbAll(
+        `SELECT day, SUM(earned) AS earned, SUM(spent) AS spent FROM (
+           SELECT date(completed_at, 'unixepoch') AS day, SUM(reward_amount) AS earned, 0 AS spent
+             FROM job_submissions WHERE status = 'completed' AND COALESCE(completed_at, 0) >= ? GROUP BY day
+           UNION ALL SELECT date(completed_at, 'unixepoch'), SUM(reward_amount), 0
+             FROM x_quest_submissions WHERE status = 'completed' AND COALESCE(completed_at, 0) >= ? GROUP BY 1
+           UNION ALL SELECT date(rewarded_at, 'unixepoch'), SUM(reward_amount), 0
+             FROM dao_call_attendance WHERE rewarded_at >= ? GROUP BY 1
+           UNION ALL SELECT date(created_at, 'unixepoch'),
+             SUM(CASE WHEN event_type = 'earned' AND source NOT IN ('quest', 'x_quest', 'dao_call') THEN amount ELSE 0 END),
+             SUM(CASE WHEN event_type = 'spent' THEN amount ELSE 0 END)
+             FROM analytics_events WHERE created_at >= ? GROUP BY 1
+         ) WHERE day IS NOT NULL GROUP BY day ORDER BY day`,
+        [since, since, since, since]
+      ),
+      dbAll(
+        `SELECT a.userID AS userID, COALESCE(e.username, a.userID) AS username, SUM(actions) AS actions, SUM(volts) AS volts FROM (
+           SELECT userID, COUNT(*) AS actions, SUM(reward_amount) AS volts FROM job_submissions WHERE status = 'completed' AND COALESCE(completed_at, 0) >= ? GROUP BY userID
+           UNION ALL SELECT userID, COUNT(*), SUM(reward_amount) FROM x_quest_submissions WHERE status = 'completed' AND COALESCE(completed_at, 0) >= ? GROUP BY userID
+           UNION ALL SELECT userID, COUNT(*), SUM(reward_amount) FROM dao_call_attendance WHERE rewarded_at >= ? GROUP BY userID
+           UNION ALL SELECT user_id, COUNT(*), SUM(CASE WHEN event_type = 'earned' THEN amount ELSE 0 END) FROM analytics_events WHERE created_at >= ? AND user_id IS NOT NULL AND source NOT IN ('quest', 'x_quest', 'dao_call') GROUP BY user_id
+           UNION ALL SELECT userID, COUNT(*), 0 FROM item_redemptions WHERE created_at >= ? GROUP BY userID
+         ) a LEFT JOIN economy e ON e.userID = a.userID GROUP BY a.userID ORDER BY actions DESC, volts DESC LIMIT 10`,
+        [since, since, since, since, since]
+      ),
+      dbAll(
+        `SELECT * FROM (
+           SELECT completed_at AS createdAt, userID, 'Quest completed' AS label, reward_amount AS amount FROM job_submissions WHERE status = 'completed' AND COALESCE(completed_at, 0) >= ?
+           UNION ALL SELECT completed_at, userID, 'X quest completed', reward_amount FROM x_quest_submissions WHERE status = 'completed' AND COALESCE(completed_at, 0) >= ?
+           UNION ALL SELECT rewarded_at, userID, 'DAO call reward', reward_amount FROM dao_call_attendance WHERE rewarded_at >= ?
+           UNION ALL SELECT created_at, user_id, REPLACE(source, '_', ' '), CASE WHEN event_type IN ('earned','spent','transferred') THEN amount ELSE 0 END FROM analytics_events WHERE created_at >= ? AND source NOT IN ('quest','x_quest','dao_call')
+           UNION ALL SELECT created_at, userID, 'Item redeemed', 0 FROM item_redemptions WHERE created_at >= ?
+         ) ORDER BY createdAt DESC LIMIT 20`,
+        [since, since, since, since, since]
+      ),
+      dbGet(`SELECT value FROM analytics_meta WHERE key = 'collection_started_at'`),
+    ]);
+
+    const nativeEarned = Number(native.questEarned) + Number(native.xQuestEarned) + Number(native.callEarned);
+    const collectionStartedAt = Number(meta?.value || now);
+    const collectionStartDate = new Date(collectionStartedAt * 1000).toISOString().slice(0, 10);
+    return res.json({
+      range,
+      generatedAt: now,
+      collectionStartedAt,
+      summary: {
+        earned: nativeEarned + Number(journal.earned),
+        spent: Number(journal.spent),
+        transferred: Number(journal.transferred),
+        redeemed: Number(redemptions.count),
+        circulation: Number(balances.circulation),
+        members: Number(balances.members),
+        activeMembers: Number(native.activeMembers),
+      },
+      activity: {
+        quests: Number(native.quests) + Number(native.xQuests) + Number(journal.assignedQuests),
+        shopPurchases: Number(journal.shopPurchases),
+        giveawayEntries: range === 'all' ? Math.max(Number(activity.historicalGiveawayEntries), Number(journal.giveawayEntries)) : Number(journal.giveawayEntries),
+        raffleTickets: range === 'all' ? Math.max(Number(activity.historicalRafflePurchases), Number(journal.raffleEntries)) : Number(journal.raffleEntries),
+      },
+      rewardSources: rewardSources.map((row) => ({ source: row.source, amount: Number(row.amount) })),
+      trends: trendRows.map((row) => ({ day: row.day, earned: Number(row.earned), spent: Number(row.spent) })),
+      topMembers: topMembers.map((row) => ({ ...row, actions: Number(row.actions), volts: Number(row.volts) })),
+      recent: recent.map((row) => ({ ...row, amount: Number(row.amount || 0), createdAt: Number(row.createdAt) })),
+      coverage: [
+        { metric: 'Quest, X quest, and call rewards', status: 'historical', note: 'Uses timestamped audit records.' },
+        { metric: 'Redemptions', status: 'partial', note: 'Complete since the redemption audit log was introduced.' },
+        { metric: 'Spend, transfers, and other reward sources', status: 'partial', note: `Tracked from ${collectionStartDate}; older balance changes have no reliable ledger.` },
+        { metric: 'Giveaway and raffle activity', status: range === 'all' ? 'partial' : 'tracked', note: range === 'all' ? 'Older rows have no timestamps and appear only in all-time totals.' : 'Date-filtered activity is available from analytics collection start.' },
+      ],
+    });
+  } catch (error) {
+    console.error('Error loading admin analytics:', error);
+    return res.status(500).json({ message: 'Failed to load analytics.' });
+  }
+});
+
+/**
+ * Personal analytics. The member identity always comes from the verified token;
+ * no browser-supplied user ID is accepted by this route.
+ */
+app.get('/api/analytics/me', authenticateToken, async (req, res) => {
+  const userId = String(req.user.userId);
+  const now = Math.floor(Date.now() / 1000);
+  const thirtyDaysAgo = now - (30 * 86400);
+
+  try {
+    const [balance, nativeTotals, journalTotals, quests, rewardSources, trends, recent, redemptions, meta] = await Promise.all([
+      dbGet(
+        `SELECT COALESCE(wallet, 0) AS wallet, COALESCE(bank, 0) AS bank,
+                COALESCE(wallet, 0) + COALESCE(bank, 0) AS total
+         FROM economy WHERE userID = ?`,
+        [userId]
+      ),
+      dbGet(
+        `SELECT
+           (SELECT COALESCE(SUM(reward_amount), 0) FROM job_submissions WHERE userID = ? AND status = 'completed') AS questEarned,
+           (SELECT COALESCE(SUM(reward_amount), 0) FROM x_quest_submissions WHERE userID = ? AND status = 'completed') AS xQuestEarned,
+           (SELECT COALESCE(SUM(reward_amount), 0) FROM dao_call_attendance WHERE userID = ?) AS callEarned,
+           (SELECT COALESCE(SUM(reward_amount), 0) FROM job_submissions WHERE userID = ? AND status = 'completed' AND completed_at >= ?) AS questEarned30,
+           (SELECT COALESCE(SUM(reward_amount), 0) FROM x_quest_submissions WHERE userID = ? AND status = 'completed' AND completed_at >= ?) AS xQuestEarned30,
+           (SELECT COALESCE(SUM(reward_amount), 0) FROM dao_call_attendance WHERE userID = ? AND rewarded_at >= ?) AS callEarned30`,
+        [userId, userId, userId, userId, thirtyDaysAgo, userId, thirtyDaysAgo, userId, thirtyDaysAgo]
+      ),
+      dbGet(
+        `SELECT
+           COALESCE(SUM(CASE WHEN event_type = 'earned' AND source NOT IN ('quest','x_quest','dao_call') THEN amount ELSE 0 END), 0) AS earned,
+           COALESCE(SUM(CASE WHEN event_type = 'spent' THEN amount ELSE 0 END), 0) AS spent,
+           COALESCE(SUM(CASE WHEN event_type = 'transferred' THEN amount ELSE 0 END), 0) AS sent,
+           COALESCE(SUM(CASE WHEN event_type = 'earned' AND source NOT IN ('quest','x_quest','dao_call') AND created_at >= ? THEN amount ELSE 0 END), 0) AS earned30,
+           COALESCE(SUM(CASE WHEN event_type = 'spent' AND created_at >= ? THEN amount ELSE 0 END), 0) AS spent30,
+           COALESCE(SUM(CASE WHEN source = 'shop_purchase' THEN quantity ELSE 0 END), 0) AS purchases
+         FROM analytics_events WHERE user_id = ?`,
+        [thirtyDaysAgo, thirtyDaysAgo, userId]
+      ),
+      dbGet(
+        `SELECT
+           (SELECT COUNT(*) FROM job_submissions WHERE userID = ?) AS submitted,
+           (SELECT COUNT(*) FROM job_submissions WHERE userID = ? AND status = 'completed') AS completed,
+           (SELECT COUNT(*) FROM job_submissions WHERE userID = ? AND status = 'pending') AS pending,
+           (SELECT COUNT(*) FROM x_quest_submissions WHERE userID = ?) AS xSubmitted,
+           (SELECT COUNT(*) FROM x_quest_submissions WHERE userID = ? AND status = 'completed') AS xCompleted,
+           (SELECT COUNT(*) FROM dao_call_attendance WHERE userID = ?) AS calls,
+           (SELECT COUNT(*) FROM analytics_events WHERE user_id = ? AND source = 'assigned_quest' AND event_type = 'earned') AS assignedCompleted`,
+        [userId, userId, userId, userId, userId, userId, userId]
+      ),
+      dbAll(
+        `SELECT source, SUM(amount) AS amount FROM (
+           SELECT 'quest' AS source, reward_amount AS amount FROM job_submissions WHERE userID = ? AND status = 'completed'
+           UNION ALL SELECT 'x_quest', reward_amount FROM x_quest_submissions WHERE userID = ? AND status = 'completed'
+           UNION ALL SELECT 'dao_call', reward_amount FROM dao_call_attendance WHERE userID = ?
+           UNION ALL SELECT source, amount FROM analytics_events
+             WHERE user_id = ? AND event_type = 'earned' AND source NOT IN ('quest','x_quest','dao_call')
+         ) GROUP BY source HAVING SUM(amount) > 0 ORDER BY amount DESC`,
+        [userId, userId, userId, userId]
+      ),
+      dbAll(
+        `SELECT day, SUM(earned) AS earned, SUM(spent) AS spent FROM (
+           SELECT date(completed_at, 'unixepoch') AS day, SUM(reward_amount) AS earned, 0 AS spent
+             FROM job_submissions WHERE userID = ? AND status = 'completed' AND completed_at >= ? GROUP BY day
+           UNION ALL SELECT date(completed_at, 'unixepoch'), SUM(reward_amount), 0
+             FROM x_quest_submissions WHERE userID = ? AND status = 'completed' AND completed_at >= ? GROUP BY 1
+           UNION ALL SELECT date(rewarded_at, 'unixepoch'), SUM(reward_amount), 0
+             FROM dao_call_attendance WHERE userID = ? AND rewarded_at >= ? GROUP BY 1
+           UNION ALL SELECT date(created_at, 'unixepoch'),
+             SUM(CASE WHEN event_type = 'earned' AND source NOT IN ('quest','x_quest','dao_call') THEN amount ELSE 0 END),
+             SUM(CASE WHEN event_type = 'spent' THEN amount ELSE 0 END)
+             FROM analytics_events WHERE user_id = ? AND created_at >= ? GROUP BY 1
+         ) WHERE day IS NOT NULL GROUP BY day ORDER BY day`,
+        [userId, thirtyDaysAgo, userId, thirtyDaysAgo, userId, thirtyDaysAgo, userId, thirtyDaysAgo]
+      ),
+      dbAll(
+        `SELECT * FROM (
+           SELECT completed_at AS createdAt, 'Quest completed' AS label, reward_amount AS amount, 'earned' AS kind
+             FROM job_submissions WHERE userID = ? AND status = 'completed'
+           UNION ALL SELECT completed_at, 'X quest completed', reward_amount, 'earned'
+             FROM x_quest_submissions WHERE userID = ? AND status = 'completed'
+           UNION ALL SELECT rewarded_at, 'DAO call reward', reward_amount, 'earned'
+             FROM dao_call_attendance WHERE userID = ?
+           UNION ALL SELECT created_at,
+             CASE WHEN event_type = 'transferred' AND counterparty_id = ? THEN 'Transfer received' ELSE REPLACE(source, '_', ' ') END,
+             amount,
+             CASE WHEN event_type = 'transferred' AND counterparty_id = ? THEN 'received' ELSE event_type END
+             FROM analytics_events
+             WHERE user_id = ? OR (event_type = 'transferred' AND counterparty_id = ?)
+           UNION ALL SELECT created_at, 'Item redeemed', 0, 'redeemed'
+             FROM item_redemptions WHERE userID = ?
+         ) WHERE createdAt IS NOT NULL ORDER BY createdAt DESC LIMIT 15`,
+        [userId, userId, userId, userId, userId, userId, userId, userId]
+      ),
+      dbGet(`SELECT COUNT(*) AS count FROM item_redemptions WHERE userID = ?`, [userId]),
+      dbGet(`SELECT value FROM analytics_meta WHERE key = 'collection_started_at'`),
+    ]);
+
+    const historicalEarned = Number(nativeTotals.questEarned) + Number(nativeTotals.xQuestEarned) + Number(nativeTotals.callEarned);
+    const earned30 = Number(nativeTotals.questEarned30) + Number(nativeTotals.xQuestEarned30) + Number(nativeTotals.callEarned30) + Number(journalTotals.earned30);
+    const collectionStartedAt = Number(meta?.value || now);
+
+    return res.json({
+      generatedAt: now,
+      collectionStartedAt,
+      balance: {
+        wallet: Number(balance?.wallet || 0),
+        bank: Number(balance?.bank || 0),
+        total: Number(balance?.total || 0),
+      },
+      summary: {
+        earned: historicalEarned + Number(journalTotals.earned),
+        earned30,
+        spent: Number(journalTotals.spent),
+        spent30: Number(journalTotals.spent30),
+        transferred: Number(journalTotals.sent),
+        redemptions: Number(redemptions.count),
+        purchases: Number(journalTotals.purchases),
+      },
+      quests: {
+        submitted: Number(quests.submitted) + Number(quests.xSubmitted),
+        completed: Number(quests.completed) + Number(quests.xCompleted) + Number(quests.assignedCompleted),
+        pending: Number(quests.pending),
+        calls: Number(quests.calls),
+      },
+      rewardSources: rewardSources.map((row) => ({ source: row.source, amount: Number(row.amount) })),
+      trends: trends.map((row) => ({ day: row.day, earned: Number(row.earned), spent: Number(row.spent) })),
+      recent: recent.map((row) => ({ ...row, amount: Number(row.amount || 0), createdAt: Number(row.createdAt) })),
+      coverage: [
+        { metric: 'Quest, X quest, and call earnings', status: 'historical', note: 'Uses your timestamped audit records.' },
+        { metric: 'Other earnings, spending, transfers, and purchases', status: 'partial', note: `Tracked since ${new Date(collectionStartedAt * 1000).toISOString().slice(0, 10)}.` },
+        { metric: 'Redemptions', status: 'partial', note: 'Available since the redemption audit log was introduced.' },
+      ],
+    });
+  } catch (error) {
+    console.error('Error loading personal analytics:', error);
+    return res.status(500).json({ message: 'Failed to load your stats.' });
   }
 });
 
@@ -3170,6 +3453,12 @@ app.post('/api/buy', authenticateToken, async (req, res) => {
                     }
 
                     console.log(`✅ User ${userId} bought ${qty} x "${item.name}"`);
+
+                    void dbHelpers.trackAnalyticsEvent({
+                      eventType: 'spent', userId, amount: totalCost,
+                      quantity: qty, source: 'shop_purchase', itemName: item.name,
+                      metadata: { itemId: item.itemID, channel: 'web' },
+                    });
 
                     let bonusInfo = null;
                     try {

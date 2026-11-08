@@ -427,7 +427,9 @@ async function concludeGiveaway(giveaway) {
     for (const winnerId of winners) {
       if (!isNaN(giveaway.prize)) {
         const prizeAmount = parseInt(giveaway.prize, 10);
-        await updateWallet(winnerId, prizeAmount);
+        await updateWallet(winnerId, prizeAmount, {
+          eventType: 'earned', source: 'giveaway', metadata: { giveawayId: giveaway.id },
+        });
         if (channel) {
           await channel.send(
             `🎉 Congrats <@${winnerId}>! You won **${giveawayName}** and received **${prizeAmount}${points.symbol}**.`
@@ -583,7 +585,9 @@ async function concludeTitleGiveaway(titleGiveaway) {
 
     if (!isNaN(titleGiveaway.prize)) {
       const prizeAmount = parseInt(titleGiveaway.prize, 10);
-      for (const winnerId of winners) await updateWallet(winnerId, prizeAmount);
+      for (const winnerId of winners) await updateWallet(winnerId, prizeAmount, {
+        eventType: 'earned', source: 'title_giveaway', metadata: { giveawayId: titleGiveaway.id },
+      });
       if (channel) await channel.send(
         `🏷️ **${titleGiveaway.giveaway_name}** ended!\n` +
         `Winners: ${winnerMentions}\n` +
@@ -853,7 +857,7 @@ client.on('messageCreate', async (message) => {
   // 🎁 Award first message bonus if not already given and if in a bonus-eligible channel.
   if (!userData.firstMessageBonusGiven && inBonusChannel) {
     userData.firstMessageBonusGiven = true;
-    await updateWallet(userId, FIRST_MESSAGE_BONUS);
+    await updateWallet(userId, FIRST_MESSAGE_BONUS, { eventType: 'earned', source: 'first_message' });
     console.log(`🎁 First message bonus awarded to ${message.author.username} (+${FIRST_MESSAGE_BONUS}).`);
     saveMessageCounts();
   }
@@ -861,7 +865,7 @@ client.on('messageCreate', async (message) => {
   // 💬 Regular message-based rewards (only in allowed channels).
   if (allowedChannels.includes(message.channel.id) && userData.count < MESSAGE_REWARD_LIMIT) {
     userData.count++;
-    await updateWallet(userId, MESSAGE_REWARD_AMOUNT);
+    await updateWallet(userId, MESSAGE_REWARD_AMOUNT, { eventType: 'earned', source: 'message' });
     console.log(`⚡ Awarded ${MESSAGE_REWARD_AMOUNT} to ${message.author.username} for message #${userData.count} today.`);
     saveMessageCounts();
   }
@@ -909,7 +913,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
   saveMessageCounts(); // Save progress
 
   // Grant money (assuming updateWallet is your function for adding points)
-  await updateWallet(userId, REACTION_REWARD_AMOUNT);
+  await updateWallet(userId, REACTION_REWARD_AMOUNT, { eventType: 'earned', source: 'reaction' });
   console.log(`🌟 Given ${REACTION_REWARD_AMOUNT} to ${user.username} for reacting in the reward channel.`);
 });
 
@@ -1258,7 +1262,7 @@ async function askTriviaQuestion() {
         triviaUserTimeouts.set(msg.author.id, Date.now() + triviaTimeoutMs);
       }
       collector.stop('answered');
-      await updateWallet(msg.author.id, rewardAmount);
+      await updateWallet(msg.author.id, rewardAmount, { eventType: 'earned', source: 'trivia' });
       await channel.send(`✅ Correct! ${msg.author} wins ${rewardAmount} Volts!`);
       console.log(`🏆 ${msg.author.tag} won trivia #${triviaCountToday} (+${rewardAmount} Volts)`);
     }

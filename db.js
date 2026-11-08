@@ -3,6 +3,7 @@
 // Require & Connect to SQLite
 // =========================================================================
 const SQLite = require('sqlite3').verbose();
+const { initializeAnalytics, recordAnalyticsEvent } = require('./analytics');
 const db = new SQLite.Database('./points.db', (err) => {
   if (err) {
     console.error('Database connection error:', err);
@@ -11,6 +12,8 @@ const db = new SQLite.Database('./points.db', (err) => {
     initializeDatabase(); // Automatically initialize DB on connection
   }
 });
+// Queue analytics tables immediately so early bot events cannot race initialization.
+initializeAnalytics(db);
 
 // =========================================================================
 // Database Initialization
@@ -626,7 +629,7 @@ async function removeAdmin(userID) {
   });
 }
 
-async function updateWallet(userID, amount) {
+async function updateWallet(userID, amount, analytics = {}) {
   await initUserEconomy(userID);
   return new Promise((resolve, reject) => {
     db.run(
@@ -634,7 +637,22 @@ async function updateWallet(userID, amount) {
       [amount, userID],
       function (err) {
         if (err) return reject('Failed to update wallet balance.');
-        else resolve({ changes: this.changes });
+        else {
+          const result = { changes: this.changes };
+          if (this.changes && amount !== 0 && analytics.enabled !== false) {
+            void recordAnalyticsEvent(db, {
+              eventType: analytics.eventType || (amount > 0 ? 'earned' : 'spent'),
+              userId: userID,
+              amount: Math.abs(amount),
+              source: analytics.source || 'other',
+              itemName: analytics.itemName,
+              quantity: analytics.quantity,
+              uniqueKey: analytics.uniqueKey,
+              metadata: analytics.metadata,
+            });
+          }
+          resolve(result);
+        }
       }
     );
   });
@@ -810,6 +828,12 @@ async function awardDaoCallAttendance({
                 }
                 db.run('COMMIT', (commitError) => {
                   if (commitError) return reject(commitError);
+                  void recordAnalyticsEvent(db, {
+                    uniqueKey: `dao-call:${userID}:${meetingStartedAt}`,
+                    eventType: 'earned', userId: userID, amount: rewardAmount,
+                    source: 'dao_call', createdAt: rewardedAt,
+                    metadata: { minutesAttended, meetingStartedAt },
+                  });
                   resolve({ awarded: true });
                 });
               }
@@ -844,7 +868,13 @@ async function transferFromWallet(fromUserID, toUserID, amount) {
             }
             db.run('COMMIT', (err) => {
               if (err) reject('Transaction commit failed.');
-              else resolve();
+              else {
+                void recordAnalyticsEvent(db, {
+                  eventType: 'transferred', userId: fromUserID, counterpartyId: toUserID,
+                  amount, source: 'member_transfer',
+                });
+                resolve();
+              }
             });
           });
         });
@@ -864,6 +894,7 @@ async function withdraw(userID, amount) {
         }
         db.run(`UPDATE economy SET bank = bank - ?, wallet = wallet + ? WHERE userID = ?`, [amount, amount, userID], (err) => {
           if (err) return reject('Failed to process withdrawal.');
+          void recordAnalyticsEvent(db, { eventType: 'account_transfer', userId: userID, amount, source: 'bank_withdrawal' });
           resolve();
         });
       });
@@ -882,6 +913,7 @@ async function deposit(userID, amount) {
         }
         db.run(`UPDATE economy SET wallet = wallet - ?, bank = bank + ? WHERE userID = ?`, [amount, amount, userID], (err) => {
           if (err) return reject('Failed to deposit funds.');
+          void recordAnalyticsEvent(db, { eventType: 'account_transfer', userId: userID, amount, source: 'bank_deposit' });
           resolve();
         });
       });
@@ -1271,9 +1303,15 @@ function completeJob(userID, reward) {
               db.run(
                 `UPDATE economy SET wallet = wallet + ? WHERE userID = ?`,
                 [reward, userID],
-                (err3) => {
+                function (err3) {
                   if (err3) {
                     return reject('Failed to add reward');
+                  }
+                  if (this.changes) {
+                    void recordAnalyticsEvent(db, {
+                      eventType: 'earned', userId: userID, amount: reward,
+                      source: 'assigned_quest',
+                    });
                   }
                   resolve({ success: true });
                 }
@@ -1496,6 +1534,12 @@ function completePendingJobSubmissions(userID, submissionIDs, rewardPerSubmissio
                 if (commitErr) {
                   return reject('Failed to commit submission completion.');
                 }
+                ids.forEach((submissionId) => void recordAnalyticsEvent(db, {
+                  uniqueKey: `quest:${submissionId}`,
+                  eventType: 'earned', userId: userID, amount: rewardAmount,
+                  source: 'quest', createdAt: completedAt,
+                  metadata: { submissionId },
+                }));
                 resolve({
                   success: true,
                   completedCount,
@@ -1676,6 +1720,11 @@ async function completePendingXQuestSubmissions(userID, totalReward, completedBy
                         }
                         db.run('COMMIT', (commitErr) => {
                           if (commitErr) return reject(new Error('Failed to commit X quest completion.'));
+                          rewards.forEach((entry) => void recordAnalyticsEvent(db, {
+                            uniqueKey: `x-quest:${entry.id}`,
+                            eventType: 'earned', userId: userID, amount: entry.reward,
+                            source: 'x_quest', metadata: { submissionId: entry.id, completedBy },
+                          }));
                           return resolve({
                             success: true,
                             completedCount: rows.length,
@@ -2284,6 +2333,12 @@ async function addGiveawayEntry(giveawayId, userId) {
       );
     });
 
+    void recordAnalyticsEvent(db, {
+      uniqueKey: `giveaway-entry:${giveawayId}:${normalizedUserId}`,
+      eventType: 'giveaway_entry', userId: normalizedUserId,
+      source: 'giveaway', metadata: { giveawayId },
+    });
+
   } catch (error) {
     console.error(`❌ Error adding user ${userId} to giveaway ${giveawayId}:`, error);
   }
@@ -2770,8 +2825,13 @@ async function addRaffleEntry(raffle_id, user_id) {
     db.run(
       `INSERT INTO raffle_entries (raffle_id, user_id) VALUES (?, ?)`,
       [raffle_id, user_id],
-      (err) => {
+      function (err) {
         if (err) return reject(err);
+        void recordAnalyticsEvent(db, {
+          uniqueKey: `raffle-entry:${this.lastID}`,
+          eventType: 'raffle_entry', userId: user_id,
+          source: 'raffle', metadata: { raffleId: raffle_id },
+        });
         resolve();
       }
     );
@@ -3238,7 +3298,9 @@ async function concludeRaffle(raffle) {
     if (!isNaN(raffle.prize)) {
       const prizeAmount = parseInt(raffle.prize, 10);
       for (const ticket of winningEntries) {
-        await db.updateWallet(ticket.user_id, prizeAmount);
+        await db.updateWallet(ticket.user_id, prizeAmount, {
+          eventType: 'earned', source: 'raffle_prize', metadata: { raffleId: raffle.id },
+        });
         console.log(`💰 User ${ticket.user_id} won ${prizeAmount} coins`);
       }
     } else {
@@ -3773,6 +3835,7 @@ function getInventoryByItemID(itemID) {
 module.exports = {
   // Raw SQLite instance (if needed)
   db,
+  trackAnalyticsEvent: (event) => recordAnalyticsEvent(db, event),
 
   // Admin / Economy
   addAdmin,

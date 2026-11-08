@@ -239,7 +239,9 @@ async function concludeRaffle(raffleId) {
       const prizeAmount = parseInt(raffle.prize, 10);
       awardedPrizeLabel = formatCurrency(prizeAmount);
       for (const winnerId of winners) {
-        await db.updateWallet(winnerId, prizeAmount);
+        await db.updateWallet(winnerId, prizeAmount, {
+          eventType: 'earned', source: 'raffle_prize', metadata: { raffleId: raffle.id },
+        });
         console.log(`💰 User ${winnerId} won ${prizeAmount} coins`);
       }
     } else {
